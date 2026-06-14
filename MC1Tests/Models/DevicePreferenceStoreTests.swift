@@ -96,6 +96,42 @@ struct DevicePreferenceStoreTests {
         #expect(store.hasSetGPSSource(deviceID: deviceID) == true)
     }
 
+    @Test("Location accuracy defaults to best")
+    func locationAccuracyDefaultsToBest() throws {
+        let suite = "DevicePreferenceStoreTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let store = DevicePreferenceStore(userDefaults: defaults)
+        #expect(store.locationAccuracy(deviceID: UUID()) == .best)
+    }
+
+    @Test("Location accuracy values are scoped per device")
+    func locationAccuracyPerDeviceIsolation() throws {
+        let suite = "DevicePreferenceStoreTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let store = DevicePreferenceStore(userDefaults: defaults)
+        let deviceA = UUID()
+        let deviceB = UUID()
+
+        store.setLocationAccuracy(.meters500, deviceID: deviceA)
+        #expect(store.locationAccuracy(deviceID: deviceA) == .meters500)
+        #expect(store.locationAccuracy(deviceID: deviceB) == .best)
+
+        store.setLocationAccuracy(.kilometer, deviceID: deviceB)
+        #expect(store.locationAccuracy(deviceID: deviceA) == .meters500)
+        #expect(store.locationAccuracy(deviceID: deviceB) == .kilometer)
+    }
+
+    @Test("Location accuracy radiusMeters maps best to nil and meters to value")
+    func locationAccuracyRadiusMeters() {
+        #expect(LocationAccuracy.best.radiusMeters == nil)
+        #expect(LocationAccuracy.meters100.radiusMeters == 100)
+        #expect(LocationAccuracy.kilometer.radiusMeters == 1000)
+    }
+
     @Test("Setting and getting round-trips correctly")
     func roundTrip() throws {
         let suite = "DevicePreferenceStoreTests.\(UUID().uuidString)"
@@ -107,12 +143,16 @@ struct DevicePreferenceStoreTests {
 
         store.setAutoUpdateLocationEnabled(true, deviceID: deviceID)
         store.setGPSSource(.device, deviceID: deviceID)
+        store.setLocationAccuracy(.meters300, deviceID: deviceID)
         #expect(store.isAutoUpdateLocationEnabled(deviceID: deviceID) == true)
         #expect(store.gpsSource(deviceID: deviceID) == .device)
+        #expect(store.locationAccuracy(deviceID: deviceID) == .meters300)
 
         store.setAutoUpdateLocationEnabled(false, deviceID: deviceID)
         store.setGPSSource(.phone, deviceID: deviceID)
+        store.setLocationAccuracy(.best, deviceID: deviceID)
         #expect(store.isAutoUpdateLocationEnabled(deviceID: deviceID) == false)
         #expect(store.gpsSource(deviceID: deviceID) == .phone)
+        #expect(store.locationAccuracy(deviceID: deviceID) == .best)
     }
 }

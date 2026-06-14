@@ -4280,6 +4280,8 @@ public enum L10n {
       }
     }
     public enum Location {
+      /// Label for phone GPS accuracy picker
+      public static let accuracy = L10n.tr("Settings", "location.accuracy", fallback: "GPS Accuracy")
       /// Toggle label for auto-update location
       public static let autoUpdate = L10n.tr("Settings", "location.autoUpdate", fallback: "Auto-Update Location")
       /// Footer for location settings section
@@ -4292,6 +4294,10 @@ public enum L10n {
       public static let notSharing = L10n.tr("Settings", "location.notSharing", fallback: "Not sharing")
       /// Detail text when location is being shared publicly
       public static let sharingPublicly = L10n.tr("Settings", "location.sharingPublicly", fallback: "Sharing publicly")
+      public enum Accuracy {
+        /// GPS accuracy option: best possible accuracy
+        public static let best = L10n.tr("Settings", "location.accuracy.best", fallback: "Highest")
+      }
       public enum DeviceGps {
         /// Footer for device GPS controls
         public static let footer = L10n.tr("Settings", "location.deviceGps.footer", fallback: "Turns the radio's built-in GPS on or off. Saving a manual map location turns Device GPS off.")
