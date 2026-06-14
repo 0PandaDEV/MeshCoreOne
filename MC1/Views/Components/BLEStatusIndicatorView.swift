@@ -154,9 +154,12 @@ struct BLEStatusIndicatorView: View {
         do {
             switch source {
             case .phone:
+                let accuracy = appState.connectedDevice
+                    .map { devicePreferenceStore.locationAccuracy(deviceID: $0.id) }?
+                    .clLocationAccuracy ?? kCLLocationAccuracyHundredMeters
                 let location: CLLocation
                 do {
-                    location = try await appState.locationService.requestCurrentLocation()
+                    location = try await appState.locationService.requestCurrentLocation(desiredAccuracy: accuracy)
                 } catch {
                     guard let currentLocation = appState.locationService.currentLocation else {
                         throw error
