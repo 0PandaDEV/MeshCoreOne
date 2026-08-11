@@ -3,11 +3,11 @@ import Foundation
 /// Cache key + render descriptor for a map thumbnail. Hashable on
 /// `(rounded lat/lon, isDark, isOffline)`. Rounding to 5 decimal places
 /// (~1.1 m) stops float jitter from sharding the cache; `isDark` keeps
-/// dark/light snapshots distinct; `isOffline` keeps the snapshotter's
-/// offline-pack style URL keyed separately from the online style so a
-/// pre-offline render does not satisfy a post-offline lookup (and vice
-/// versa). Render size is a constant (`MapSnapshotLayout`), deliberately
-/// not in the key.
+/// dark/light snapshots distinct; `isOffline` keeps a render attempted while
+/// offline (which fails, since `MKMapSnapshotter` needs network to fetch
+/// tiles) keyed separately from one attempted online, so a pre-reconnect
+/// failure doesn't satisfy a post-reconnect lookup. Render size is a
+/// constant (`MapSnapshotLayout`), deliberately not in the key.
 struct MapSnapshotRequest: Hashable {
   let latitude: Double
   let longitude: Double
@@ -25,12 +25,7 @@ struct MapSnapshotRequest: Hashable {
     let roundedLongitude = (longitude * Self.coordinatePrecision).rounded() / Self.coordinatePrecision
     self.latitude = roundedLatitude == 0 ? 0 : roundedLatitude
     self.longitude = roundedLongitude == 0 ? 0 : roundedLongitude
-    // `MapStyleSelection.styleURL(isDarkMode:isOffline:)` collapses
-    // `useDark = isDarkMode && !isOffline`, so offline renders never use
-    // the dark style. Collapsing `isDark` to `false` when offline keeps
-    // the cache, in-flight, failed, and resolvedKeys sets from sharding
-    // identical offline images across two slots.
-    self.isDark = isOffline ? false : isDark
+    self.isDark = isDark
     self.isOffline = isOffline
   }
 

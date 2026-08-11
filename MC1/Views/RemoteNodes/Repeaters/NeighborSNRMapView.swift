@@ -1,6 +1,5 @@
 import CoreLocation
 import MapKit
-import MapLibre
 import MC1Services
 import SwiftUI
 
@@ -61,7 +60,6 @@ struct NeighborSNRMapView: View {
         lines: plotted?.lines ?? [],
         mapStyle: mapStyleSelection,
         isDarkMode: mapIsDark,
-        isOffline: !appState.offlineMapService.isNetworkAvailable,
         showLabels: showLabels,
         showsUserLocation: true,
         isInteractive: true,
@@ -155,7 +153,6 @@ struct NeighborSNRMapView: View {
         isNorthLocked: $isNorthLocked,
         showLabels: $showLabels,
         mapStyleSelection: $mapStyleSelection,
-        viewportBounds: cameraRegion?.toMLNCoordinateBounds(),
         filter: MapFilterControl(host: .neighborSNR, state: mapFilterBinding)
       ) {
         centerAllButton

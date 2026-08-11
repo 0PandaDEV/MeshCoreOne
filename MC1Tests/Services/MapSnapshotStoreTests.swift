@@ -6,7 +6,7 @@ import UIKit
 @MainActor
 struct MapSnapshotStoreTests {
   /// Fake renderer: returns a 1x1 solid image after an optional gate, counting
-  /// calls. No MapLibre/GL.
+  /// calls. No real map rendering.
   final class FakeRenderer: MapSnapshotRendering {
     private(set) var renderCount = 0
     var gate: CheckedContinuation<Void, Never>?

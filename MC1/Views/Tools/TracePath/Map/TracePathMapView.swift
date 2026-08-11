@@ -144,7 +144,6 @@ struct TracePathMapView: View {
       lines: mapViewModel.mapLines,
       mapStyle: mapStyleSelection,
       isDarkMode: mapIsDark,
-      isOffline: !appState.offlineMapService.isNetworkAvailable,
       showLabels: showLabels,
       showsUserLocation: true,
       isInteractive: true,

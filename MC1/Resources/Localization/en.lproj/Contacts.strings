@@ -1000,10 +1000,6 @@
 /* Location: TracePathListView.swift - Accessibility hint when trace is running */
 "contacts.trace.list.runningHint" = "Trace is in progress";
 
-// MARK: - Trace Path Cluster View
-
-/* Location: TracePathClusterView.swift - Accessibility label for cluster annotation - %d is count */
-/* Location: TracePathClusterView.swift - Accessibility hint for cluster annotation */
 // MARK: - Trace Path Repeater Pin View
 
 /* Location: TracePathRepeaterPinView.swift - Accessibility label for repeater in path - %1$@ is name, %2$d is hop number */

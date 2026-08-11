@@ -256,7 +256,7 @@ final class MapViewModel {
     if let focusedPin {
       points.append(focusedPin)
     }
-    // Avoid force-assign when equal so MapLibre can skip O(n) GeoJSON rebuild.
+    // Avoid force-assign when equal so SwiftUI can skip an unnecessary annotation rebuild.
     if points != mapPoints {
       mapPoints = points
     }

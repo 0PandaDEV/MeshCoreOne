@@ -121,8 +121,13 @@ extension AppState {
   /// refresh there uses only already-authorized location instead of stalling on
   /// a prompt that can never resolve.
   func sendSelfAdvert(flood: Bool, allowLocationPrompt: Bool = true) async throws {
-    if let source = advertGPSSource(device: connectedDevice, store: DevicePreferenceStore()) {
-      await updateLocationFromGPS(source: source, allowLocationPrompt: allowLocationPrompt)
+    let store = DevicePreferenceStore()
+    if let device = connectedDevice, let source = advertGPSSource(device: device, store: store) {
+      await updateLocationFromGPS(
+        source: source,
+        allowLocationPrompt: allowLocationPrompt,
+        accuracy: store.locationAccuracy(deviceID: device.id)
+      )
     }
     guard let advertisementService = services?.advertisementService else {
       throw AdvertisementError.notConnected
@@ -142,7 +147,7 @@ extension AppState {
     return store.gpsSource(deviceID: device.id)
   }
 
-  private func updateLocationFromGPS(source: GPSSource, allowLocationPrompt: Bool) async {
+  private func updateLocationFromGPS(source: GPSSource, allowLocationPrompt: Bool, accuracy: LocationAccuracy) async {
     let settingsService = services?.settingsService
     do {
       switch source {
@@ -150,7 +155,7 @@ extension AppState {
         let location: CLLocation
         if allowLocationPrompt || locationService.isAuthorized {
           do {
-            location = try await locationService.requestCurrentLocation()
+            location = try await locationService.requestCurrentLocation(desiredAccuracy: accuracy.clLocationAccuracy)
           } catch {
             guard let cached = locationService.currentLocation else { throw error }
             location = cached

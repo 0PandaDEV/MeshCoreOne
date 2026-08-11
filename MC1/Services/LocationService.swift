@@ -117,7 +117,13 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
 
   /// Request current location asynchronously with timeout.
   /// Handles permission prompting if needed.
-  func requestCurrentLocation(timeout: Duration = .seconds(10)) async throws -> CLLocation {
+  ///
+  /// - Parameter desiredAccuracy: Horizontal accuracy to request from Core Location.
+  ///   Defaults to one-hundred-meter accuracy, matching the manager's baseline.
+  func requestCurrentLocation(
+    timeout: Duration = .seconds(10),
+    desiredAccuracy: CLLocationAccuracy = kCLLocationAccuracyHundredMeters
+  ) async throws -> CLLocation {
     guard requestContinuation == nil, authorizationContinuation == nil else {
       throw LocationServiceError.requestInProgress
     }
@@ -137,6 +143,7 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
 
     return try await withCheckedThrowingContinuation { continuation in
       requestContinuation = continuation
+      locationManager.desiredAccuracy = desiredAccuracy
       locationManager.requestLocation()
 
       locationTimeoutTask?.cancel()
@@ -238,5 +245,13 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
         continuation.resume(throwing: LocationServiceError.requestFailed(error.localizedDescription))
       }
     }
+  }
+}
+
+extension LocationAccuracy {
+  /// Core Location accuracy value: best-possible for `.best`, otherwise the
+  /// radius in meters.
+  var clLocationAccuracy: CLLocationAccuracy {
+    radiusMeters.map(CLLocationAccuracy.init) ?? kCLLocationAccuracyBest
   }
 }

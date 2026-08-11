@@ -14,6 +14,7 @@ struct LocationSettingsSection: View {
   @State private var shareLocation = false
   @State private var autoUpdateLocation = false
   @State private var gpsSource: GPSSource = .phone
+  @State private var locationAccuracy: LocationAccuracy = .best
   @State private var deviceHasGPS = false
   @State private var deviceGPSEnabled = false
   @State private var errorMessage: String?
@@ -26,6 +27,20 @@ struct LocationSettingsSection: View {
 
   private var shouldPollDeviceGPS: Bool {
     autoUpdateLocation && gpsSource == .device && deviceGPSEnabled
+  }
+
+  /// Phone GPS is in use whenever the device has no GPS or the user picked phone.
+  /// The accuracy radius only applies to phone fixes, not the radio's own GPS.
+  private var usesPhoneGPS: Bool {
+    !deviceHasGPS || gpsSource == .phone
+  }
+
+  private func accuracyLabel(_ accuracy: LocationAccuracy) -> String {
+    guard let meters = accuracy.radiusMeters else {
+      return L10n.Settings.Location.Accuracy.best
+    }
+    return Measurement(value: Double(meters), unit: UnitLength.meters)
+      .formatted(.measurement(width: .abbreviated, usage: .road))
   }
 
   var body: some View {
@@ -85,6 +100,19 @@ struct LocationSettingsSection: View {
               Text(L10n.Settings.Location.GpsSource.phone)
                 .foregroundStyle(.secondary)
             }
+          }
+
+          if usesPhoneGPS {
+            Picker(L10n.Settings.Location.accuracy, selection: $locationAccuracy) {
+              ForEach(LocationAccuracy.allCases) { accuracy in
+                Text(accuracyLabel(accuracy)).tag(accuracy)
+              }
+            }
+            .onChange(of: locationAccuracy) { _, newValue in
+              guard didLoad, let deviceID = appState.connectedDevice?.id else { return }
+              devicePreferenceStore.setLocationAccuracy(newValue, deviceID: deviceID)
+            }
+            .radioDisabled(for: appState.connectionState, or: isSaving)
           }
         }
       } header: {
@@ -158,6 +186,7 @@ struct LocationSettingsSection: View {
       shareLocation = device.sharesLocationPublicly
       autoUpdateLocation = devicePreferenceStore.isAutoUpdateLocationEnabled(deviceID: device.id)
       gpsSource = devicePreferenceStore.gpsSource(deviceID: device.id)
+      locationAccuracy = devicePreferenceStore.locationAccuracy(deviceID: device.id)
     }
     didLoad = true
   }

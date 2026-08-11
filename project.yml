@@ -25,9 +25,6 @@ packages:
   Emojibase:
     url: https://github.com/matrix-org/emojibase-bindings
     from: 1.5.0
-  MapLibre:
-    url: https://github.com/maplibre/maplibre-gl-native-distribution
-    exactVersion: 6.28.0
   MessagingUI:
     url: https://github.com/bwees-forks/swiftui-messaging-ui
     # Pinned to an exact revision: Package.resolved is gitignored (the whole
@@ -49,7 +46,6 @@ targets:
     dependencies:
       - package: MC1Services
       - package: Emojibase
-      - package: MapLibre
       - package: MessagingUI
       - target: MC1Widgets
     preBuildScripts:

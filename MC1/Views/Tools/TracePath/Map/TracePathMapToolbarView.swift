@@ -1,5 +1,4 @@
 import MapKit
-import MapLibre
 import MC1Services
 import SwiftUI
 
@@ -26,7 +25,6 @@ struct TracePathMapToolbarView: View {
           isNorthLocked: $isNorthLocked,
           showLabels: $showLabels,
           mapStyleSelection: $mapStyleSelection,
-          viewportBounds: mapViewModel.cameraRegion?.toMLNCoordinateBounds(),
           filter: filter
         ) {
           // Center on path

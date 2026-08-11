@@ -91,7 +91,7 @@ extension AppState {
       isHighContrast: isHighContrast,
       isDark: isDark,
       showMapPreviews: showMapPreviews,
-      isOffline: !offlineMapService.isNetworkAvailable,
+      isOffline: !networkMonitor.isNetworkAvailable,
       currentUserName: localNodeName,
       themeID: themeID,
       contentSizeCategory: contentSizeCategory

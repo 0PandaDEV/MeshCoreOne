@@ -1,6 +1,5 @@
 import CoreLocation
 import MapKit
-import MapLibre
 
 extension [CLLocationCoordinate2D] {
   /// Computes a bounding `MKCoordinateRegion` that fits all coordinates with padding.
@@ -32,21 +31,6 @@ extension [CLLocationCoordinate2D] {
     return MKCoordinateRegion(
       center: center,
       span: MKCoordinateSpan(latitudeDelta: latDelta, longitudeDelta: lonDelta)
-    )
-  }
-}
-
-extension MKCoordinateRegion {
-  func toMLNCoordinateBounds() -> MLNCoordinateBounds {
-    MLNCoordinateBounds(
-      sw: CLLocationCoordinate2D(
-        latitude: center.latitude - span.latitudeDelta / 2,
-        longitude: center.longitude - span.longitudeDelta / 2
-      ),
-      ne: CLLocationCoordinate2D(
-        latitude: center.latitude + span.latitudeDelta / 2,
-        longitude: center.longitude + span.longitudeDelta / 2
-      )
     )
   }
 }

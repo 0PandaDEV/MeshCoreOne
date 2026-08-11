@@ -32,7 +32,7 @@ struct MessageBubbleView: View, Equatable {
         callbacks: MessageBubbleCallbacks(
           onRetry: { actions.onRetryMessage(message) },
           onReaction: { emoji in actions.onReaction(emoji, message) },
-          onLongPress: { actions.onLongPress(message) },
+          makeActionsMenu: { actions.makeActionsMenu(message) },
           onImageTap: { actions.onImageTap(message) },
           onRetryInlineImage: { actions.onRetryInlineImage(message.id) },
           onRequestPreviewFetch: { actions.onRequestPreviewFetch(message.id) },

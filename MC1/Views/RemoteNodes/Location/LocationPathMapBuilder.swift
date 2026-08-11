@@ -111,7 +111,7 @@ enum LocationPathMapBuilder {
   private static func bucket(position: Int, of lastDot: Int) -> Int {
     guard lastDot > 0 else { return 0 }
     let recency = Double(position) / Double(lastDot)
-    return Int((recency * Double(PinSpriteRenderer.recencyBucketCount - 1)).rounded())
+    return Int((recency * Double(MapPinMetrics.recencyBucketCount - 1)).rounded())
   }
 
   /// Splits the ascending fixes into trail segments, breaking wherever two

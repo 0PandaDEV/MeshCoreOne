@@ -11,8 +11,8 @@ final class MapSnapshotStore {
   private static let cacheCountLimit = 50
   private static let cacheCostLimitBytes = 50 * 1024 * 1024
   private static let resolutionStreamBufferDepth = 64
-  /// Serial by default: 2-3 concurrent `MLNMapSnapshotter`s are unprecedented
-  /// GL load in this app. Raise only if Instruments shows serial is too slow.
+  /// Serial by default: 2-3 concurrent `MKMapSnapshotter`s are unprecedented
+  /// load in this app. Raise only if Instruments shows serial is too slow.
   private static let maxConcurrent = 1
   /// Hard cap on the failed-render set. The set is sticky (failures stay
   /// known until cleared) and grows with chat history during flaky networks;

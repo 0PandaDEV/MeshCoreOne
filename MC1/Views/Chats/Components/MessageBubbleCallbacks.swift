@@ -1,4 +1,5 @@
 import CoreLocation
+import SwiftUI
 import UIKit
 
 /// Callbacks for message bubble interactions.
@@ -10,7 +11,9 @@ import UIKit
 struct MessageBubbleCallbacks {
   var onRetry: (() -> Void)?
   var onReaction: ((String) -> Void)?
-  var onLongPress: (() -> Void)?
+  /// Builds this message's native context-menu content, attached to the bubble
+  /// via `.contextMenu`. Nil renders an empty (absent) menu.
+  var makeActionsMenu: (() -> AnyView)?
   var onImageTap: (() -> Void)?
   var onRetryInlineImage: (() -> Void)?
   var onRequestPreviewFetch: (() -> Void)?

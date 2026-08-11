@@ -1,53 +1,37 @@
 import CoreLocation
-import MapLibre
+import MapKit
+import SwiftUI
 import UIKit
 
-/// Renders static `MLNMapSnapshotter` thumbnails, compositing pin sprites (and,
-/// for paths, a polyline) over the base map. `@MainActor`: `MLNMapSnapshotter` is non-`Sendable`,
-/// its completion fires on the main queue, and the sprite comes from the
-/// `@MainActor` `PinSpriteRenderer`. The base map render and the pin composite
-/// run off-main (the overlay handler is on a background queue); the main actor is
-/// only used briefly to build options and is suspended during the GL work.
+/// Renders static `MKMapSnapshotter` thumbnails, compositing pin views (and,
+/// for paths, a polyline) over the base map. `@MainActor`: `MKMapSnapshotter`
+/// is non-`Sendable`, and pin sprites are rasterized from the same SwiftUI
+/// `MapPinView` the live map uses (via `ImageRenderer`), which needs the main
+/// actor. The compositing itself runs inside the snapshotter's completion
+/// handler rather than being handed back across the `await` boundary: the
+/// `MKMapSnapshotter.Snapshot` it produces isn't `Sendable`, so only the
+/// finished `UIImage` ever crosses back to the awaiting call.
 @MainActor
 final class MapSnapshotRenderer: MapSnapshotRendering {
+  /// Span for a single-coordinate snapshot, framing roughly a neighborhood —
+  /// no exact MapKit equivalent to a GL zoom level, so this is tuned visually.
+  private static let singlePointSpanDelta: CLLocationDegrees = 0.01
+
   func render(_ request: MapSnapshotRequest) async -> UIImage? {
-    let sprite = PinSpriteRenderer.droppedPinSprite()
-    let size = CGSize(width: MapSnapshotLayout.width, height: MapSnapshotLayout.height)
-    let latitude = request.latitude
-    let longitude = request.longitude
-    let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
-    let styleURL = MapStyleSelection.standard.styleURL(
-      isDarkMode: request.isDark,
-      isOffline: request.isOffline
+    let coordinate = CLLocationCoordinate2D(latitude: request.latitude, longitude: request.longitude)
+    let region = MKCoordinateRegion(
+      center: coordinate,
+      span: MKCoordinateSpan(latitudeDelta: Self.singlePointSpanDelta, longitudeDelta: Self.singlePointSpanDelta)
     )
+    let sprite = Self.pinSprite(for: .droppedPin)
+    let options = Self.makeOptions(region: region, isDark: request.isDark)
 
-    let camera = MLNMapCamera(
-      lookingAtCenter: coordinate,
-      altitude: 0,
-      pitch: 0,
-      heading: 0
-    )
-    let options = MLNMapSnapshotOptions(styleURL: styleURL, camera: camera, size: size)
-    options.zoomLevel = MapSnapshotLayout.zoomLevel
-    options.showsLogo = false
-    // Attribution is suppressed on the thumbnail; the full Map tab the user
-    // taps into shows the OSM/MapLibre attribution control.
-    options.showsAttribution = false
-
-    // `@Sendable` breaks `@MainActor` inheritance from the enclosing
-    // `withTaskCancellationHandler` operation closure; without it the
-    // runtime executor-isolation assertion (`dispatch_assert_queue_fail`)
-    // trips when MapLibre invokes the overlay handler off-main.
-    let overlayHandler: @Sendable (MLNMapSnapshotOverlay) -> Void = { overlay in
-      let point = overlay.point(
-        for: CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
-      )
-      UIGraphicsPushContext(overlay.context)
-      Self.draw(sprite: sprite, at: point)
-      UIGraphicsPopContext()
+    return await start(MKMapSnapshotter(options: options)) { snapshot in
+      UIGraphicsImageRenderer(size: snapshot.image.size).image { _ in
+        snapshot.image.draw(at: .zero)
+        Self.draw(sprite: sprite, at: snapshot.point(for: coordinate))
+      }
     }
-
-    return await start(MLNMapSnapshotter(options: options), overlayHandler: overlayHandler)
   }
 
   /// Renders a static thumbnail of a plotted location path: the polyline plus its
@@ -66,66 +50,87 @@ final class MapSnapshotRenderer: MapSnapshotRendering {
     }
 
     let pins = points.map { point in
-      (coordinate: point.coordinate, sprite: PinSpriteRenderer.snapshotSprite(named: Self.spriteName(for: point.pinStyle)))
+      (coordinate: point.coordinate, sprite: Self.pinSprite(for: point.pinStyle))
     }
     let lineCoordinates = line.map(\.coordinates)
     let casingColor = UIColor.white.withAlphaComponent(Self.pathCasingOpacity)
+    let options = Self.makeOptions(region: region, isDark: isDark)
 
-    let camera = MLNMapCamera()
-    let options = MLNMapSnapshotOptions(
-      styleURL: MapStyleSelection.standard.styleURL(isDarkMode: isDark, isOffline: isOffline),
-      camera: camera,
-      size: CGSize(width: MapSnapshotLayout.width, height: MapSnapshotLayout.height)
-    )
-    // A non-empty `coordinateBounds` overrides the camera's center and altitude,
-    // framing the whole path instead of a fixed zoom.
-    options.coordinateBounds = region.toMLNCoordinateBounds()
-    options.showsLogo = false
-    options.showsAttribution = false
-
-    let overlayHandler: @Sendable (MLNMapSnapshotOverlay) -> Void = { overlay in
-      UIGraphicsPushContext(overlay.context)
-      if let lineCoordinates, lineCoordinates.count > 1 {
-        // Mirrors the live map's `.messagePath` layers: a white casing stroked
-        // under a solid blue line, round joins and caps, no dashes.
-        let context = overlay.context
-        let path = CGMutablePath()
-        path.addLines(between: lineCoordinates.map { overlay.point(for: $0) })
-        context.setLineJoin(.round)
-        context.setLineCap(.round)
-        context.addPath(path)
-        context.setStrokeColor(casingColor.cgColor)
-        context.setLineWidth(Self.pathCasingWidth)
-        context.strokePath()
-        context.addPath(path)
-        context.setStrokeColor(UIColor.systemBlue.cgColor)
-        context.setLineWidth(Self.pathLineWidth)
-        context.strokePath()
+    return await start(MKMapSnapshotter(options: options)) { snapshot in
+      UIGraphicsImageRenderer(size: snapshot.image.size).image { context in
+        snapshot.image.draw(at: .zero)
+        let cgContext = context.cgContext
+        if let lineCoordinates, lineCoordinates.count > 1 {
+          // Mirrors the live map's `.messagePath` styling: a white casing stroked
+          // under a solid blue line, round joins and caps, no dashes.
+          let path = CGMutablePath()
+          path.addLines(between: lineCoordinates.map { snapshot.point(for: $0) })
+          cgContext.setLineJoin(.round)
+          cgContext.setLineCap(.round)
+          cgContext.addPath(path)
+          cgContext.setStrokeColor(casingColor.cgColor)
+          cgContext.setLineWidth(Self.pathCasingWidth)
+          cgContext.strokePath()
+          cgContext.addPath(path)
+          cgContext.setStrokeColor(UIColor.systemBlue.cgColor)
+          cgContext.setLineWidth(Self.pathLineWidth)
+          cgContext.strokePath()
+        }
+        for pin in pins {
+          Self.draw(sprite: pin.sprite, at: snapshot.point(for: pin.coordinate))
+        }
       }
-      for pin in pins {
-        Self.draw(sprite: pin.sprite, at: overlay.point(for: pin.coordinate))
-      }
-      UIGraphicsPopContext()
     }
-
-    return await start(MLNMapSnapshotter(options: options), overlayHandler: overlayHandler)
   }
 
-  // MARK: - Path styling
+  // MARK: - Snapshotting
 
-  /// Mirrors the live map's `.messagePath` line layers.
-  private nonisolated static let pathCasingOpacity: CGFloat = 0.8
-  private nonisolated static let pathCasingWidth: CGFloat = 6
-  private nonisolated static let pathLineWidth: CGFloat = 3
+  private static func makeOptions(region: MKCoordinateRegion, isDark: Bool) -> MKMapSnapshotter.Options {
+    let options = MKMapSnapshotter.Options()
+    options.region = region
+    options.size = CGSize(width: MapSnapshotLayout.width, height: MapSnapshotLayout.height)
+    options.mapType = .standard
+    options.showsBuildings = false
+    options.traitCollection = UITraitCollection(userInterfaceStyle: isDark ? .dark : .light)
+    return options
+  }
 
-  /// Sprite names for the styles `LocationPathMapBuilder` emits; anything else
-  /// falls back to the dropped pin.
-  private static func spriteName(for style: MapPoint.PinStyle) -> String {
-    switch style {
-    case .pointA: "pin-point-a"
-    case .pointB: "pin-point-b"
-    default: "pin-dropped"
+  /// Starts the snapshotter and composites its result inside the completion
+  /// handler, so only the finished (Sendable-safe) `UIImage` crosses back to
+  /// the awaiting caller — never the non-`Sendable` `Snapshot` itself.
+  private func start(
+    _ snapshotter: MKMapSnapshotter,
+    compose: @escaping @Sendable (MKMapSnapshotter.Snapshot) -> UIImage?
+  ) async -> UIImage? {
+    let snapshotterRef = SnapshotterRef(snapshotter)
+    return await withTaskCancellationHandler {
+      await withCheckedContinuation { (continuation: CheckedContinuation<UIImage?, Never>) in
+        snapshotter.start { snapshot, _ in
+          guard let snapshot else {
+            continuation.resume(returning: nil)
+            return
+          }
+          continuation.resume(returning: compose(snapshot))
+        }
+      }
+    } onCancel: { [snapshotterRef] in
+      Task { @MainActor in snapshotterRef.snapshotter.cancel() }
     }
+  }
+
+  // MARK: - Pin sprites
+
+  /// Rasterizes the same SwiftUI pin view the live map uses, so a snapshot
+  /// thumbnail's pin always matches the live map's — one rendering path
+  /// instead of two kept manually in sync.
+  private static func pinSprite(for style: MapPoint.PinStyle) -> UIImage {
+    let resolvedStyle: MapPoint.PinStyle = switch style {
+    case .pointA, .pointB: style
+    default: .droppedPin
+    }
+    let renderer = ImageRenderer(content: MapPinView(style: resolvedStyle, hopIndex: nil, isDarkMode: false))
+    renderer.scale = UIScreen.main.scale
+    return renderer.uiImage ?? UIImage()
   }
 
   /// Draws a bottom-anchored pin sprite so its tip sits on the coordinate.
@@ -138,40 +143,21 @@ final class MapSnapshotRenderer: MapSnapshotRendering {
     ))
   }
 
-  private func start(
-    _ snapshotter: MLNMapSnapshotter,
-    overlayHandler: @escaping @Sendable (MLNMapSnapshotOverlay) -> Void
-  ) async -> UIImage? {
-    // `snapshotter.start(...)` retains `snapshotter` for the duration of the
-    // underlying GL work — no extra anchor is needed to keep it alive across
-    // the `await` suspension.
-    let snapshotterRef = SnapshotterRef(snapshotter)
-    return await withTaskCancellationHandler {
-      await withCheckedContinuation { (continuation: CheckedContinuation<UIImage?, Never>) in
-        snapshotter.start(
-          overlayHandler: overlayHandler,
-          completionHandler: { snapshot, _ in
-            continuation.resume(returning: snapshot?.image)
-          }
-        )
-      }
-    } onCancel: { [snapshotterRef] in
-      // The cancel handler runs on whichever actor triggered cancellation;
-      // hop to the main actor so `MLNMapSnapshotter` (non-`Sendable`) is
-      // touched only from its owning context. Cancellation flows back to
-      // the awaiter via the `completionHandler` resuming with `nil`.
-      Task { @MainActor in snapshotterRef.snapshotter.cancel() }
-    }
-  }
+  // MARK: - Path styling
+
+  /// Mirrors the live map's `.messagePath` line styling.
+  private nonisolated static let pathCasingOpacity: CGFloat = 0.8
+  private nonisolated static let pathCasingWidth: CGFloat = 6
+  private nonisolated static let pathLineWidth: CGFloat = 3
 }
 
 /// `@unchecked Sendable` shuttle so the cancellation closure (which is
-/// `@Sendable`) can carry the non-`Sendable` `MLNMapSnapshotter` reference
+/// `@Sendable`) can carry the non-`Sendable` `MKMapSnapshotter` reference
 /// across actors. The closure only reads the property and immediately hops
 /// back to the main actor before touching it.
 private final class SnapshotterRef: @unchecked Sendable {
-  let snapshotter: MLNMapSnapshotter
-  init(_ snapshotter: MLNMapSnapshotter) {
+  let snapshotter: MKMapSnapshotter
+  init(_ snapshotter: MKMapSnapshotter) {
     self.snapshotter = snapshotter
   }
 }

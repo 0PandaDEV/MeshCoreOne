@@ -98,7 +98,5 @@ extension AppState {
       await batteryMonitor.checkMissedBatteryThreshold(device: connectedDevice, services: services)
       batteryMonitor.startRefreshLoop(services: services, device: connectedDevice)
     }
-
-    offlineMapService.resumeAllPacks()
   }
 }

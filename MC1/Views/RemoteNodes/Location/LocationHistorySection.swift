@@ -22,7 +22,6 @@ struct LocationHistorySection: View {
     span: MKCoordinateSpan(latitudeDelta: previewSpanDelta, longitudeDelta: previewSpanDelta)
   )
 
-  @Environment(\.appState) private var appState
   @Environment(\.appTheme) private var theme
   @Environment(\.colorScheme) private var colorScheme
 
@@ -121,7 +120,6 @@ struct LocationHistorySection: View {
         lines: path?.lines ?? [],
         mapStyle: .standard,
         isDarkMode: colorScheme == .dark,
-        isOffline: !appState.offlineMapService.isNetworkAvailable,
         showLabels: false,
         showsUserLocation: false,
         isInteractive: false,
@@ -133,8 +131,8 @@ struct LocationHistorySection: View {
         onCameraRegionChange: nil
       )
       // Non-interactive: no pan or zoom, and every tap callback is nil with no
-      // clusterable pins, so tapping the map does nothing. Hit testing stays on so
-      // MapLibre's attribution button works; only the expand button pushes the map.
+      // clusterable pins, so tapping the map does nothing; only the expand
+      // button pushes the map.
 
       Button {
         pendingMapSelection = nil

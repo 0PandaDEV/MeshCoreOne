@@ -1,6 +1,5 @@
 import CoreLocation
 import MapKit
-import MapLibre
 import MC1Services
 import SwiftUI
 
@@ -95,8 +94,7 @@ struct MessagePathMapView: View {
                   isCenteredOnUser: isCenteredOnUser,
                   isNorthLocked: $isNorthLocked,
                   showLabels: $showLabels,
-                  mapStyleSelection: $mapStyle,
-                  viewportBounds: cameraRegion?.toMLNCoordinateBounds()
+                  mapStyleSelection: $mapStyle
                 ) {
                   if !locatedNodes.isEmpty {
                     Button(L10n.Chats.Chats.Path.centerOnPath, systemImage: "arrow.up.left.and.arrow.down.right") {

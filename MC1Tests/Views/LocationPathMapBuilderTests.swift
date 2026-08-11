@@ -191,9 +191,9 @@ struct LocationPathMapBuilderTests {
     let buckets = built.points.dropLast().compactMap(\.hopIndex) // every point but the hero
 
     #expect(buckets.first == 0, "The oldest fix is the coolest bucket")
-    #expect(buckets.last == PinSpriteRenderer.recencyBucketCount - 1, "The newest dot is the hottest bucket")
+    #expect(buckets.last == MapPinMetrics.recencyBucketCount - 1, "The newest dot is the hottest bucket")
     #expect(buckets == buckets.sorted(), "Recency rises monotonically toward the present")
-    #expect(Set(buckets).count == PinSpriteRenderer.recencyBucketCount, "Every bucket in the ramp is used")
+    #expect(Set(buckets).count == MapPinMetrics.recencyBucketCount, "Every bucket in the ramp is used")
   }
 
   @Test

@@ -37,6 +37,14 @@
 /* Location: MapControlsToolbar.swift - Purpose: Accessibility value when filter differs from host defaults */
 "map.controls.filterActive" = "Filters active";
 
+// MARK: - Map Cluster
+
+/* Location: MC1ClusterAnnotationView.swift - Purpose: Accessibility label for a grouped-pin cluster - %d is the pin count */
+"map.cluster.label" = "%d pins";
+
+/* Location: MC1ClusterAnnotationView.swift - Purpose: Accessibility hint for tapping a cluster */
+"map.cluster.hint" = "Zooms in to show individual pins";
+
 // MARK: - Map Style Selection
 
 /* Location: MapStyleSelection.swift - Purpose: Standard map style option */
@@ -45,17 +53,8 @@
 /* Location: MapStyleSelection.swift - Purpose: Satellite map style option */
 "map.style.satellite" = "Satellite";
 
-/* Location: MapStyleSelection.swift - Purpose: Topo map style option */
-"map.style.topo" = "Topography";
-
 /* Location: LayersMenu.swift - Purpose: Accessibility label for map style menu */
 "map.style.accessibilityLabel" = "Map style";
-
-/* Location: LayersMenu.swift - Purpose: Hint when style requires network */
-"map.style.requiresNetwork" = "Requires network connection";
-
-/* Location: LayersMenu.swift - Purpose: Hint when no offline pack covers viewport */
-"map.style.noOfflineCoverage" = "No offline map covers this area";
 
 // MARK: - Contact Detail Sheet
 
@@ -176,10 +175,6 @@
 /* Location: ContactAnnotation.swift - Purpose: Subtitle for favorite contacts */
 /* Location: ContactAnnotation.swift - Purpose: Subtitle for repeater nodes */
 /* Location: ContactAnnotation.swift - Purpose: Subtitle for room nodes */
-// MARK: - Offline Badge
-
-/* Label shown on map when device has no internet connection */
-"map.offlineBadge.label" = "Offline";
 
 // MARK: - Chat Map Preview
 

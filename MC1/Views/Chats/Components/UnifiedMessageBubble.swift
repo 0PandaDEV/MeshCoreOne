@@ -1,15 +1,6 @@
 import MC1Services
 import SwiftUI
 
-/// Two-layer drop shadow shown only while the bubble is lifted: a tight contact
-/// shadow under the bubble plus a softer ambient one for depth.
-private let liftContactShadowOpacity: Double = 0.10
-private let liftContactShadowRadius: CGFloat = 3
-private let liftContactShadowYOffset: CGFloat = 1
-private let liftAmbientShadowOpacity: Double = 0.20
-private let liftAmbientShadowRadius: CGFloat = 12
-private let liftAmbientShadowYOffset: CGFloat = 4
-
 /// Minimum width reserved on the edge opposite a bubble, so a message never
 /// spans the full row width and its alignment stays legible.
 private let bubbleRowOppositeEdgeMinInset: CGFloat = 40
@@ -48,8 +39,6 @@ struct UnifiedMessageBubble: View, Equatable {
   @Environment(\.appTheme) private var theme
 
   @State private var showingReactionDetails = false
-  @State private var isLongPressing = false
-  @State private var longPressTrigger = 0
 
   nonisolated static func == (lhs: UnifiedMessageBubble, rhs: UnifiedMessageBubble) -> Bool {
     lhs.item == rhs.item
@@ -99,7 +88,7 @@ struct UnifiedMessageBubble: View, Equatable {
               .senderNamePlacement(enclosingStackSpacing: bubbleStackSpacing)
           }
 
-          bubbleActionsLongPress(
+          bubbleActionsMenu(
             BubbleFragmentStack(
               item: item,
               layout: layout,
@@ -107,18 +96,6 @@ struct UnifiedMessageBubble: View, Equatable {
               timeColor: footerTimeColor,
               callbacks: callbacks,
               imageResolver: imageResolver
-            )
-            .shadow(
-              color: Color.black.opacity(isLongPressing ? liftContactShadowOpacity : 0),
-              radius: liftContactShadowRadius,
-              x: 0,
-              y: liftContactShadowYOffset
-            )
-            .shadow(
-              color: Color.black.opacity(isLongPressing ? liftAmbientShadowOpacity : 0),
-              radius: liftAmbientShadowRadius,
-              x: 0,
-              y: liftAmbientShadowYOffset
             )
           )
 
@@ -128,9 +105,6 @@ struct UnifiedMessageBubble: View, Equatable {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityMessageLabel)
-        .accessibilityAction {
-          callbacks.onLongPress?()
-        }
         .accessibilityActions {
           if item.footer.showStatusRow,
              item.footer.status == .failed,
@@ -167,7 +141,6 @@ struct UnifiedMessageBubble: View, Equatable {
             }
           }
         }
-        .messageBubbleLongPressEffect(isPressing: isLongPressing, trigger: longPressTrigger)
 
         if !item.envelope.isOutgoing {
           Spacer(minLength: bubbleRowOppositeEdgeMinInset)
@@ -192,27 +165,28 @@ struct UnifiedMessageBubble: View, Equatable {
     }
   }
 
-  /// Applies the bubble's actions-sheet long-press: a sustained press fires `onLongPress`, drives
-  /// the lift, and bumps the haptic trigger. Shared by the box and the content-card siblings so a
-  /// press anywhere on the bubble opens the same sheet.
-  private func bubbleActionsLongPress(_ content: some View) -> some View {
-    content.messageBubbleLongPressGesture(
-      isPressing: $isLongPressing,
-      trigger: $longPressTrigger,
-      onFire: { callbacks.onLongPress?() }
-    )
+  /// Attaches the bubble's native context menu, shaped to lift the bubble box
+  /// itself (not a detached preview) so the system's lift animation matches
+  /// the live view exactly. Shared by the box and the content-card siblings so
+  /// a long-press/right-click anywhere on the bubble opens the same menu.
+  private func bubbleActionsMenu(_ content: some View) -> some View {
+    content
+      .contentShape(.contextMenuPreview, .rect(cornerRadius: BubbleFragmentStack.cornerRadius))
+      .contextMenu {
+        callbacks.makeActionsMenu?()
+      }
   }
 
   /// Renders one fragment from `layout.siblings` (reactions, malware warning, link preview, map
-  /// preview). Content cards carry the bubble's long-press so a press anywhere opens the actions
-  /// sheet; reactions keep their own. The text and inline-image kinds never reach the sibling list
-  /// (they render inside `BubbleFragmentStack`), so their arm exists only to keep the switch
-  /// exhaustive.
+  /// preview). Content cards carry the bubble's context menu so a press anywhere opens the same
+  /// menu; reactions keep their own long-press. The text and inline-image kinds never reach the
+  /// sibling list (they render inside `BubbleFragmentStack`), so their arm exists only to keep the
+  /// switch exhaustive.
   @ViewBuilder
   private func siblingFragmentView(_ fragment: MessageFragment) -> some View {
     let content = siblingFragmentBody(fragment)
     if Self.siblingWantsActionsLongPress(fragment) {
-      bubbleActionsLongPress(content)
+      bubbleActionsMenu(content)
     } else {
       content
     }

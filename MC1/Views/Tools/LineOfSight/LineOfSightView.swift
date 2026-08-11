@@ -434,7 +434,6 @@ private struct LOSMapCanvasView: View {
         lines: viewModel.mapLines,
         mapStyle: mapStyleSelection,
         isDarkMode: mapIsDark,
-        isOffline: !appState.offlineMapService.isNetworkAvailable,
         showLabels: showLabels,
         showsUserLocation: true,
         isInteractive: true,
@@ -478,8 +477,7 @@ private struct LOSMapCanvasView: View {
             isCenteredOnUser: isCenteredOnUser,
             isNorthLocked: $isNorthLocked,
             showLabels: $showLabels,
-            mapStyleSelection: $mapStyleSelection,
-            viewportBounds: viewModel.cameraRegion?.toMLNCoordinateBounds()
+            mapStyleSelection: $mapStyleSelection
           ) {
             EmptyView()
           }

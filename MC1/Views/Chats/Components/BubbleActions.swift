@@ -20,7 +20,8 @@ import UIKit
 struct BubbleActions {
   let onRetryMessage: (MessageDTO) -> Void
   let onReaction: (String, MessageDTO) -> Void
-  let onLongPress: (MessageDTO) -> Void
+  /// Builds the native context-menu content for a message, attached to its bubble.
+  let makeActionsMenu: (MessageDTO) -> AnyView
   let onImageTap: (MessageDTO) -> Void
   let onRetryInlineImage: (UUID) -> Void
   let onRequestPreviewFetch: (UUID) -> Void

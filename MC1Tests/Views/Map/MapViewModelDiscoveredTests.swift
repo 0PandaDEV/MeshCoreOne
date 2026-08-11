@@ -14,7 +14,7 @@ struct MapViewModelDiscoveredTests {
   private static let discoveredLongitude = -122.0
   private static let farDiscoveredLatitude = 45.0
   private static let farDiscoveredLongitude = -100.0
-  /// Outside valid latitude range; would crash MapLibre if plotted.
+  /// Outside valid latitude range.
   private static let invalidLatitude = 999.0
 
   private static func makeLocatedContact(

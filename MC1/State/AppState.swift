@@ -23,10 +23,10 @@ final class AppState {
   /// App-wide location service for permission management
   let locationService = LocationService()
 
-  // MARK: - Offline Maps
+  // MARK: - Network
 
-  /// Offline map pack management and network monitoring
-  let offlineMapService = OfflineMapService()
+  /// App-wide network reachability signal.
+  let networkMonitor = NetworkMonitor()
 
   // MARK: - Chat Drafts
 

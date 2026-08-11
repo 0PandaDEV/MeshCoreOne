@@ -1,11 +1,9 @@
 import MapKit
-import MapLibre
 import MC1Services
 import SwiftUI
 
-/// Canvas wrapping the map content with an offline badge and floating controls.
+/// Canvas wrapping the map content with floating controls.
 struct MapCanvasView: View {
-  @Environment(\.appState) private var appState
   @Bindable var viewModel: MapViewModel
   @Binding var mapStyleSelection: MapStyleSelection
   @Binding var showLabels: Bool
@@ -45,11 +43,6 @@ struct MapCanvasView: View {
       )
       .ignoresSafeArea()
 
-      // Offline badge
-      if !appState.offlineMapService.isNetworkAvailable {
-        OfflineBadge()
-      }
-
       // Floating controls
       VStack {
         Spacer()
@@ -58,7 +51,6 @@ struct MapCanvasView: View {
           showLabels: $showLabels,
           mapStyleSelection: $mapStyleSelection,
           isCenteredOnUser: isCenteredOnUser,
-          viewportBounds: viewModel.cameraRegion?.toMLNCoordinateBounds(),
           centerAllEmpty: !viewModel.hasPinsForCenterAll,
           filter: filter,
           onLocationTap: {
@@ -82,7 +74,6 @@ private struct MapCanvasControls: View {
   @Binding var showLabels: Bool
   @Binding var mapStyleSelection: MapStyleSelection
   let isCenteredOnUser: Bool
-  let viewportBounds: MLNCoordinateBounds?
   let centerAllEmpty: Bool
   var filter: MapFilterControl
   let onLocationTap: () -> Void
@@ -98,7 +89,6 @@ private struct MapCanvasControls: View {
         isNorthLocked: $isNorthLocked,
         showLabels: $showLabels,
         mapStyleSelection: $mapStyleSelection,
-        viewportBounds: viewportBounds,
         filter: filter
       ) {
         CenterAllButton(

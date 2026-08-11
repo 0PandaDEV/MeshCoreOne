@@ -28,17 +28,6 @@ struct MapsSettingsView: View {
         Text(L10n.Settings.Maps.appearanceFooter)
       }
       .themedRowBackground(theme)
-
-      Section {
-        NavigationLink {
-          OfflineMapSettingsView()
-        } label: {
-          TintedLabel(L10n.Settings.OfflineMaps.title, systemImage: "arrow.down.circle")
-        }
-      } header: {
-        Text(L10n.Settings.Maps.offlineHeader)
-      }
-      .themedRowBackground(theme)
     }
     .themedCanvas(theme)
     .navigationTitle(L10n.Settings.Maps.title)

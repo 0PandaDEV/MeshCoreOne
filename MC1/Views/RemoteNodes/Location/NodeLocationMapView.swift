@@ -1,6 +1,5 @@
 import CoreLocation
 import MapKit
-import MapLibre
 import MC1Services
 import SwiftUI
 
@@ -53,7 +52,7 @@ struct NodeLocationMapView: View {
   @State private var hasInitiallyFit = false
   // Snapshotted exactly once per appearance lifecycle so re-renders of the
   // enclosing screen (e.g. a telemetry refresh behind this pushed map) can't
-  // re-mint MapPoint identities and churn MapLibre annotations, mirroring
+  // re-mint MapPoint identities and churn the map's annotations, mirroring
   // MessagePathMapView.locatedNodes. A dedicated flag rather than an empty-array
   // check so a genuinely empty snapshot still counts as taken.
   @State private var hasSnapshotted = false
@@ -73,7 +72,6 @@ struct NodeLocationMapView: View {
         lines: displayLines,
         mapStyle: mapStyleSelection,
         isDarkMode: mapIsDark,
-        isOffline: !appState.offlineMapService.isNetworkAvailable,
         showLabels: showLabels,
         showsUserLocation: true,
         isInteractive: true,
@@ -84,6 +82,7 @@ struct NodeLocationMapView: View {
         cameraBottomSheetFraction: 0,
         selectionRequestID: pendingSelectionPointID,
         selectionRequestVersion: selectionRequestVersion,
+        selectedPointID: selectedReport?.id,
         onPointTap: { point, screenPosition in
           guard let report = reports[point.id] else { return }
           selectedReport = SelectedReport(id: point.id, report: report)
@@ -151,8 +150,7 @@ struct NodeLocationMapView: View {
         isCenteredOnUser: isCenteredOnUser,
         isNorthLocked: $isNorthLocked,
         showLabels: $showLabels,
-        mapStyleSelection: $mapStyleSelection,
-        viewportBounds: cameraRegion?.toMLNCoordinateBounds()
+        mapStyleSelection: $mapStyleSelection
       ) {
         centerAllButton
       }

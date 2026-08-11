@@ -1,4 +1,3 @@
-import MapLibre
 import SwiftUI
 
 /// Single filter config for maps that expose the Filter menu.
@@ -12,8 +11,6 @@ struct MapFilterControl {
 /// The map options control is a native menu offering the north lock, map-style
 /// picker, and the labels toggle.
 struct MapControlsToolbar<AdditionalActions: View>: View {
-  @Environment(\.appState) private var appState
-
   /// Centers the map on the user's location.
   var onLocationTap: () -> Void
 
@@ -23,9 +20,6 @@ struct MapControlsToolbar<AdditionalActions: View>: View {
   @Binding var isNorthLocked: Bool
   @Binding var showLabels: Bool
   @Binding var mapStyleSelection: MapStyleSelection
-
-  /// Current viewport, used to gate styles that lack offline coverage for the visible area.
-  var viewportBounds: MLNCoordinateBounds?
 
   var filter: MapFilterControl?
 
@@ -143,10 +137,7 @@ struct MapControlsToolbar<AdditionalActions: View>: View {
     Menu {
       Picker(L10n.Map.Map.Style.accessibilityLabel, selection: $mapStyleSelection) {
         ForEach(MapStyleSelection.allCases.reversed(), id: \.self) { style in
-          Text(style.label)
-            .tag(style)
-            .disabled(isDisabled(style))
-            .accessibilityHint(disabledReason(for: style) ?? "")
+          Text(style.label).tag(style)
         }
       }
 
@@ -158,26 +149,6 @@ struct MapControlsToolbar<AdditionalActions: View>: View {
       Label(L10n.Map.Map.Controls.mapOptions, systemImage: "ellipsis.circle")
     }
     .mapControlButton(tint: .primary)
-  }
-
-  private func isDisabled(_ style: MapStyleSelection) -> Bool {
-    !appState.offlineMapService.isNetworkAvailable
-      && (style.requiresNetwork || !hasOfflineCoverage(for: style))
-  }
-
-  private func disabledReason(for style: MapStyleSelection) -> String? {
-    guard isDisabled(style) else { return nil }
-    return style.requiresNetwork
-      ? L10n.Map.Map.Style.requiresNetwork
-      : L10n.Map.Map.Style.noOfflineCoverage
-  }
-
-  private func hasOfflineCoverage(for style: MapStyleSelection) -> Bool {
-    if let viewportBounds {
-      appState.offlineMapService.hasCompletedPack(for: style.offlineMapLayer, overlapping: viewportBounds)
-    } else {
-      appState.offlineMapService.hasCompletedPack(for: style.offlineMapLayer)
-    }
   }
 }
 

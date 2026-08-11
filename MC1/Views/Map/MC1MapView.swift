@@ -1,17 +1,19 @@
 import MapKit
-import MapLibre
-import OSLog
 import SwiftUI
 
-private let logger = Logger(subsystem: "com.mc1", category: "MapPins")
-
+/// `UIViewRepresentable` wrapping `MKMapView` — native Apple Maps with native
+/// `MKAnnotationView.clusteringIdentifier`/`MKClusterAnnotation` grouping and
+/// gesture-based immediate-response pin taps (bypassing MapKit's ~300ms
+/// `didSelect` delay). Ported from this app's original MapKit implementation
+/// (before a since-reverted MapLibre migration), generalized to render the
+/// current `MapPoint`/`MapLine` domain model instead of feature-specific
+/// annotation types, so one wrapper serves every map screen.
 struct MC1MapView: UIViewRepresentable {
   // Data
   let points: [MapPoint]
   let lines: [MapLine]
   let mapStyle: MapStyleSelection
   let isDarkMode: Bool
-  var isOffline: Bool = false
 
   // Configuration
   let showLabels: Bool
@@ -20,18 +22,26 @@ struct MC1MapView: UIViewRepresentable {
   let showsScale: Bool
   var isNorthLocked: Bool = false
 
-  // Camera
+  // Camera. The version counters mirror value-binding-driven "apply once per
+  // bump" reactivity: plain bindings don't tell us *when* a new target
+  // arrived, only what it currently is.
   @Binding var cameraRegion: MKCoordinateRegion?
   let cameraRegionVersion: Int
-  var cameraEdgePadding: UIEdgeInsets = .zero
+  /// Fraction of the bottom of the screen covered by a sheet/panel, so the
+  /// applied region frames its content in the remaining visible area instead
+  /// of centering across the whole screen including the obscured strip.
   var cameraBottomSheetFraction: CGFloat?
 
   // Programmatic selection: the id of the point to select, plus a version
-  // counter bumped to (re)fire it, mirroring the camera region + version idiom.
-  // The coordinator projects the point and routes it through `onPointTap`, so a
-  // programmatic selection is the same code path as a user tap.
+  // counter bumped to (re)fire it. Routed through `onPointTap`, so a
+  // programmatic selection presents the callout exactly like a user tap.
   var selectionRequestID: UUID?
   var selectionRequestVersion: Int = 0
+
+  /// The point whose callout/popover is currently showing. That pin's own
+  /// persistent name pill is suppressed while showing — otherwise the name
+  /// reads twice (once above the pin, once in the callout right next to it).
+  var selectedPointID: UUID?
 
   // Output callbacks
   let onPointTap: ((MapPoint, CGPoint) -> Void)?
@@ -45,47 +55,33 @@ struct MC1MapView: UIViewRepresentable {
   /// Reports whether the camera is currently centered on the user's location.
   var isCenteredOnUser: Binding<Bool> = .constant(false)
 
-  func makeCoordinator() -> Coordinator {
-    Coordinator()
-  }
-
-  func makeUIView(context: Context) -> MLNMapView {
+  func makeUIView(context: Context) -> MKMapView {
     let mapView = context.coordinator.mapView
     mapView.delegate = context.coordinator
-
     mapView.showsUserLocation = showsUserLocation
-    mapView.compassViewPosition = .topRight
-    mapView.compassViewMargins = CGPoint(x: 8, y: 8)
-    mapView.attributionButtonPosition = .bottomLeft
-    mapView.attributionButtonMargins = CGPoint(x: 4, y: 30)
+    mapView.showsCompass = true
+    mapView.showsScale = showsScale
 
-    if showsScale {
-      mapView.showsScale = true
-    }
+    mapView.register(
+      MC1PinAnnotationView.self,
+      forAnnotationViewWithReuseIdentifier: MC1PinAnnotationView.reuseIdentifier
+    )
+    mapView.register(
+      MC1ClusterAnnotationView.self,
+      forAnnotationViewWithReuseIdentifier: MKMapViewDefaultClusterAnnotationViewReuseIdentifier
+    )
 
     if !isInteractive {
       mapView.isScrollEnabled = false
       mapView.isZoomEnabled = false
       mapView.isRotateEnabled = false
       mapView.isPitchEnabled = false
-      mapView.compassView.isHidden = true
     }
 
-    // Disable quick-zoom (tap-then-hold-drag) gesture
-    mapView.gestureRecognizers?
-      .compactMap { $0 as? UILongPressGestureRecognizer }
-      .filter { $0.numberOfTapsRequired == 1 && $0.minimumPressDuration == 0 }
-      .forEach { $0.isEnabled = false }
-
-    // Tap gesture for feature queries
-    let tap = UITapGestureRecognizer(
-      target: context.coordinator,
-      action: #selector(Coordinator.handleTap(_:))
-    )
+    let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))
     tap.delegate = context.coordinator
     mapView.addGestureRecognizer(tap)
 
-    // Long-press gesture for dropping a pin at the pressed coordinate
     let longPress = UILongPressGestureRecognizer(
       target: context.coordinator,
       action: #selector(Coordinator.handleLongPress(_:))
@@ -93,366 +89,209 @@ struct MC1MapView: UIViewRepresentable {
     longPress.delegate = context.coordinator
     mapView.addGestureRecognizer(longPress)
 
+    context.coordinator.isStyleLoaded = { isStyleLoaded.wrappedValue = true }
+    context.coordinator.isStyleLoaded?()
+
     return mapView
   }
 
-  static func dismantleUIView(_ mapView: MLNMapView, coordinator: Coordinator) {
+  static func dismantleUIView(_ mapView: MKMapView, coordinator: Coordinator) {
     coordinator.pendingRegionTask?.cancel()
     mapView.delegate = nil
   }
 
-  func updateUIView(_ mapView: MLNMapView, context: Context) {
+  func updateUIView(_ mapView: MKMapView, context: Context) {
     let coordinator = context.coordinator
     coordinator.isUpdatingFromSwiftUI = true
     defer { coordinator.isUpdatingFromSwiftUI = false }
 
-    // Refresh callbacks
     coordinator.onPointTap = onPointTap
     coordinator.onMapTap = onMapTap
     coordinator.onMapLongPress = onMapLongPress
     coordinator.onCameraRegionChange = onCameraRegionChange
-    coordinator.setIsStyleLoaded = { isStyleLoaded.wrappedValue = $0 }
     coordinator.setIsCenteredOnUser = { isCenteredOnUser.wrappedValue = $0 }
+    coordinator.isDarkMode = isDarkMode
+    coordinator.showLabels = showLabels
+    coordinator.selectedPointID = selectedPointID
     coordinator.currentPoints = points
-    coordinator.currentLines = lines
-    // Set before the styleURL below: a theme switch changes the styleURL and triggers
-    // a reload, so didFinishLoading -> renderAll must already see the new theme.
-    coordinator.currentIsDarkMode = isDarkMode
 
-    // Style URL change — compare against our tracked value, not mapView.styleURL
-    // which MapLibre may transiently nil during layout/rotation.
-    let newStyleURL = mapStyle.styleURL(isDarkMode: isDarkMode, isOffline: isOffline)
-    if coordinator.lastAppliedStyleURL != newStyleURL {
-      coordinator.lastAppliedStyleURL = newStyleURL
-      coordinator.isStyleLoaded = false
-      mapView.styleURL = newStyleURL
-    }
-    coordinator.currentMapStyle = mapStyle
+    mapView.mapType = mapStyle.mapType
+    mapView.overrideUserInterfaceStyle = isDarkMode ? .dark : .light
 
-    // User location
     if mapView.showsUserLocation != showsUserLocation {
       mapView.showsUserLocation = showsUserLocation
     }
 
-    // North lock
     if isInteractive {
       mapView.isRotateEnabled = !isNorthLocked
-      if isNorthLocked, mapView.direction != 0 {
-        mapView.setDirection(0, animated: true)
+      if isNorthLocked, mapView.camera.heading != 0 {
+        let camera = mapView.camera
+        camera.heading = 0
+        mapView.setCamera(camera, animated: true)
       }
     }
 
-    // Update data layers (only when style is loaded and not mid-gesture).
-    // Compare against lastApplied* so updates arriving during a gesture
-    // are applied once the gesture ends.
-    if coordinator.isStyleLoaded, !coordinator.isUserInteracting {
-      if coordinator.lastAppliedMapStyle != mapStyle {
-        coordinator.updateRasterLayerVisibility(mapView: mapView)
-        coordinator.lastAppliedMapStyle = mapStyle
-      }
-      if coordinator.lastAppliedPoints != points {
-        coordinator.updatePointSource(mapView: mapView)
-        coordinator.lastAppliedPoints = points
-      }
-      if coordinator.lastAppliedLines != lines {
-        coordinator.updateLineSource(mapView: mapView)
-        coordinator.lastAppliedLines = lines
-      }
-      if coordinator.currentShowLabels != showLabels {
-        coordinator.currentShowLabels = showLabels
-        coordinator.updateLabelVisibility(mapView: mapView, showLabels: showLabels)
-      }
-    }
-
-    // Camera region (version-number pattern)
+    coordinator.updatePointAnnotations(points, in: mapView)
+    coordinator.updateLineOverlays(lines, in: mapView)
+    coordinator.refreshVisiblePinViews(in: mapView)
     updateCameraRegion(in: mapView, coordinator: coordinator)
 
-    // Programmatic selection (version-number pattern). Runs once per bump, after the
-    // camera update so the projection reads the just-applied camera. Dispatched async
-    // so it never mutates SwiftUI state during this representable update, matching how
-    // `onCameraRegionChange` defers its write-back.
-    if coordinator.isStyleLoaded,
-       coordinator.lastAppliedSelectionVersion != selectionRequestVersion {
+    if coordinator.lastAppliedSelectionVersion != selectionRequestVersion {
       coordinator.lastAppliedSelectionVersion = selectionRequestVersion
-      if let id = selectionRequestID,
-         let point = coordinator.currentPoints.first(where: { $0.id == id }) {
-        DispatchQueue.main.async { coordinator.selectPoint(point) }
+      if let id = selectionRequestID, let point = points.first(where: { $0.id == id }) {
+        DispatchQueue.main.async { coordinator.selectPoint(point, in: mapView) }
       }
     }
   }
 
-  /// Maximum absolute latitude MapLibre's `mbgl::LatLng` accepts; it throws an
-  /// uncaught `std::domain_error` (aborting the app) for any value beyond ±90.
-  private static let latitudeLimit = 90.0
+  func makeCoordinator() -> Coordinator {
+    Coordinator()
+  }
 
-  private func updateCameraRegion(in mapView: MLNMapView, coordinator: Coordinator) {
-    guard let region = cameraRegion else { return }
-    guard cameraRegionVersion != coordinator.lastAppliedRegionVersion else { return }
+  // MARK: - Camera
 
-    guard CLLocationCoordinate2DIsValid(region.center) else {
+  private func updateCameraRegion(in mapView: MKMapView, coordinator: Coordinator) {
+    guard let region = cameraRegion, cameraRegionVersion != coordinator.lastAppliedRegionVersion else { return }
+    guard CLLocationCoordinate2DIsValid(region.center),
+          region.span.latitudeDelta.isFinite, region.span.longitudeDelta.isFinite,
+          region.span.latitudeDelta > 0, region.span.longitudeDelta > 0 else {
       coordinator.lastAppliedRegionVersion = cameraRegionVersion
       return
     }
 
-    // Corners are center ± span/2, so a non-finite span makes MapLibre's LatLng
-    // constructor throw and abort the process — and the latitude clamp below can't
-    // catch it because Swift's max/min propagate NaN. Skip the update when non-finite.
-    guard region.span.latitudeDelta.isFinite,
-          region.span.longitudeDelta.isFinite else {
-      coordinator.lastAppliedRegionVersion = cameraRegionVersion
-      return
-    }
-
-    let isInflated = mapView.window.map { mapView.bounds.height > $0.bounds.height * 1.5 } ?? false
-    let animated = coordinator.lastAppliedRegionVersion > 0 && !isInflated
+    let animated = coordinator.lastAppliedRegionVersion >= 0
     coordinator.lastAppliedRegionVersion = cameraRegionVersion
-
-    // Clamp latitude so a near-pole center can't push a corner past ±90 (another
-    // LatLng abort). Longitude is left unclamped because MapLibre wraps it.
-    let limit = Self.latitudeLimit
-    let bounds = MLNCoordinateBounds(
-      sw: CLLocationCoordinate2D(
-        latitude: max(-limit, region.center.latitude - region.span.latitudeDelta / 2),
-        longitude: region.center.longitude - region.span.longitudeDelta / 2
-      ),
-      ne: CLLocationCoordinate2D(
-        latitude: min(limit, region.center.latitude + region.span.latitudeDelta / 2),
-        longitude: region.center.longitude + region.span.longitudeDelta / 2
-      )
-    )
-    var padding = cameraEdgePadding
-    if let sheetFraction = cameraBottomSheetFraction {
-      let insets = mapView.safeAreaInsets
-      padding.top = max(padding.top, insets.top + 20)
-      padding.left = max(padding.left, insets.left + 20)
-      if sheetFraction > 0 {
-        let stableHeight = mapView.window?.bounds.height ?? mapView.bounds.height
-        padding.bottom = max(padding.bottom, stableHeight * sheetFraction)
-      }
-    }
-
-    if let windowSize = mapView.window?.bounds.size,
-       mapView.bounds.height > windowSize.height * 1.5 {
-      let centerLat = (bounds.sw.latitude + bounds.ne.latitude) / 2
-      let centerLon = (bounds.sw.longitude + bounds.ne.longitude) / 2
-      let latSpanMeters = abs(bounds.ne.latitude - bounds.sw.latitude) * 111_000
-      let lonSpanMeters = abs(bounds.ne.longitude - bounds.sw.longitude) * 111_000
-        * cos(centerLat * .pi / 180)
-
-      let usableWidth = max(1, Double(windowSize.width) - Double(padding.left + padding.right))
-      let usableHeight = max(1, Double(windowSize.height) - Double(padding.top + padding.bottom))
-
-      let mppForLat = latSpanMeters / usableHeight
-      let mppForLon = lonSpanMeters / usableWidth
-      let requiredMPP = max(mppForLat, mppForLon)
-
-      let currentMPP = mapView.metersPerPoint(atLatitude: centerLat)
-      let targetZoom = mapView.zoomLevel + log2(currentMPP / requiredMPP)
-
-      let pixelOffset = (Double(padding.top) - Double(padding.bottom)) / 2
-      let offsetDeg = pixelOffset * requiredMPP / 111_000
-      let center = CLLocationCoordinate2D(
-        latitude: min(limit, max(-limit, centerLat + offsetDeg)),
-        longitude: centerLon
-      )
-
-      mapView.setCenter(center, zoomLevel: targetZoom, animated: false)
-    } else {
-      mapView.setVisibleCoordinateBounds(
-        bounds,
-        edgePadding: padding,
-        animated: animated,
-        completionHandler: nil
-      )
-    }
+    let adjusted = regionAccountingForBottomSheet(region)
+    coordinator.hasPendingProgrammaticRegion = true
+    coordinator.lastAppliedRegion = adjusted
+    mapView.setRegion(mapView.regionThatFits(adjusted), animated: animated)
   }
-}
 
-// MARK: - Coordinator
+  /// Inflates and shifts the region so its content frames within the visible
+  /// (non-sheet-covered) top portion of the screen, rather than being
+  /// centered across the whole screen including the obscured bottom strip.
+  private func regionAccountingForBottomSheet(_ region: MKCoordinateRegion) -> MKCoordinateRegion {
+    guard let fraction = cameraBottomSheetFraction, fraction > 0, fraction < 1 else { return region }
+    let scale = 1 / (1 - fraction)
+    let newLatDelta = min(region.span.latitudeDelta * scale, 170)
+    let latShift = (newLatDelta - region.span.latitudeDelta) / 2
+    return MKCoordinateRegion(
+      center: CLLocationCoordinate2D(
+        latitude: min(85, region.center.latitude + latShift),
+        longitude: region.center.longitude
+      ),
+      span: MKCoordinateSpan(latitudeDelta: newLatDelta, longitudeDelta: region.span.longitudeDelta)
+    )
+  }
 
-extension MC1MapView {
+  // MARK: - Coordinator
+
   @MainActor
-  class Coordinator: NSObject, @preconcurrency MLNMapViewDelegate, UIGestureRecognizerDelegate {
-    /// Non-zero frame avoids MapLibre zero-size Metal init (issue #67).
-    let mapView = MLNMapView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
+  final class Coordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDelegate {
+    lazy var mapView: MKMapView = NoDoubleTapMapView()
 
     // Callbacks
     var onPointTap: ((MapPoint, CGPoint) -> Void)?
     var onMapTap: ((CLLocationCoordinate2D) -> Void)?
     var onMapLongPress: ((CLLocationCoordinate2D) -> Void)?
     var onCameraRegionChange: ((MKCoordinateRegion) -> Void)?
-    var setIsStyleLoaded: ((Bool) -> Void)?
     var setIsCenteredOnUser: ((Bool) -> Void)?
+    var isStyleLoaded: (() -> Void)?
+
+    // Configuration mirrored from the representable each update
+    var isDarkMode = false
+    var showLabels = true
+    var selectedPointID: UUID?
+    var currentPoints: [MapPoint] = []
 
     // State
-    var isUserInteracting = false
     var isUpdatingFromSwiftUI = false
-    var isStyleLoaded = false
-    var lastAppliedRegionVersion = 0
+    var lastAppliedRegion: MKCoordinateRegion?
+    var lastAppliedRegionVersion = -1
     var lastAppliedSelectionVersion = 0
     var pendingRegionTask: Task<Void, Never>?
-    var currentShowLabels = true
-    /// The basemap theme in force, mirrored from the view so `renderAll` can pick the
-    /// location-dot recency palette at style-load time. Kept current by `updateUIView`.
-    var currentIsDarkMode = false
-    var lastAppliedStyleURL: URL?
-    var currentMapStyle: MapStyleSelection?
-    var lastAppliedMapStyle: MapStyleSelection?
-    var currentPoints: [MapPoint] = []
-    var currentLines: [MapLine] = []
-    var lastAppliedPoints: [MapPoint] = []
-    var lastAppliedClusterablePoints: [MapPoint] = []
-    var lastAppliedFixedPoints: [MapPoint] = []
-    var lastAppliedLines: [MapLine] = []
-    var clusterSource: MLNShapeSource?
-    var fixedSource: MLNShapeSource?
-
-    // MARK: - Style loading
-
-    func mapView(_ mapView: MLNMapView, didFinishLoading style: MLNStyle) {
-      isStyleLoaded = true
-      setIsStyleLoaded?(true)
-
-      // Clear stale source/state references from the previous style.
-      // Reset currentShowLabels to the new layer default (visible) so
-      // updateUIView detects the mismatch and reapplies the user's preference.
-      // A reload rebuilds the raster layers with isVisible == false, so clear
-      // lastAppliedMapStyle to force updateUIView to re-apply the selected overlay.
-      clusterSource = nil
-      fixedSource = nil
-      lastAppliedPoints = []
-      lastAppliedClusterablePoints = []
-      lastAppliedFixedPoints = []
-      lastAppliedLines = []
-      lastAppliedMapStyle = nil
-      currentShowLabels = true
-
-      PinSpriteRenderer.renderAll(into: style, isDarkMode: currentIsDarkMode)
-      setupRasterSources(style: style, mapView: mapView)
-      setupLineLayers(style: style)
-
-      updatePointSource(mapView: mapView)
-      updateLineSource(mapView: mapView)
+    private var hasPendingProgrammaticRegionInternal = false
+    var hasPendingProgrammaticRegion: Bool {
+      get { hasPendingProgrammaticRegionInternal }
+      set { hasPendingProgrammaticRegionInternal = newValue }
     }
+    private var hasReceivedInitialRegion = false
 
-    func mapView(_ mapView: MLNMapView, didFailToLoadImage imageName: String) -> UIImage? {
-      if let style = mapView.style,
-         let image = PinSpriteRenderer.renderOnDemand(name: imageName, into: style) {
-        return image
+    // MARK: - Annotation diffing
+
+    func updatePointAnnotations(_ points: [MapPoint], in mapView: MKMapView) {
+      let existing = mapView.annotations.compactMap { $0 as? MapPointAnnotation }
+      var existingByID: [UUID: MapPointAnnotation] = [:]
+      for annotation in existing { existingByID[annotation.point.id] = annotation }
+
+      let newIDs = Set(points.map(\.id))
+      let toRemove = existing.filter { !newIDs.contains($0.point.id) }
+      if !toRemove.isEmpty { mapView.removeAnnotations(toRemove) }
+
+      var toAdd: [MapPointAnnotation] = []
+      var toReAdd: [MapPointAnnotation] = []
+      for point in points {
+        if let current = existingByID[point.id] {
+          if current.point != point {
+            // Content changed (label, hopIndex, badgeText, clusterability, style).
+            // MapKit doesn't pick up clusteringIdentifier/coordinate changes on an
+            // existing annotation, so remove and re-add rather than mutate in place.
+            toReAdd.append(MapPointAnnotation(point: point))
+          }
+        } else {
+          toAdd.append(MapPointAnnotation(point: point))
+        }
       }
-      logger.error("didFailToLoadImage: \(imageName)")
-      return nil
+      if !toReAdd.isEmpty {
+        let staleIDs = Set(toReAdd.map(\.point.id))
+        mapView.removeAnnotations(existing.filter { staleIDs.contains($0.point.id) })
+      }
+      let combined = toAdd + toReAdd
+      if !combined.isEmpty { mapView.addAnnotations(combined) }
     }
 
-    // MARK: - Region changes
-
-    private static let userGestureReasons: MLNCameraChangeReason = [
-      .gesturePan, .gesturePinch, .gestureZoomIn, .gestureZoomOut,
-      .gestureRotate, .gestureTilt, .gestureOneFingerZoom
-    ]
-
-    func mapViewRegionIsChanging(_ mapView: MLNMapView) {
-      isUserInteracting = true
-    }
-
-    func mapView(_ mapView: MLNMapView, regionWillChangeWith reason: MLNCameraChangeReason, animated: Bool) {
-      // A user drag/zoom/rotate moves the camera off the user's location, so clear the
-      // centered-on-user flag. Programmatic recenters keep it — the location button sets
-      // it back to true when it centers the map.
-      guard !reason.isDisjoint(with: Self.userGestureReasons) else { return }
-      let report = setIsCenteredOnUser
-      DispatchQueue.main.async { report?(false) }
-    }
-
-    func mapView(_ mapView: MLNMapView, regionDidChangeWith reason: MLNCameraChangeReason, animated: Bool) {
-      isUserInteracting = false
-      guard !isUpdatingFromSwiftUI else { return }
-
-      let isUserGesture = !reason.isDisjoint(with: Self.userGestureReasons)
-      guard isUserGesture else { return }
-
-      // Debounce: cancel previous pending write-back
-      pendingRegionTask?.cancel()
-      pendingRegionTask = Task {
-        try? await Task.sleep(for: .milliseconds(50))
-        guard !Task.isCancelled else { return }
-        let region = mapView.mlnRegion
-        self.onCameraRegionChange?(region)
+    /// Applies label/selection changes to already-placed pin views without an
+    /// add/remove pass, so toggling "Show Labels" or opening a callout doesn't
+    /// re-trigger clustering.
+    func refreshVisiblePinViews(in mapView: MKMapView) {
+      for annotation in mapView.annotations {
+        guard let pointAnnotation = annotation as? MapPointAnnotation,
+              let view = mapView.view(for: pointAnnotation) as? MC1PinAnnotationView else { continue }
+        let showsLabel = showLabels && pointAnnotation.point.id != selectedPointID
+        view.configure(point: pointAnnotation.point, isDarkMode: isDarkMode, showsLabel: showsLabel)
       }
     }
 
-    // MARK: - Gesture recognizer delegate
-
-    nonisolated func gestureRecognizer(
-      _ gestureRecognizer: UIGestureRecognizer,
-      shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
-    ) -> Bool {
-      true
+    func updateLineOverlays(_ lines: [MapLine], in mapView: MKMapView) {
+      let existing = mapView.overlays.compactMap { $0 as? MC1LineOverlay }
+      guard !linesMatch(lines, existing) else { return }
+      mapView.removeOverlays(existing)
+      mapView.addOverlays(lines.map(MC1LineOverlay.make(from:)))
     }
 
-    // MARK: - Tap handling
-
-    /// Projects a point to its on-screen anchor (lifted above the pin by its style's
-    /// callout clearance) and routes it through `onPointTap`, so a programmatic
-    /// selection presents the callout exactly like a user tap.
-    func selectPoint(_ mapPoint: MapPoint) {
-      let pinScreenPos = mapView.convert(mapPoint.coordinate, toPointTo: mapView)
-      let calloutAnchor = CGPoint(
-        x: pinScreenPos.x,
-        y: pinScreenPos.y - PinSpriteRenderer.calloutLift(for: mapPoint.pinStyle)
-      )
-      onPointTap?(mapPoint, calloutAnchor)
+    private func linesMatch(_ lines: [MapLine], _ overlays: [MC1LineOverlay]) -> Bool {
+      guard lines.count == overlays.count else { return false }
+      return zip(lines, overlays).allSatisfy { line, overlay in
+        line.id == overlay.lineID && line.style == overlay.lineStyle && line.opacity == overlay.lineOpacity
+      }
     }
+
+    // MARK: - Selection
+
+    func selectPoint(_ point: MapPoint, in mapView: MKMapView) {
+      guard let annotation = mapView.annotations
+        .compactMap({ $0 as? MapPointAnnotation })
+        .first(where: { $0.point.id == point.id }),
+        let view = mapView.view(for: annotation) else { return }
+      let anchorPoint = view.convert(CGPoint(x: view.bounds.midX, y: 0), to: mapView)
+      onPointTap?(point, anchorPoint)
+    }
+
+    // MARK: - Gestures
 
     @objc func handleTap(_ sender: UITapGestureRecognizer) {
       guard sender.state == .ended else { return }
       let point = sender.location(in: mapView)
-      let clusterRect = CGRect(x: point.x - 22, y: point.y - 22, width: 44, height: 44)
-      logger.debug("handleTap at \(point.x, privacy: .public), \(point.y, privacy: .public)")
-
-      // 1. Check cluster layers
-      let clusterFeatures = mapView.visibleFeatures(
-        in: clusterRect,
-        styleLayerIdentifiers: [MapLayerID.clusterCircles]
-      )
-      if let cluster = clusterFeatures.first(where: { $0 is MLNPointFeatureCluster }) as? MLNPointFeatureCluster,
-         let source = mapView.style?.source(withIdentifier: MapSourceID.points) as? MLNShapeSource {
-        let zoom = source.zoomLevel(forExpanding: cluster)
-        guard zoom >= 0 else { return }
-        mapView.setCenter(cluster.coordinate, zoomLevel: zoom + 2.0, animated: true)
-        return
-      }
-
-      // 2. Check point and name label layers (both clustered and fixed)
-      let pointFeatures = mapView.visibleFeatures(
-        at: point,
-        styleLayerIdentifiers: [
-          MapLayerID.unclusteredIcons, MapLayerID.fixedIcons,
-          MapLayerID.nameLabels, MapLayerID.fixedNameLabels
-        ]
-      )
-      logger.debug("pointFeatures: \(pointFeatures.count, privacy: .public), clusterFeatures: \(clusterFeatures.count, privacy: .public)")
-      if let feature = pointFeatures.first,
-         let idString = feature.attribute(forKey: "pointId") as? String,
-         let id = UUID(uuidString: idString),
-         let mapPoint = currentPoints.first(where: { $0.id == id }) {
-        logger.debug("Matched pin: \(mapPoint.label ?? "unnamed", privacy: .public)")
-        selectPoint(mapPoint)
-        return
-      }
-
-      // 3. Check badge text layers — dismiss any open callout but don't select
-      let badgeFeatures = mapView.visibleFeatures(
-        at: point,
-        styleLayerIdentifiers: [MapLayerID.badgeText, MapLayerID.fixedBadgeText]
-      )
-      if badgeFeatures.first != nil {
-        let coordinate = mapView.convert(point, toCoordinateFrom: mapView)
-        onMapTap?(coordinate)
-        return
-      }
-
-      // 4. Map background tap
       let coordinate = mapView.convert(point, toCoordinateFrom: mapView)
       onMapTap?(coordinate)
     }
@@ -463,22 +302,92 @@ extension MC1MapView {
       let coordinate = mapView.convert(point, toCoordinateFrom: mapView)
       onMapLongPress?(coordinate)
     }
-  }
-}
 
-// MARK: - MLNMapView region helper
+    /// Lets pin-view taps (a separate gesture recognizer on the annotation
+    /// view itself) win over the map's own background tap/long-press, so
+    /// tapping a pin never also dismisses/re-triggers the background handler.
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+      !(touch.view is MKAnnotationView) && !(touch.view?.superview is MKAnnotationView)
+    }
 
-extension MLNMapView {
-  var mlnRegion: MKCoordinateRegion {
-    let bounds = visibleCoordinateBounds
-    let center = CLLocationCoordinate2D(
-      latitude: (bounds.sw.latitude + bounds.ne.latitude) / 2,
-      longitude: (bounds.sw.longitude + bounds.ne.longitude) / 2
-    )
-    let span = MKCoordinateSpan(
-      latitudeDelta: bounds.ne.latitude - bounds.sw.latitude,
-      longitudeDelta: bounds.ne.longitude - bounds.sw.longitude
-    )
-    return MKCoordinateRegion(center: center, span: span)
+    // MARK: - MKMapViewDelegate
+
+    func mapView(_ mapView: MKMapView, viewFor annotation: any MKAnnotation) -> MKAnnotationView? {
+      if annotation is MKUserLocation { return nil }
+
+      if let cluster = annotation as? MKClusterAnnotation {
+        let view = mapView.dequeueReusableAnnotationView(
+          withIdentifier: MKMapViewDefaultClusterAnnotationViewReuseIdentifier,
+          for: annotation
+        ) as? MC1ClusterAnnotationView ?? MC1ClusterAnnotationView(
+          annotation: annotation,
+          reuseIdentifier: MKMapViewDefaultClusterAnnotationViewReuseIdentifier
+        )
+        view.configure(with: cluster)
+        return view
+      }
+
+      guard let pointAnnotation = annotation as? MapPointAnnotation else { return nil }
+      let view = mapView.dequeueReusableAnnotationView(
+        withIdentifier: MC1PinAnnotationView.reuseIdentifier,
+        for: annotation
+      ) as? MC1PinAnnotationView ?? MC1PinAnnotationView(
+        annotation: annotation,
+        reuseIdentifier: MC1PinAnnotationView.reuseIdentifier
+      )
+      let showsLabel = showLabels && pointAnnotation.point.id != selectedPointID
+      view.configure(point: pointAnnotation.point, isDarkMode: isDarkMode, showsLabel: showsLabel)
+      view.onTap = { [weak self, weak mapView] in
+        guard let self, let mapView else { return }
+        selectPoint(pointAnnotation.point, in: mapView)
+      }
+      return view
+    }
+
+    func mapView(_ mapView: MKMapView, rendererFor overlay: any MKOverlay) -> MKOverlayRenderer {
+      if let lineOverlay = overlay as? MC1LineOverlay {
+        return MC1LineRenderer(overlay: lineOverlay)
+      }
+      return MKOverlayRenderer(overlay: overlay)
+    }
+
+    func mapView(_ mapView: MKMapView, didSelect annotation: any MKAnnotation) {
+      mapView.deselectAnnotation(annotation, animated: false)
+      if let cluster = annotation as? MKClusterAnnotation {
+        mapView.showAnnotations(cluster.memberAnnotations, animated: true)
+      }
+    }
+
+    func mapView(_ mapView: MKMapView, regionWillChangeAnimated animated: Bool) {
+      guard !isUpdatingFromSwiftUI, hasReceivedInitialRegion, !hasPendingProgrammaticRegion else { return }
+      setIsCenteredOnUser?(false)
+    }
+
+    func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
+      guard !isUpdatingFromSwiftUI else { return }
+
+      if hasPendingProgrammaticRegion {
+        hasPendingProgrammaticRegion = false
+        hasReceivedInitialRegion = true
+        lastAppliedRegion = mapView.region
+        return
+      }
+
+      // The first region change is from MKMapView's own initialization, not a user gesture.
+      if !hasReceivedInitialRegion {
+        hasReceivedInitialRegion = true
+        lastAppliedRegion = mapView.region
+        return
+      }
+
+      lastAppliedRegion = mapView.region
+
+      pendingRegionTask?.cancel()
+      pendingRegionTask = Task { @MainActor in
+        try? await Task.sleep(for: .milliseconds(50))
+        guard !Task.isCancelled else { return }
+        self.onCameraRegionChange?(mapView.region)
+      }
+    }
   }
 }

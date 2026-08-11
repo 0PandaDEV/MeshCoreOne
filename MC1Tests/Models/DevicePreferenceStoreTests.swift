@@ -113,4 +113,40 @@ struct DevicePreferenceStoreTests {
     #expect(store.isAutoUpdateLocationEnabled(deviceID: deviceID) == false)
     #expect(store.gpsSource(deviceID: deviceID) == .phone)
   }
+
+  @Test
+  func `Location accuracy defaults to best`() throws {
+    let suite = "DevicePreferenceStoreTests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+
+    let store = DevicePreferenceStore(userDefaults: defaults)
+    #expect(store.locationAccuracy(deviceID: UUID()) == .best)
+  }
+
+  @Test
+  func `Location accuracy values are scoped per device`() throws {
+    let suite = "DevicePreferenceStoreTests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+
+    let store = DevicePreferenceStore(userDefaults: defaults)
+    let deviceA = UUID()
+    let deviceB = UUID()
+
+    store.setLocationAccuracy(.meters500, deviceID: deviceA)
+    #expect(store.locationAccuracy(deviceID: deviceA) == .meters500)
+    #expect(store.locationAccuracy(deviceID: deviceB) == .best)
+
+    store.setLocationAccuracy(.kilometer, deviceID: deviceB)
+    #expect(store.locationAccuracy(deviceID: deviceA) == .meters500)
+    #expect(store.locationAccuracy(deviceID: deviceB) == .kilometer)
+  }
+
+  @Test
+  func `Location accuracy radiusMeters maps best to nil and meters to value`() {
+    #expect(LocationAccuracy.best.radiusMeters == nil)
+    #expect(LocationAccuracy.meters100.radiusMeters == 100)
+    #expect(LocationAccuracy.kilometer.radiusMeters == 1000)
+  }
 }

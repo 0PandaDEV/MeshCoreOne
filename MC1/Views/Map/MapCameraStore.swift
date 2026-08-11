@@ -1,9 +1,9 @@
 import MapKit
 
 /// Serializes a map camera region to and from the compact string `@SceneStorage`
-/// persists. `decode` is the trust boundary: it rejects every value that aborts
-/// MapLibre (invalid coordinate, non-finite or non-positive span), so a malformed
-/// restoration archive can never feed `MLNCoordinateBounds` a process-aborting value.
+/// persists. `decode` is the trust boundary: it rejects every malformed value
+/// (invalid coordinate, non-finite or non-positive span) before it ever reaches
+/// `MKCoordinateRegion`.
 enum MapCameraStore {
   /// Component count of the `lat,lon,latDelta,lonDelta` encoding.
   private static let componentCount = 4

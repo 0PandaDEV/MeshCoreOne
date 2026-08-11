@@ -33,12 +33,15 @@ struct ChatConversationMessagesContent: View {
 
   // MARK: - Sheet State Bindings
 
-  @Binding var selectedMessageForActions: MessageDTO?
   @Binding var imageViewerData: ImageViewerData?
 
   // MARK: - Callbacks
 
   let onRetryMessage: (MessageDTO) -> Void
+  /// Builds a message's native context-menu content. Owned by the host
+  /// (`ChatConversationView`), which has the dispatch/sheet state the menu's
+  /// actions need.
+  let makeActionsMenu: (MessageDTO) -> AnyView
 
   @Environment(\.appTheme) private var theme
   @Environment(\.openURL) private var openURL
@@ -105,7 +108,7 @@ struct ChatConversationMessagesContent: View {
           recentEmojisStore.recordUsage(emoji)
           Task { await viewModel.sendReaction(emoji: emoji, to: message) }
         },
-        onLongPress: { message in selectedMessageForActions = message },
+        makeActionsMenu: makeActionsMenu,
         onImageTap: { message in
           if let data = viewModel.imageData(for: message.id) {
             imageViewerData = ImageViewerData(
@@ -247,9 +250,9 @@ private struct ChannelEmptyMessagesView: View {
       scrollToTargetID: nil,
       firstSnapshotDecision: .present(target: nil),
       onDividerTargetConsumed: {},
-      selectedMessageForActions: .constant(nil),
       imageViewerData: .constant(nil),
-      onRetryMessage: { _ in }
+      onRetryMessage: { _ in },
+      makeActionsMenu: { _ in AnyView(EmptyView()) }
     )
   }
   .environment(\.appState, AppState())
@@ -274,9 +277,9 @@ private struct ChannelEmptyMessagesView: View {
       scrollToTargetID: nil,
       firstSnapshotDecision: .present(target: nil),
       onDividerTargetConsumed: {},
-      selectedMessageForActions: .constant(nil),
       imageViewerData: .constant(nil),
-      onRetryMessage: { _ in }
+      onRetryMessage: { _ in },
+      makeActionsMenu: { _ in AnyView(EmptyView()) }
     )
   }
   .environment(\.appState, AppState())
