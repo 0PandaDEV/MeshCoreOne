@@ -287,6 +287,47 @@
 /* Apply button label */
 "trustedContacts.apply" = "Применить";
 
+// MARK: - Remote CLI
+
+/* Section header for remote CLI permission */
+"remoteCLI.header" = "Удалённый CLI";
+
+/* Navigation row to manage contacts allowed to send remote CLI */
+"remoteCLI.manage" = "Разрешённые контакты";
+
+/* Footer explaining remote CLI permission */
+"remoteCLI.footer" = "Эти контакты могут отправлять команды CLI этому радио через сеть mesh.";
+
+/* Navigation title for remote CLI contacts picker */
+"remoteCLIContacts.title" = "Удалённый CLI";
+
+/* Title for empty state when no contacts exist */
+"remoteCLIContacts.noContacts" = "Нет контактов";
+
+/* Description for empty state */
+"remoteCLIContacts.noContactsDescription" = "Добавьте контакты, чтобы разрешить удалённый CLI";
+
+/* Title for empty state when search returns no results */
+"remoteCLIContacts.noResults" = "Нет результатов";
+
+/* Description for empty state when search returns no results */
+"remoteCLIContacts.noResultsDescription" = "Нет контактов, соответствующих \"%@\"";
+
+/* TODO: translate */
+"remoteCLIContacts.noFavorites" = "No Favorites";
+
+/* TODO: translate */
+"remoteCLIContacts.noFavoritesDescription" = "No favorite contacts to show";
+
+/* Search prompt for remote CLI contacts list */
+"remoteCLIContacts.searchPrompt" = "Поиск контактов";
+
+/* Toggle label for showing only favorite contacts */
+"remoteCLIContacts.favoritesOnly" = "Только избранные";
+
+/* Apply button label */
+"remoteCLIContacts.apply" = "Применить";
+
 // MARK: - About Section
 
 /* Section header for about links */

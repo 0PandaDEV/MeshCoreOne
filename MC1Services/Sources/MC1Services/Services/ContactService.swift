@@ -599,6 +599,30 @@ public actor ContactService {
     let isBeingBlocked = isBlocked == true && !existing.isBlocked
     let isBeingUnblocked = isBlocked == false && existing.isBlocked
 
+    var flags = existing.flags
+    // Blocking also revokes remote CLI so a blocked peer cannot send `cliCommand`.
+    if isBeingBlocked, ContactFlags(rawValue: flags).contains(.remoteCLIAllowed) {
+      flags = flags & ~ContactFlags.remoteCLIAllowed.rawValue
+      let meshContact = MeshContact(
+        id: existing.publicKey.uppercaseHexString(),
+        publicKey: existing.publicKey,
+        type: ContactType(rawValue: existing.typeRawValue) ?? .chat,
+        flags: ContactFlags(rawValue: existing.flags),
+        outPathLength: existing.outPathLength,
+        outPath: existing.outPath,
+        advertisedName: existing.name,
+        lastAdvertisement: Date(timeIntervalSince1970: TimeInterval(existing.lastAdvertTimestamp)),
+        latitude: existing.latitude,
+        longitude: existing.longitude,
+        lastModified: Date(timeIntervalSince1970: TimeInterval(existing.lastModified))
+      )
+      do {
+        try await session.changeContactFlags(meshContact, flags: ContactFlags(rawValue: flags))
+      } catch let error as MeshCoreError {
+        throw ContactServiceError.sessionError(error)
+      }
+    }
+
     // Create updated DTO preserving existing values
     let updated = ContactDTO(
       from: Contact(
@@ -607,7 +631,7 @@ public actor ContactService {
         publicKey: existing.publicKey,
         name: existing.name,
         typeRawValue: existing.typeRawValue,
-        flags: existing.flags,
+        flags: flags,
         outPathLength: existing.outPathLength,
         outPath: existing.outPath,
         lastAdvertTimestamp: existing.lastAdvertTimestamp,
@@ -840,6 +864,75 @@ public actor ContactService {
         isBlocked: existing.isBlocked,
         isMuted: existing.isMuted,
         isFavorite: existing.isFavorite,
+        lastMessageDate: existing.lastMessageDate,
+        unreadCount: existing.unreadCount,
+        unreadMentionCount: existing.unreadMentionCount,
+        ocvPreset: existing.ocvPreset,
+        customOCVArrayString: existing.customOCVArrayString,
+        avatarImageData: existing.avatarImageData
+      )
+    )
+
+    try await dataStore.saveContact(updated)
+  }
+
+  // MARK: - Remote CLI Permission
+
+  /// Whether a contact may send CLI commands to this radio over the mesh (bit 4).
+  public static func hasRemoteCLIAllowed(flags: UInt8) -> Bool {
+    ContactFlags(rawValue: flags).contains(.remoteCLIAllowed)
+  }
+
+  /// Grants or revokes remote CLI on a contact. Other flag bits are preserved.
+  public func setRemoteCLIAllowed(_ contactID: UUID, granted: Bool) async throws {
+    guard let existing = try await dataStore.fetchContact(id: contactID) else {
+      throw ContactServiceError.contactNotFound
+    }
+
+    let newFlags: UInt8 = granted
+      ? existing.flags | ContactFlags.remoteCLIAllowed.rawValue
+      : existing.flags & ~ContactFlags.remoteCLIAllowed.rawValue
+
+    let meshContact = MeshContact(
+      id: existing.publicKey.uppercaseHexString(),
+      publicKey: existing.publicKey,
+      type: ContactType(rawValue: existing.typeRawValue) ?? .chat,
+      flags: ContactFlags(rawValue: existing.flags),
+      outPathLength: existing.outPathLength,
+      outPath: existing.outPath,
+      advertisedName: existing.name,
+      lastAdvertisement: Date(timeIntervalSince1970: TimeInterval(existing.lastAdvertTimestamp)),
+      latitude: existing.latitude,
+      longitude: existing.longitude,
+      lastModified: Date(timeIntervalSince1970: TimeInterval(existing.lastModified))
+    )
+
+    do {
+      try await session.changeContactFlags(meshContact, flags: ContactFlags(rawValue: newFlags))
+    } catch let error as MeshCoreError {
+      throw ContactServiceError.sessionError(error)
+    }
+
+    let updated = ContactDTO(
+      from: Contact(
+        id: existing.id,
+        radioID: existing.radioID,
+        publicKey: existing.publicKey,
+        name: existing.name,
+        typeRawValue: existing.typeRawValue,
+        flags: newFlags,
+        outPathLength: existing.outPathLength,
+        outPath: existing.outPath,
+        lastAdvertTimestamp: existing.lastAdvertTimestamp,
+        latitude: existing.latitude,
+        longitude: existing.longitude,
+        lastModified: existing.lastModified,
+        lastHeardTimestamp: existing.lastHeardTimestamp ?? 0,
+        nickname: existing.nickname,
+        isBlocked: existing.isBlocked,
+        isMuted: existing.isMuted,
+        isFavorite: existing.isFavorite,
+        isPinned: existing.isPinned,
         lastMessageDate: existing.lastMessageDate,
         unreadCount: existing.unreadCount,
         unreadMentionCount: existing.unreadMentionCount,

@@ -463,6 +463,14 @@ public actor SettingsService {
     }
   }
 
+  public func runCliCommand(_ command: String) async throws -> String {
+    do {
+      return try await session.runCliCommand(command)
+    } catch let error as MeshCoreError {
+      throw SettingsServiceError.sessionError(error)
+    }
+  }
+
   public func getDeviceGPSState() async throws -> DeviceGPSState {
     let vars = try await getCustomVars()
     return Self.deviceGPSState(from: vars)

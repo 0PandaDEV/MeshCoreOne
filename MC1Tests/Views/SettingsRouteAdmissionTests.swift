@@ -16,6 +16,7 @@ struct SettingsRouteAdmissionTests {
     #expect(SettingsSubpage.blockedChannelSenders.isAdmitted(for: .chats, device: device))
     #expect(SettingsSubpage.blockedContacts.isAdmitted(for: .chats, device: device))
     #expect(SettingsSubpage.trustedContacts.isAdmitted(for: .advanced, device: device))
+    #expect(!SettingsSubpage.remoteCLIContacts.isAdmitted(for: .advanced, device: device))
     #expect(SettingsSubpage.translateIntoLanguage.isAdmitted(for: .language, device: device))
     #expect(SettingsSubpage.presetLocation.isAdmitted(for: .radio, device: device))
     #expect(SettingsSubpage.offlineMaps.isAdmitted(for: .maps, device: device))
@@ -37,6 +38,11 @@ struct SettingsRouteAdmissionTests {
     #expect(!SettingsSubpage.manageRegions.isAdmitted(for: .advanced, device: older))
     #expect(!SettingsSubpage.manageRegions.isAdmitted(for: .advanced, device: nil))
     #expect(SettingsSubpage.presetLocation.isAdmitted(for: .radio, device: nil))
+
+    let radioCLI = makeDevice(firmware: 14, clientRepeat: false)
+    #expect(SettingsSubpage.remoteCLIContacts.isAdmitted(for: .advanced, device: radioCLI))
+    #expect(!SettingsSubpage.remoteCLIContacts.isAdmitted(for: .chats, device: radioCLI))
+    #expect(!SettingsSubpage.remoteCLIContacts.isAdmitted(for: .advanced, device: nil))
   }
 
   @Test

@@ -851,4 +851,22 @@ struct CLICompletionEngineTests {
 
     #expect(engine.customVarKeys == ["c"])
   }
+
+  @Test
+  func `local radio CLI completions include passthrough keys when enabled`() {
+    let engine = createEngine()
+    #expect(!engine.completions(for: "get ", isLocal: true).contains("cad"))
+    #expect(!engine.completions(for: "set ", isLocal: true).contains("wifi.pwd"))
+
+    engine.radioCLIEnabled = true
+
+    let getKeys = engine.completions(for: "get ", isLocal: true)
+    #expect(getKeys.contains("cad"))
+    #expect(getKeys.contains("wifi.ssid"))
+    #expect(!getKeys.contains("wifi.pwd"))
+
+    let setKeys = engine.completions(for: "set ", isLocal: true)
+    #expect(setKeys.contains("cad"))
+    #expect(setKeys.contains("wifi.pwd"))
+  }
 }

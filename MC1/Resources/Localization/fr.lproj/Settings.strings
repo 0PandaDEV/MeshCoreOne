@@ -287,6 +287,47 @@
 /* Apply button label */
 "trustedContacts.apply" = "Appliquer";
 
+// MARK: - Remote CLI
+
+/* Section header for remote CLI permission */
+"remoteCLI.header" = "CLI à distance";
+
+/* Navigation row to manage contacts allowed to send remote CLI */
+"remoteCLI.manage" = "Contacts autorisés";
+
+/* Footer explaining remote CLI permission */
+"remoteCLI.footer" = "Ces contacts peuvent envoyer des commandes CLI à cette radio via le réseau mesh.";
+
+/* Navigation title for remote CLI contacts picker */
+"remoteCLIContacts.title" = "CLI à distance";
+
+/* Title for empty state when no contacts exist */
+"remoteCLIContacts.noContacts" = "Aucun contact";
+
+/* Description for empty state */
+"remoteCLIContacts.noContactsDescription" = "Ajoutez des contacts pour autoriser la CLI à distance";
+
+/* Title for empty state when search returns no results */
+"remoteCLIContacts.noResults" = "Aucun résultat";
+
+/* Description for empty state when search returns no results */
+"remoteCLIContacts.noResultsDescription" = "Aucun contact ne correspond à \"%@\"";
+
+/* TODO: translate */
+"remoteCLIContacts.noFavorites" = "No Favorites";
+
+/* TODO: translate */
+"remoteCLIContacts.noFavoritesDescription" = "No favorite contacts to show";
+
+/* Search prompt for remote CLI contacts list */
+"remoteCLIContacts.searchPrompt" = "Rechercher des contacts";
+
+/* Toggle label for showing only favorite contacts */
+"remoteCLIContacts.favoritesOnly" = "Favoris uniquement";
+
+/* Apply button label */
+"remoteCLIContacts.apply" = "Appliquer";
+
 // MARK: - About Section
 
 /* Section header for about links */

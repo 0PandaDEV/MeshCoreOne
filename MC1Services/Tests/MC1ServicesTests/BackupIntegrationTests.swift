@@ -4024,6 +4024,15 @@ struct BackupIntegrationTests {
   }
 
   @Test
+  func `MessageDTO with textType cliCommand survives encode/decode`() throws {
+    let dto = MessageDTO.testDirectMessage(textType: .cliCommand)
+    let encoded = try JSONEncoder().encode(dto)
+    let decoded = try JSONDecoder().decode(MessageDTO.self, from: encoded)
+    #expect(decoded.textType == .cliCommand)
+    #expect(decoded.textType.rawValue == 0x03)
+  }
+
+  @Test
   func `Fully-populated MessageDTO survives encode/decode with every field distinct`() throws {
     let dto = MessageDTO(
       id: UUID(),

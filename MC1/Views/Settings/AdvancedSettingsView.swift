@@ -32,6 +32,8 @@ struct AdvancedSettingsView: View {
       // Telemetry Settings
       TelemetrySettingsSection()
 
+      RemoteCLISettingsSection()
+
       // Direct Messages Settings
       DirectMessagesSettingsSection()
 

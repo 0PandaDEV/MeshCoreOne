@@ -532,7 +532,10 @@ public actor MockMeshCoreSession: MeshCoreSessionProtocol, AdvertisingSessionOps
     // Stub - not used in current tests
   }
 
+  public private(set) var changeContactFlagsCalls: [(contact: MeshContact, flags: ContactFlags)] = []
+
   public func changeContactFlags(_ contact: MeshContact, flags: ContactFlags) async throws {
+    changeContactFlagsCalls.append((contact, flags))
     try await changeContactFlagsHold?()
   }
 

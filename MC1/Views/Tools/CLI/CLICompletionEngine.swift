@@ -118,6 +118,9 @@ final class CLICompletionEngine {
     customVarKeys = keys
   }
 
+  /// When true, local get/set completions include Radio CLI keys.
+  var radioCLIEnabled = false
+
   // MARK: - Completion Logic
 
   func completions(for input: String, isLocal: Bool, includeSessionCommands: Bool = true) -> [String] {
@@ -164,7 +167,11 @@ final class CLICompletionEngine {
     case "get":
       if argPosition == 1 {
         if isLocal {
-          return localKeyCompletions(typed: Self.localGetKeys + [Self.customVarDumpKey], parts: parts)
+          var typed = Self.localGetKeys + [Self.customVarDumpKey]
+          if radioCLIEnabled {
+            typed.append(contentsOf: RadioCLIPassthrough.getSetKeys)
+          }
+          return localKeyCompletions(typed: typed, parts: parts)
         }
         return Self.getSetParams
           .filter { !Self.serialOnlyGetParams.contains($0) }
@@ -175,7 +182,12 @@ final class CLICompletionEngine {
     case "set":
       if argPosition == 1 {
         if isLocal {
-          return localKeyCompletions(typed: Self.localSetKeys, parts: parts)
+          var typed = Self.localSetKeys
+          if radioCLIEnabled {
+            typed.append(contentsOf: RadioCLIPassthrough.getSetKeys)
+            typed.append(contentsOf: RadioCLIPassthrough.setOnlyKeys)
+          }
+          return localKeyCompletions(typed: typed, parts: parts)
         }
         return Self.getSetParams
           .filter { !Self.serialOnlySetParams.contains($0) }

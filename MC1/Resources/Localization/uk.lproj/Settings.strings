@@ -287,6 +287,47 @@
 /* Apply button label */
 "trustedContacts.apply" = "Застосувати";
 
+// MARK: - Remote CLI
+
+/* Section header for remote CLI permission */
+"remoteCLI.header" = "Віддалений CLI";
+
+/* Navigation row to manage contacts allowed to send remote CLI */
+"remoteCLI.manage" = "Дозволені контакти";
+
+/* Footer explaining remote CLI permission */
+"remoteCLI.footer" = "Ці контакти можуть надсилати команди CLI цьому радіо через мережу mesh.";
+
+/* Navigation title for remote CLI contacts picker */
+"remoteCLIContacts.title" = "Віддалений CLI";
+
+/* Title for empty state when no contacts exist */
+"remoteCLIContacts.noContacts" = "Немає контактів";
+
+/* Description for empty state */
+"remoteCLIContacts.noContactsDescription" = "Додайте контакти, щоб дозволити віддалений CLI";
+
+/* Title for empty state when search returns no results */
+"remoteCLIContacts.noResults" = "Немає результатів";
+
+/* Description for empty state when search returns no results */
+"remoteCLIContacts.noResultsDescription" = "Жоден контакт не відповідає \"%@\"";
+
+/* TODO: translate */
+"remoteCLIContacts.noFavorites" = "No Favorites";
+
+/* TODO: translate */
+"remoteCLIContacts.noFavoritesDescription" = "No favorite contacts to show";
+
+/* Search prompt for remote CLI contacts list */
+"remoteCLIContacts.searchPrompt" = "Пошук контактів";
+
+/* Toggle label for showing only favorite contacts */
+"remoteCLIContacts.favoritesOnly" = "Лише обрані";
+
+/* Apply button label */
+"remoteCLIContacts.apply" = "Застосувати";
+
 // MARK: - About Section
 
 /* Section header for about links */

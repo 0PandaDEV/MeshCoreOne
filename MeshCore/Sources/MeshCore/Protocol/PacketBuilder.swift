@@ -45,6 +45,13 @@ public enum PacketBuilder: Sendable {
   /// Command payload clamp that still fits a 172-byte companion frame.
   /// A 176-byte frame would allow 167; this stays 163.
   static let channelDataMaxPayloadBytes = 163
+  /// Host-frame cap (`MAX_FRAME_SIZE` in firmware).
+  static let maxFrameSize = 176
+  /// UTF-8 bytes after ``CommandCode/runCliCommand`` that still fit `maxFrameSize`.
+  static let runCliCommandMaxUTF8Bytes = maxFrameSize - 1
+  /// Firmware takes CMD 66 only when the host frame is at least 3 bytes
+  /// (opcode plus two UTF-8 bytes); shorter frames fall through to unsupported.
+  static let runCliCommandMinUTF8Bytes = 2
   /// Default-scope name-field width on the wire (31 bytes, zero-padded).
   static let defaultScopeNameField = 31
   /// Default-scope name maximum UTF-8 length (30 bytes; byte 31 is the null terminator
@@ -994,6 +1001,16 @@ public enum PacketBuilder: Sendable {
   /// - Returns: A single-byte command packet.
   public static func getDefaultFloodScope() -> Data {
     Data([CommandCode.getDefaultFloodScope.rawValue])
+  }
+
+  /// Builds a `runCliCommand` packet: opcode plus UTF-8 command bytes.
+  ///
+  /// Firmware v14+ (`CMD_RUN_CLI_COMMAND`). The radio null-terminates the
+  /// buffer; this builder does not append a terminator or `xx|` prefix.
+  public static func runCliCommand(_ command: String) -> Data {
+    var data = Data([CommandCode.runCliCommand.rawValue])
+    data.append(contentsOf: Data(command.utf8))
+    return data
   }
 
   /// Builds a command to send an anonymous request to a remote node.

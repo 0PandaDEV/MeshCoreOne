@@ -186,6 +186,14 @@ public protocol ConfigurationSessionOps: Actor {
   /// - Throws: `MeshCoreError` if the device doesn't respond.
   func getCustomVars() async throws -> [String: String]
 
+  /// Runs a UTF-8 CLI command on the paired radio (firmware v14+).
+  ///
+  /// - Parameter command: The CLI line. Empty, whitespace-only, or longer than
+  ///   `PacketBuilder.runCliCommandMaxUTF8Bytes` is rejected before send.
+  /// - Returns: The UTF-8 reply.
+  /// - Throws: `MeshCoreError.invalidInput` for an empty or oversized command, or `MeshCoreError` on timeout or device error.
+  func runCliCommand(_ command: String) async throws -> String
+
   /// Sets a custom variable on the device.
   ///
   /// - Parameters:

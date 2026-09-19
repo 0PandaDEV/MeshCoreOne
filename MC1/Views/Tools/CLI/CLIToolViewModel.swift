@@ -174,6 +174,7 @@ final class CLIToolViewModel {
       }
     }
     lastConfiguredAdminService = incomingService
+    completionEngine.radioCLIEnabled = connectedDevice?.supportsRadioCLI == true
 
     // Update node names for completion
     nodeNamesTask?.cancel()
@@ -360,6 +361,13 @@ final class CLIToolViewModel {
 
     // Local radio commands are interpreted app-side; the same words keep passing
     // through to repeaters on remote sessions.
+    if activeSession?.isLocal == true,
+       connectedDevice?.supportsRadioCLI == true,
+       RadioCLIPassthrough.shouldSend(raw) {
+      await runRadioCLI(raw)
+      return
+    }
+
     if activeSession?.isLocal == true {
       switch CLILocalCommandParser.parse(raw) {
       case let .command(command):

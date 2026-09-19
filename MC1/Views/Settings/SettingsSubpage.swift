@@ -9,6 +9,7 @@ enum SettingsSubpage: Hashable {
   case blockedChannelSenders
   case blockedContacts
   case trustedContacts
+  case remoteCLIContacts
   case translateIntoLanguage
   case presetLocation
   case offlineMaps
@@ -21,6 +22,8 @@ enum SettingsSubpage: Hashable {
       detail == .deviceInfo
     case .configExport, .configImport, .trustedContacts:
       detail == .advanced
+    case .remoteCLIContacts:
+      detail == .advanced && device?.supportsRadioCLI == true
     case .blockedChannelSenders, .blockedContacts:
       detail == .chats
     case .translateIntoLanguage:
@@ -98,6 +101,8 @@ private struct SettingsSubpageDestination: View {
       BlockedContactsView()
     case .trustedContacts:
       TrustedContactsPickerView()
+    case .remoteCLIContacts:
+      RemoteCLIContactsPickerView()
     case .translateIntoLanguage:
       TranslateIntoLanguageView()
     case .offlineMaps:

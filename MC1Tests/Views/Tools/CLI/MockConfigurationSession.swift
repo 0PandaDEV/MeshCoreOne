@@ -26,6 +26,7 @@ actor MockConfigurationSession: ConfigurationSessionOps {
   private(set) var setCoordinatesCalls: [(latitude: Double, longitude: Double)] = []
   private(set) var setOtherParamsCalls: [(manualAddContacts: Bool, multiAcks: UInt8?)] = []
   private(set) var setCustomVarCalls: [(key: String, value: String)] = []
+  private(set) var runCliCommandCalls: [String] = []
 
   init(
     name: String = "TestDevice",
@@ -215,6 +216,11 @@ actor MockConfigurationSession: ConfigurationSessionOps {
     }
     guard !suppressWrites else { return }
     customVars[key] = value
+  }
+
+  func runCliCommand(_ command: String) async throws -> String {
+    runCliCommandCalls.append(command)
+    return "OK"
   }
 
   // MARK: - Unused requirements

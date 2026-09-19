@@ -5633,6 +5633,38 @@ public enum L10n {
         public static let usWy = L10n.tr("Settings", "region.subdivision.US-WY", fallback: "Wyoming")
       }
     }
+    public enum RemoteCLI {
+      /// Footer explaining remote CLI permission
+      public static let footer = L10n.tr("Settings", "remoteCLI.footer", fallback: "These contacts may send CLI commands to this radio over the mesh.")
+      /// Section header for remote CLI permission
+      public static let header = L10n.tr("Settings", "remoteCLI.header", fallback: "Remote CLI")
+      /// Navigation row to manage contacts allowed to send remote CLI
+      public static let manage = L10n.tr("Settings", "remoteCLI.manage", fallback: "Allowed contacts")
+    }
+    public enum RemoteCLIContacts {
+      /// Apply button label
+      public static let apply = L10n.tr("Settings", "remoteCLIContacts.apply", fallback: "Apply")
+      /// Toggle label for showing only favorite contacts
+      public static let favoritesOnly = L10n.tr("Settings", "remoteCLIContacts.favoritesOnly", fallback: "Favorites Only")
+      /// Title for empty state when no contacts exist
+      public static let noContacts = L10n.tr("Settings", "remoteCLIContacts.noContacts", fallback: "No Contacts")
+      /// Description for empty state
+      public static let noContactsDescription = L10n.tr("Settings", "remoteCLIContacts.noContactsDescription", fallback: "Add contacts to allow remote CLI")
+      /// Title for empty state when Favorites Only has no matches
+      public static let noFavorites = L10n.tr("Settings", "remoteCLIContacts.noFavorites", fallback: "No Favorites")
+      /// Description for empty state when Favorites Only has no matches
+      public static let noFavoritesDescription = L10n.tr("Settings", "remoteCLIContacts.noFavoritesDescription", fallback: "No favorite contacts to show")
+      /// Title for empty state when search returns no results
+      public static let noResults = L10n.tr("Settings", "remoteCLIContacts.noResults", fallback: "No Results")
+      /// Description for empty state when search returns no results
+      public static func noResultsDescription(_ p1: Any) -> String {
+        return L10n.tr("Settings", "remoteCLIContacts.noResultsDescription", String(describing: p1), fallback: "No contacts match \"%@\"")
+      }
+      /// Search prompt for remote CLI contacts list
+      public static let searchPrompt = L10n.tr("Settings", "remoteCLIContacts.searchPrompt", fallback: "Search Contacts")
+      /// Navigation title for remote CLI contacts picker
+      public static let title = L10n.tr("Settings", "remoteCLIContacts.title", fallback: "Remote CLI")
+    }
     public enum ReplyWithQuote {
       /// Replying includes a preview of the original message.
       public static let footer = L10n.tr("Settings", "replyWithQuote.footer", fallback: "Replying includes a preview of the original message.")

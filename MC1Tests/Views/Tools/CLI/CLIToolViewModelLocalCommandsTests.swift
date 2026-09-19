@@ -571,6 +571,31 @@ struct CLIToolViewModelLocalCommandsTests {
     #expect(viewModel.ghostText == "")
   }
 
+  @Test
+  func `v14 get cad goes to runCliCommand not custom vars`() async {
+    let mock = MockConfigurationSession()
+    let viewModel = makeViewModel(mock: mock, device: makeDevice(firmwareVersion: 14))
+    await run(viewModel, "get cad")
+    #expect(await mock.runCliCommandCalls == ["get cad"])
+    #expect(await mock.setCustomVarCalls.isEmpty)
+  }
+
+  @Test
+  func `v13 get cad does not call runCliCommand`() async {
+    let mock = MockConfigurationSession()
+    let viewModel = makeViewModel(mock: mock, device: makeDevice(firmwareVersion: 13))
+    await run(viewModel, "get cad")
+    #expect(await mock.runCliCommandCalls.isEmpty)
+  }
+
+  @Test
+  func `v14 logout does not call runCliCommand`() async {
+    let mock = MockConfigurationSession()
+    let viewModel = makeViewModel(mock: mock, device: makeDevice(firmwareVersion: 14))
+    await run(viewModel, "logout")
+    #expect(await mock.runCliCommandCalls.isEmpty)
+  }
+
   // MARK: - Helpers
 
   private func makeViewModel(
@@ -617,13 +642,17 @@ struct CLIToolViewModelLocalCommandsTests {
     viewModel.outputLines.last { $0.type == .response }?.text
   }
 
-  private func makeDevice(manualAddContacts: Bool, multiAcks: UInt8) -> DeviceDTO {
+  private func makeDevice(
+    firmwareVersion: UInt8 = 9,
+    manualAddContacts: Bool = false,
+    multiAcks: UInt8 = 0
+  ) -> DeviceDTO {
     DeviceDTO(
       id: UUID(),
       radioID: UUID(),
       publicKey: Data(repeating: 0x01, count: 32),
       nodeName: "TestDevice",
-      firmwareVersion: 9,
+      firmwareVersion: firmwareVersion,
       firmwareVersionString: "1.13.0",
       manufacturerName: "Test",
       buildDate: "",
