@@ -106,3 +106,4 @@ __pycache__
 .idea/
 # Brainstorming visual companion mockups
 .superpowers/
+DerivedData/
