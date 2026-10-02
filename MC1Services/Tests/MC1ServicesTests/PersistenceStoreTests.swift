@@ -1,6 +1,7 @@
 import Foundation
 @testable import MC1Services
 import MeshCore
+import os
 import SwiftData
 import Testing
 
@@ -679,6 +680,75 @@ struct PersistenceStoreTests {
   }
 
   // MARK: - Message Tests
+
+  @Test
+  func `fetchMessage by dedup key returns the row for the same radio`() async throws {
+    let store = try await createTestStore()
+    let radioID = UUID()
+    let otherRadioID = UUID()
+    let key = "ch-0-1-Alice-ABCD"
+    var message = MessageDTO.testChannelMessage(
+      radioID: radioID,
+      channelIndex: 0,
+      text: "hello",
+      direction: .incoming,
+      senderNodeName: "Alice"
+    )
+    message.deduplicationKey = key
+    try await store.saveMessage(message)
+
+    let found = try await store.fetchMessage(deduplicationKey: key, radioID: radioID)
+    #expect(found?.id == message.id)
+
+    let otherRadio = try await store.fetchMessage(deduplicationKey: key, radioID: otherRadioID)
+    #expect(otherRadio == nil)
+  }
+
+  @Test
+  func `adoptIncomingPathIfUnknown writes the first path onto a nil column`() async throws {
+    let store = try await createTestStore()
+    var message = MessageDTO.testChannelMessage(
+      radioID: UUID(),
+      channelIndex: 0,
+      text: "unknown path",
+      direction: .incoming,
+      snr: 7.5
+    )
+    message.pathNodes = nil
+    try await store.saveMessage(message)
+
+    let adopted = Data([0xAA])
+    let first = try await store.adoptIncomingPathIfUnknown(
+      id: message.id,
+      pathNodes: adopted,
+      pathLength: 1
+    )
+    #expect(first == true)
+
+    let second = try await store.adoptIncomingPathIfUnknown(
+      id: message.id,
+      pathNodes: Data([0xBB]),
+      pathLength: 2
+    )
+    #expect(second == false)
+
+    let fetched = try await store.fetchMessage(id: message.id)
+    #expect(fetched?.pathNodes == adopted)
+    #expect(fetched?.pathLength == 1)
+    #expect(fetched?.heardRepeats == 0)
+    #expect(fetched?.snr == 7.5)
+  }
+
+  @Test
+  func `adoptIncomingPathIfUnknown returns false when the row is missing`() async throws {
+    let store = try await createTestStore()
+    let result = try await store.adoptIncomingPathIfUnknown(
+      id: UUID(),
+      pathNodes: Data([0xAA]),
+      pathLength: 1
+    )
+    #expect(result == false)
+  }
 
   @Test
   func `Save and fetch messages for contact`() async throws {
@@ -1968,6 +2038,217 @@ struct PersistenceStoreTests {
   }
 
   @Test
+  func `deleteContacts removes matching rows in one pass`() async throws {
+    let store = try await createTestStore()
+    let device = createTestDevice()
+    try await store.saveDevice(device)
+    let keyA = Data(repeating: 0xA1, count: ProtocolLimits.publicKeySize)
+    let keyB = Data(repeating: 0xA2, count: ProtocolLimits.publicKeySize)
+    let savedA = try await store.saveContact(
+      radioID: device.radioID,
+      from: ContactFrame(
+        publicKey: keyA, type: .chat, flags: 0, outPathLength: 0, outPath: Data(),
+        name: "A", lastAdvertTimestamp: 1, latitude: 0, longitude: 0, lastModified: 1
+      )
+    )
+    let savedB = try await store.saveContact(
+      radioID: device.radioID,
+      from: ContactFrame(
+        publicKey: keyB, type: .chat, flags: 0, outPathLength: 0, outPath: Data(),
+        name: "B", lastAdvertTimestamp: 1, latitude: 0, longitude: 0, lastModified: 1
+      )
+    )
+    try await store.saveMessage(
+      MessageDTO.testDirectMessage(radioID: device.radioID, contactID: savedA.id, text: "gone")
+    )
+
+    let deleted = try await store.deleteContacts(
+      radioID: device.radioID, publicKeys: [keyA, keyB]
+    )
+    #expect(Set(deleted) == [savedA.id, savedB.id])
+    #expect(try await store.fetchContact(id: savedA.id) == nil)
+    #expect(try await store.fetchContact(id: savedB.id) == nil)
+    #expect(try await store.fetchMessages(contactID: savedA.id, limit: 10, offset: 0).isEmpty)
+  }
+
+  @Test
+  func `deleteContacts skippingPublicKeys leaves those rows`() async throws {
+    let store = try await createTestStore()
+    let device = createTestDevice()
+    try await store.saveDevice(device)
+    let keyA = Data(repeating: 0xB1, count: ProtocolLimits.publicKeySize)
+    let keyB = Data(repeating: 0xB2, count: ProtocolLimits.publicKeySize)
+    let savedA = try await store.saveContact(
+      radioID: device.radioID,
+      from: ContactFrame(
+        publicKey: keyA, type: .chat, flags: 0, outPathLength: 0, outPath: Data(),
+        name: "Keep", lastAdvertTimestamp: 1, latitude: 0, longitude: 0, lastModified: 1
+      )
+    )
+    let savedB = try await store.saveContact(
+      radioID: device.radioID,
+      from: ContactFrame(
+        publicKey: keyB, type: .chat, flags: 0, outPathLength: 0, outPath: Data(),
+        name: "Drop", lastAdvertTimestamp: 1, latitude: 0, longitude: 0, lastModified: 1
+      )
+    )
+    try await store.saveMessage(
+      MessageDTO.testDirectMessage(radioID: device.radioID, contactID: savedA.id, text: "keep")
+    )
+
+    let deleted = try await store.deleteContacts(
+      radioID: device.radioID,
+      publicKeys: [keyA, keyB],
+      skippingPublicKeys: { [keyA] }
+    )
+    #expect(Set(deleted) == [savedB.id])
+    #expect(try await store.fetchContact(id: savedA.id) != nil)
+    #expect(try await store.fetchContact(id: savedB.id) == nil)
+    #expect(try await store.fetchMessages(contactID: savedA.id, limit: 10, offset: 0).count == 1)
+  }
+
+  @Test
+  func `deleteContacts skippingPublicKeys after fetch leaves those rows`() async throws {
+    let store = try await createTestStore()
+    let device = createTestDevice()
+    try await store.saveDevice(device)
+    let keyA = Data(repeating: 0xC1, count: ProtocolLimits.publicKeySize)
+    let keyB = Data(repeating: 0xC2, count: ProtocolLimits.publicKeySize)
+    let savedA = try await store.saveContact(
+      radioID: device.radioID,
+      from: ContactFrame(
+        publicKey: keyA, type: .chat, flags: 0, outPathLength: 0, outPath: Data(),
+        name: "KeepLate", lastAdvertTimestamp: 1, latitude: 0, longitude: 0, lastModified: 1
+      )
+    )
+    let savedB = try await store.saveContact(
+      radioID: device.radioID,
+      from: ContactFrame(
+        publicKey: keyB, type: .chat, flags: 0, outPathLength: 0, outPath: Data(),
+        name: "DropLate", lastAdvertTimestamp: 1, latitude: 0, longitude: 0, lastModified: 1
+      )
+    )
+    try await store.saveMessage(
+      MessageDTO.testDirectMessage(radioID: device.radioID, contactID: savedA.id, text: "keep")
+    )
+
+    let skipAfterCandidates = OSAllocatedUnfairLock(initialState: 0)
+    let deleted = try await store.deleteContacts(
+      radioID: device.radioID,
+      publicKeys: [keyA, keyB],
+      skippingPublicKeys: {
+        let n = skipAfterCandidates.withLock { $0 += 1; return $0 }
+        // Candidate loop: one call per key. Delete loop: skip keyA.
+        return n <= 2 ? [] : [keyA]
+      }
+    )
+    #expect(Set(deleted) == [savedB.id])
+    #expect(try await store.fetchContact(id: savedA.id) != nil)
+    #expect(try await store.fetchContact(id: savedB.id) == nil)
+    #expect(try await store.fetchMessages(contactID: savedA.id, limit: 10, offset: 0).count == 1)
+  }
+
+  @Test
+  func `deleteContacts save throw rolls back contact and cascade`() async throws {
+    let store = try await createTestStore()
+    let device = createTestDevice()
+    try await store.saveDevice(device)
+    let key = Data(repeating: 0xD1, count: ProtocolLimits.publicKeySize)
+    let saved = try await store.saveContact(
+      radioID: device.radioID,
+      from: ContactFrame(
+        publicKey: key, type: .chat, flags: 0, outPathLength: 0, outPath: Data(),
+        name: "KeepOnThrow", lastAdvertTimestamp: 1, latitude: 0, longitude: 0, lastModified: 1
+      )
+    )
+    let message = MessageDTO.testDirectMessage(
+      radioID: device.radioID, contactID: saved.id, text: "keep"
+    )
+    try await store.saveMessage(message)
+    try await store.saveMessageRepeat(.testRepeat(messageID: message.id))
+    try await store.saveReaction(
+      ReactionDTO(
+        messageID: message.id,
+        emoji: "👍",
+        senderName: "Reactor",
+        messageHash: "AABBCCDD",
+        rawText: "👍",
+        contactID: saved.id,
+        radioID: device.radioID
+      )
+    )
+    try await store.upsertPendingSend(
+      PendingSendDTO(
+        id: UUID(),
+        radioID: device.radioID,
+        messageID: message.id,
+        kind: .dm,
+        contactID: saved.id,
+        channelIndex: nil,
+        isResend: false,
+        messageText: "keep",
+        messageTimestamp: 0,
+        localNodeName: nil,
+        sequence: 1,
+        enqueuedAt: Date(),
+        attemptCount: 0
+      )
+    )
+
+    await store.setDeleteContactsFaultInjection {
+      throw PersistenceStoreError.saveFailed("test")
+    }
+    await #expect(throws: PersistenceStoreError.self) {
+      _ = try await store.deleteContacts(
+        radioID: device.radioID, publicKeys: [key]
+      )
+    }
+
+    #expect(try await store.fetchContact(id: saved.id)?.id == saved.id)
+    #expect(try await store.fetchMessages(contactID: saved.id, limit: 10, offset: 0).count == 1)
+    #expect(try await store.fetchReactions(for: message.id).count == 1)
+    #expect(try await store.fetchMessageRepeats(messageID: message.id).count == 1)
+    #expect(try await store.fetchPendingSendsForMessage(messageID: message.id).count == 1)
+  }
+
+  @Test
+  func `deleteContacts rollback does not drop unsaved RxLog inserts`() async throws {
+    let store = try await createTestStore()
+    let device = createTestDevice()
+    try await store.saveDevice(device)
+    let key = Data(repeating: 0xD2, count: ProtocolLimits.publicKeySize)
+    _ = try await store.saveContact(
+      radioID: device.radioID,
+      from: ContactFrame(
+        publicKey: key, type: .chat, flags: 0, outPathLength: 0, outPath: Data(),
+        name: "RxLog", lastAdvertTimestamp: 1, latitude: 0, longitude: 0, lastModified: 1
+      )
+    )
+    let dto = createTestRxLogEntryDTO(
+      radioID: device.id, senderTimestamp: 42, channelIndex: 1
+    )
+    try await store.saveRxLogEntry(dto)
+    #expect(await store.rxLogInitiatedSaveCount == 0)
+
+    await store.setDeleteContactsFaultInjection {
+      throw PersistenceStoreError.saveFailed("test")
+    }
+    await #expect(throws: PersistenceStoreError.self) {
+      _ = try await store.deleteContacts(
+        radioID: device.radioID, publicKeys: [key]
+      )
+    }
+
+    let found = try await store.findRxLogEntry(
+      radioID: device.id,
+      channelIndex: 1,
+      senderTimestamp: 42
+    )
+    #expect(found?.id == dto.id)
+    try await store.flushPendingRxLogEntries()
+  }
+
+  @Test
   func `deleteContact removes local data when the contact row is already gone`() async throws {
     let store = try await createTestStore()
     let device = createTestDevice()
@@ -2050,6 +2331,117 @@ struct PersistenceStoreTests {
   }
 
   @Test
+  func `deleteMessagesForChannel save throw rolls back messages and cascade`() async throws {
+    let store = try await createTestStore()
+    let device = createTestDevice()
+    try await store.saveDevice(device)
+
+    let targetChannel: UInt8 = 0
+    let untouchedChannel: UInt8 = 1
+
+    let messageID = UUID()
+    let message = MessageDTO(from: Message(
+      id: messageID,
+      radioID: device.id,
+      contactID: nil,
+      channelIndex: targetChannel,
+      text: "Ch0 keep",
+      timestamp: UInt32(Date().timeIntervalSince1970)
+    ))
+    try await store.saveMessage(message)
+    try await store.upsertPendingSend(makePendingSendDTO(
+      messageID: messageID, radioID: device.id, attemptCount: 0, sequence: 1
+    ))
+    try await store.saveReaction(ReactionDTO(
+      messageID: messageID,
+      emoji: "👍",
+      senderName: "Reactor",
+      messageHash: "AABBCCDD",
+      rawText: "👍",
+      radioID: device.id
+    ))
+    try await store.saveMessageRepeat(.testRepeat(messageID: messageID))
+
+    let siblingMessage = MessageDTO(from: Message(
+      radioID: device.id,
+      contactID: nil,
+      channelIndex: untouchedChannel,
+      text: "Ch1 keep",
+      timestamp: UInt32(Date().timeIntervalSince1970) + 100
+    ))
+    try await store.saveMessage(siblingMessage)
+
+    await store.setDeleteMessagesForChannelFaultInjection {
+      throw PersistenceStoreError.saveFailed("test")
+    }
+    await #expect(throws: PersistenceStoreError.self) {
+      try await store.deleteMessagesForChannel(radioID: device.id, channelIndex: targetChannel)
+    }
+    await store.setDeleteMessagesForChannelFaultInjection(nil)
+
+    let piggyback = MessageDTO(from: Message(
+      radioID: device.id,
+      contactID: nil,
+      channelIndex: untouchedChannel,
+      text: "Ch1 extra",
+      timestamp: UInt32(Date().timeIntervalSince1970) + 200
+    ))
+    try await store.saveMessage(piggyback)
+
+    let channel0 = try await store.fetchMessages(radioID: device.id, channelIndex: targetChannel)
+    #expect(channel0.count == 1,
+            "failed wipe must not flush the slot's Message on a later save")
+    #expect(try await store.fetchPendingSendsForMessage(messageID: messageID).count == 1,
+            "PendingSend must roll back with the message")
+    #expect(try await store.fetchReactions(for: messageID).count == 1,
+            "Reaction must roll back with the message")
+    #expect(try await store.fetchMessageRepeats(messageID: messageID).count == 1,
+            "MessageRepeat must roll back with the message")
+
+    let channel1 = try await store.fetchMessages(radioID: device.id, channelIndex: untouchedChannel)
+    #expect(channel1.count == 2,
+            "sibling channel must keep its original row plus the piggyback insert")
+  }
+
+  @Test
+  func `deleteMessagesForChannel rollback does not drop unsaved RxLog inserts`() async throws {
+    let store = try await createTestStore()
+    let device = createTestDevice()
+    try await store.saveDevice(device)
+
+    let channelIndex: UInt8 = 0
+    let message = MessageDTO(from: Message(
+      radioID: device.id,
+      contactID: nil,
+      channelIndex: channelIndex,
+      text: "Ch0",
+      timestamp: UInt32(Date().timeIntervalSince1970)
+    ))
+    try await store.saveMessage(message)
+
+    let dto = createTestRxLogEntryDTO(
+      radioID: device.id, senderTimestamp: 42, channelIndex: 1
+    )
+    try await store.saveRxLogEntry(dto)
+    #expect(await store.rxLogInitiatedSaveCount == 0)
+
+    await store.setDeleteMessagesForChannelFaultInjection {
+      throw PersistenceStoreError.saveFailed("test")
+    }
+    await #expect(throws: PersistenceStoreError.self) {
+      try await store.deleteMessagesForChannel(radioID: device.id, channelIndex: channelIndex)
+    }
+
+    let found = try await store.findRxLogEntry(
+      radioID: device.id,
+      channelIndex: 1,
+      senderTimestamp: 42
+    )
+    #expect(found?.id == dto.id)
+    try await store.flushPendingRxLogEntries()
+  }
+
+  @Test
   func `deleteChannelMessages(fromSender:) cascades PendingSends and spares other senders`() async throws {
     let store = try await createTestStore()
     let device = createTestDevice()
@@ -2106,10 +2498,14 @@ struct PersistenceStoreTests {
     radioID: UUID,
     senderTimestamp: UInt32? = nil,
     regionScope: String? = nil,
+    regionScopeMatches: [String] = [],
     payloadTypeBits: UInt8 = 5,
     transportCode: Data? = nil,
     channelIndex: UInt8? = 1,
-    packetPayload: Data = Data([0xAB, 0xCD, 0xEF])
+    packetPayload: Data = Data([0xAB, 0xCD, 0xEF]),
+    receivedAt: Date = Date(),
+    pathNodes: [UInt8] = [0x42],
+    pathLength: UInt8 = 1
   ) -> RxLogEntryDTO {
     // Create minimal ParsedRxLogData for the DTO
     let parsed = ParsedRxLogData(
@@ -2121,19 +2517,21 @@ struct PersistenceStoreTests {
       payloadVersion: 0,
       payloadTypeBits: payloadTypeBits,
       transportCode: transportCode,
-      pathLength: 1,
-      pathNodes: [0x42],
+      pathLength: pathLength,
+      pathNodes: pathNodes,
       packetPayload: packetPayload
     )
 
     return RxLogEntryDTO(
       radioID: radioID,
+      receivedAt: receivedAt,
       from: parsed,
       channelIndex: channelIndex,
       channelName: "TestChannel",
       decryptStatus: .success,
       senderTimestamp: senderTimestamp,
       regionScope: regionScope,
+      regionScopeMatches: regionScopeMatches,
       decodedText: "Hello mesh!"
     )
   }
@@ -2305,6 +2703,146 @@ struct PersistenceStoreTests {
     #expect(afterReconnect.count == 1000)
   }
 
+  @Test
+  func `saveRxLogEntry commits once per batchSize inserts`() async throws {
+    let store = try await createTestStore()
+    let device = createTestDevice()
+    try await store.saveDevice(device)
+
+    for index in 0..<RxLogRetention.batchSize {
+      try await store.saveRxLogEntry(
+        createTestRxLogEntryDTO(radioID: device.id, senderTimestamp: UInt32(index))
+      )
+    }
+
+    let entries = try await store.fetchRxLogEntries(radioID: device.id, limit: 40)
+    #expect(entries.count == RxLogRetention.batchSize)
+    #expect(await store.rxLogInitiatedSaveCount == 1)
+  }
+
+  @Test
+  func `fetchRxLogEntries returns every matching channel row in receivedAt order`() async throws {
+    let store = try await createTestStore()
+    let device = createTestDevice()
+    try await store.saveDevice(device)
+
+    let earlier = Date(timeIntervalSince1970: 1_700_000_000)
+    let later = earlier.addingTimeInterval(2)
+    let pathA: [UInt8] = [0xAA]
+    let pathB: [UInt8] = [0xBB]
+    try await store.saveRxLogEntry(createTestRxLogEntryDTO(
+      radioID: device.id,
+      senderTimestamp: 42,
+      channelIndex: 1,
+      receivedAt: later,
+      pathNodes: pathB
+    ))
+    try await store.saveRxLogEntry(createTestRxLogEntryDTO(
+      radioID: device.id,
+      senderTimestamp: 42,
+      channelIndex: 1,
+      receivedAt: earlier,
+      pathNodes: pathA
+    ))
+    try await store.saveRxLogEntry(createTestRxLogEntryDTO(
+      radioID: device.id,
+      senderTimestamp: 42,
+      channelIndex: 2,
+      receivedAt: earlier,
+      pathNodes: [0xCC]
+    ))
+    try await store.saveRxLogEntry(createTestRxLogEntryDTO(
+      radioID: device.id,
+      senderTimestamp: 43,
+      channelIndex: 1,
+      receivedAt: earlier,
+      pathNodes: [0xDD]
+    ))
+
+    let matches = try await store.fetchRxLogEntries(
+      radioID: device.id,
+      channelIndex: 1,
+      senderTimestamp: 42
+    )
+    #expect(matches.count == 2)
+    #expect(matches.map(\.pathNodes) == [Data(pathA), Data(pathB)])
+  }
+
+  @Test
+  func `findRxLogEntry sees an insert before the batch save`() async throws {
+    let store = try await createTestStore()
+    let device = createTestDevice()
+    try await store.saveDevice(device)
+
+    let dto = createTestRxLogEntryDTO(radioID: device.id, senderTimestamp: 42, channelIndex: 1)
+    try await store.saveRxLogEntry(dto)
+
+    #expect(await store.rxLogInitiatedSaveCount == 0)
+    let found = try await store.findRxLogEntry(
+      radioID: device.id,
+      channelIndex: 1,
+      senderTimestamp: 42
+    )
+    #expect(found?.id == dto.id)
+    try await store.flushPendingRxLogEntries()
+  }
+
+  @Test
+  func `batchSaveChannels rollback does not drop unsaved RxLog inserts`() async throws {
+    let store = try await createTestStore()
+    let device = createTestDevice()
+    try await store.saveDevice(device)
+
+    let dto = createTestRxLogEntryDTO(
+      radioID: device.id, senderTimestamp: 42, channelIndex: 1
+    )
+    try await store.saveRxLogEntry(dto)
+    #expect(await store.rxLogInitiatedSaveCount == 0)
+
+    await store.setBatchSaveChannelsFaultInjection {
+      throw PersistenceStoreError.saveFailed("test")
+    }
+    await #expect(throws: PersistenceStoreError.self) {
+      _ = try await store.batchSaveChannels(
+        radioID: device.id,
+        configured: [
+          ChannelInfo(index: 1, name: "Test", secret: Data(repeating: 0x42, count: 16))
+        ],
+        unconfiguredIndices: [],
+        pruneBeyond: nil
+      )
+    }
+
+    let found = try await store.findRxLogEntry(
+      radioID: device.id,
+      channelIndex: 1,
+      senderTimestamp: 42
+    )
+    #expect(found?.id == dto.id)
+    let entries = try await store.fetchRxLogEntries(radioID: device.id, limit: 40)
+    #expect(entries.count == 1)
+    try await store.flushPendingRxLogEntries()
+  }
+
+  @Test
+  func `flushPendingRxLogEntries commits a partial batch`() async throws {
+    let container = try PersistenceStore.createContainer(inMemory: true)
+    let radioID = UUID()
+    let storeA = PersistenceStore(modelContainer: container)
+    try await storeA.saveDevice(createTestDevice().copy { $0.id = radioID; $0.radioID = radioID })
+
+    try await storeA.saveRxLogEntry(
+      createTestRxLogEntryDTO(radioID: radioID, senderTimestamp: 1)
+    )
+    #expect(await storeA.rxLogInitiatedSaveCount == 0)
+    try await storeA.flushPendingRxLogEntries()
+    #expect(await storeA.rxLogInitiatedSaveCount == 1)
+
+    let storeB = PersistenceStore(modelContainer: container)
+    let entries = try await storeB.fetchRxLogEntries(radioID: radioID)
+    #expect(entries.count == 1)
+  }
+
   // MARK: - Region Scope Tests
 
   @Test
@@ -2316,12 +2854,78 @@ struct PersistenceStoreTests {
     let dto = createTestRxLogEntryDTO(
       radioID: device.id,
       senderTimestamp: 1_703_000_000,
-      regionScope: "Germany"
+      regionScope: "Germany",
+      regionScopeMatches: ["Germany"]
     )
     try await store.saveRxLogEntry(dto)
 
     let entries = try await store.fetchRxLogEntries(radioID: device.id)
     #expect(entries.first?.regionScope == "Germany")
+    #expect(entries.first?.regionScopeMatches == ["Germany"])
+  }
+
+  @Test
+  func `batchUpdateRxLogRegion writes dual region fields`() async throws {
+    let store = try await createTestStore()
+    let device = createTestDevice()
+    try await store.saveDevice(device)
+
+    let dto = createTestRxLogEntryDTO(
+      radioID: device.id,
+      senderTimestamp: 1_703_000_050,
+      regionScope: "Germany",
+      regionScopeMatches: ["Germany"],
+      transportCode: Data([0x12, 0x34])
+    )
+    try await store.saveRxLogEntry(dto)
+    let id = try #require(try await store.fetchRxLogEntries(radioID: device.id).first?.id)
+
+    try await store.batchUpdateRxLogRegion(updates: [(
+      id: id,
+      regionScope: nil,
+      regionScopeMatches: ["de-by", "de-hh"]
+    )])
+
+    let updated = try #require(try await store.fetchRxLogEntries(radioID: device.id).first)
+    #expect(updated.regionScope == nil)
+    #expect(updated.regionScopeMatches == ["de-by", "de-hh"])
+  }
+
+  @Test
+  func `fetchEntriesWithTransportCode includes labeled rows and honors limit`() async throws {
+    let store = try await createTestStore()
+    let device = createTestDevice()
+    try await store.saveDevice(device)
+
+    let base = Date(timeIntervalSince1970: 1_700_000_000)
+    // Five transport-coded rows with distinct receivedAt; one nil-code row to exclude.
+    for index in 0..<5 {
+      try await store.saveRxLogEntry(createTestRxLogEntryDTO(
+        radioID: device.id,
+        senderTimestamp: UInt32(index),
+        regionScope: index == 0 ? "Germany" : nil,
+        regionScopeMatches: index == 0 ? ["Germany"] : [],
+        transportCode: Data([UInt8(index), 0x02]),
+        receivedAt: base.addingTimeInterval(TimeInterval(index))
+      ))
+    }
+    try await store.saveRxLogEntry(createTestRxLogEntryDTO(
+      radioID: device.id,
+      senderTimestamp: 99,
+      transportCode: nil,
+      receivedAt: base.addingTimeInterval(100)
+    ))
+
+    let limit = 2
+    let entries = try await store.fetchEntriesWithTransportCode(radioID: device.id, limit: limit)
+    #expect(entries.count == limit)
+    #expect(entries.allSatisfy { $0.transportCode != nil })
+    // Newest-first by receivedAt: index 4 then 3 when sort is .reverse and fetchLimit applies.
+    #expect(entries.map(\.receivedAt) == [
+      base.addingTimeInterval(4),
+      base.addingTimeInterval(3)
+    ])
+    #expect(entries.map(\.senderTimestamp) == [4, 3])
   }
 
   @Test
@@ -2360,11 +2964,12 @@ struct PersistenceStoreTests {
 
     try await store.batchUpdateChannelMessageRegion(
       radioID: device.id,
-      updates: [(channelIndex: 0, senderTimestamp: wireTimestamp, regionScope: "Germany")]
+      updates: [(channelIndex: 0, senderTimestamp: wireTimestamp, regionScope: "Germany", regionScopeMatches: ["Germany"])]
     )
 
     let saved = try await store.fetchMessages(radioID: device.id, channelIndex: 0)
     #expect(saved.first?.regionScope == "Germany")
+    #expect(saved.first?.regionScopeMatches == ["Germany"])
   }
 
   @Test
@@ -2386,11 +2991,43 @@ struct PersistenceStoreTests {
 
     try await store.batchUpdateChannelMessageRegion(
       radioID: device.id,
-      updates: [(channelIndex: 1, senderTimestamp: originalWire, regionScope: "USA")]
+      updates: [(channelIndex: 1, senderTimestamp: originalWire, regionScope: "USA", regionScopeMatches: ["USA"])]
     )
 
     let saved = try await store.fetchMessages(radioID: device.id, channelIndex: 1)
     #expect(saved.first?.regionScope == "USA")
+    #expect(saved.first?.regionScopeMatches == ["USA"])
+  }
+
+  @Test
+  func `batchUpdateChannelMessageRegion writes multi-match regionScopeMatches with nil scope`() async throws {
+    let store = try await createTestStore()
+    let device = createTestDevice()
+    try await store.saveDevice(device)
+
+    let wireTimestamp: UInt32 = 1_703_666_666
+    let dto = MessageDTO.testChannelMessage(
+      radioID: device.id,
+      channelIndex: 3,
+      timestamp: wireTimestamp,
+      direction: .incoming,
+      status: .delivered
+    )
+    try await store.saveMessage(dto)
+
+    try await store.batchUpdateChannelMessageRegion(
+      radioID: device.id,
+      updates: [(
+        channelIndex: 3,
+        senderTimestamp: wireTimestamp,
+        regionScope: nil,
+        regionScopeMatches: ["First", "Second"]
+      )]
+    )
+
+    let saved = try #require(try await store.fetchMessages(radioID: device.id, channelIndex: 3).first)
+    #expect(saved.regionScope == nil)
+    #expect(Set(saved.regionScopeMatches) == Set(["First", "Second"]))
   }
 
   @Test
@@ -2411,7 +3048,7 @@ struct PersistenceStoreTests {
 
     try await store.batchUpdateChannelMessageRegion(
       radioID: device.id,
-      updates: [(channelIndex: 2, senderTimestamp: wireTimestamp, regionScope: "France")]
+      updates: [(channelIndex: 2, senderTimestamp: wireTimestamp, regionScope: "France", regionScopeMatches: ["France"])]
     )
 
     let saved = try await store.fetchMessages(radioID: device.id, channelIndex: 2)
@@ -2439,11 +3076,12 @@ struct PersistenceStoreTests {
 
     try await store.batchUpdateDMMessageRegion(
       radioID: device.id,
-      updates: [(senderPrefixByte: 0xAB, senderTimestamp: wireTimestamp, regionScope: "Germany")]
+      updates: [(senderPrefixByte: 0xAB, senderTimestamp: wireTimestamp, regionScope: "Germany", regionScopeMatches: ["Germany"])]
     )
 
     let saved = try await store.fetchMessages(contactID: contactID)
     #expect(saved.first?.regionScope == "Germany")
+    #expect(saved.first?.regionScopeMatches == ["Germany"])
   }
 
   @Test
@@ -2481,7 +3119,7 @@ struct PersistenceStoreTests {
 
     try await store.batchUpdateDMMessageRegion(
       radioID: device.id,
-      updates: [(senderPrefixByte: 0xAA, senderTimestamp: wireTimestamp, regionScope: "Germany")]
+      updates: [(senderPrefixByte: 0xAA, senderTimestamp: wireTimestamp, regionScope: "Germany", regionScopeMatches: ["Germany"])]
     )
 
     let aliceSaved = try await store.fetchMessages(contactID: aliceContact)

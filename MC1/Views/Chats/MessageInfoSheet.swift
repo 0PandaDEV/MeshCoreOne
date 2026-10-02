@@ -16,11 +16,9 @@ struct MessageInfoSheet: View {
 
   /// Owned per presentation so loading state never bleeds between opens.
   @State private var pathViewModel = MessagePathViewModel()
-  @State private var showPathMap = false
-  @State private var isLoading = true
-  @State private var contacts: [ContactDTO] = []
-  @State private var discoveredNodes: [DiscoveredNodeDTO] = []
+  @State private var isDetailExpanded = true
   @State private var repeats: [MessageRepeatDTO]?
+  @State private var errorMessage: String?
 
   private var availability: MessageActionAvailability {
     MessageActionAvailability(message: message)
@@ -37,8 +35,16 @@ struct MessageInfoSheet: View {
           }
         }
 
-        if availability.canViewPath || availability.canShowRepeatDetails {
-          pathSection
+        if availability.showsPathDetail {
+          Section {
+            MessagePathDetailBlock(
+              message: message,
+              arrivals: arrivals,
+              pathViewModel: pathViewModel,
+              isDetailExpanded: $isDetailExpanded
+            )
+            .listRowInsets(EdgeInsets())
+          }
         }
       }
       .navigationTitle(L10n.Chats.Chats.Message.Action.details)
@@ -46,13 +52,6 @@ struct MessageInfoSheet: View {
       .toolbar {
         ToolbarItem(placement: .confirmationAction) {
           Button(L10n.Localizable.Common.done) { dismiss() }
-        }
-        if availability.canViewPath {
-          ToolbarItem(placement: .topBarLeading) {
-            Button(L10n.Chats.Chats.Path.map, systemImage: "map") {
-              showPathMap = true
-            }
-          }
         }
       }
     }
@@ -62,21 +61,43 @@ struct MessageInfoSheet: View {
     .presentationDetents([.medium, .large], selection: $detent)
     .presentationContentInteraction(.scrolls)
     .presentationBackground(.background)
-    .sheet(isPresented: $showPathMap) {
-      MessagePathMapView(message: message, pathViewModel: pathViewModel)
-    }
-    .task(id: message.id) {
-      isLoading = true
-      guard let services = appState.services else { isLoading = false; return }
-      if availability.canShowRepeatDetails {
-        contacts = (try? await services.dataStore.fetchContacts(radioID: message.radioID)) ?? []
-        discoveredNodes = (try? await services.dataStore.fetchDiscoveredNodes(radioID: message.radioID)) ?? []
-        repeats = await services.heardRepeatsService.refreshRepeats(for: message.id)
-      } else if availability.canViewPath {
-        await pathViewModel.loadContacts(dataStore: appState.offlineDataStore, radioID: message.radioID)
+    .errorAlert($errorMessage, retryAction: { Task { await loadPathExtras() } })
+    .task(id: message.id) { await loadPathExtras() }
+  }
+
+  private var arrivals: [MessagePathArrival] {
+    MessagePathArrivals.assemble(message: message, repeats: repeats ?? [])
+  }
+
+  private var incomingArrivalCount: Int {
+    repeats == nil
+      ? max(arrivals.count, MessagePathArrivals.arrivalCount(for: message))
+      : arrivals.count
+  }
+
+  /// Process-lifetime store so extras survive disconnect; ServiceContainer
+  /// is torn down on disconnect and must not be the read path.
+  private func loadPathExtras() async {
+    guard availability.showsPathDetail else { return }
+    do {
+      async let loadedContacts: Void = pathViewModel.loadContacts(
+        dataStore: appState.offlineDataStore,
+        radioID: message.radioID
+      )
+      guard let store = appState.offlineDataStore else {
+        repeats = []
+        errorMessage = L10n.Chats.Chats.Path.extrasLoadFailed
+        await loadedContacts
+        return
       }
-      guard !Task.isCancelled else { return }
-      isLoading = false
+      let fetched = try await store.fetchMessageRepeats(messageID: message.id)
+      repeats = fetched
+      await loadedContacts
+    } catch is CancellationError {
+      return
+    } catch {
+      repeats = []
+      errorMessage = L10n.Chats.Chats.Path.extrasLoadFailed
     }
   }
 
@@ -97,20 +118,28 @@ struct MessageInfoSheet: View {
 
   @ViewBuilder
   private var incomingRows: some View {
-    Text(L10n.Chats.Chats.Message.Info.hops(
+    let hopsText = L10n.Chats.Chats.Message.Info.hops(
       message.isDirectRouted ? L10n.Chats.Chats.Message.Hops.direct : "\(message.hopCount)"
-    ))
+    )
+    Text(incomingArrivalCount > 1 ? "\(hopsText) · \(L10n.Chats.Chats.Path.Arrival.first)" : hopsText)
     if let hashSize = message.pathHashSizeIfKnown {
       Text(L10n.Chats.Chats.Message.Info.pathHash(hashSize))
     }
     if let snr = message.snr {
-      Text(L10n.Chats.Chats.Message.Info.snr(
+      let snrText = L10n.Chats.Chats.Message.Info.snr(
         "\(snr.formatted(.number.precision(.fractionLength(1)))) dB (\(SNRQuality(snr: snr).localizedLabel))"
-      ))
+      )
+      Text(incomingArrivalCount > 1 ? "\(snrText) · \(L10n.Chats.Chats.Path.Arrival.first)" : snrText)
     }
     if message.routeType == .tcFlood {
-      Text(message.regionScope.map { L10n.Chats.Chats.Message.Info.floodedUnder($0) }
-        ?? L10n.Chats.Chats.Message.Info.regionUnresolved)
+      switch RegionScopeSemantics.coalesce(scope: message.regionScope, matches: message.regionScopeMatches) {
+      case .none:
+        Text(L10n.Chats.Chats.Message.Info.regionUnresolved)
+      case let .unique(name):
+        Text(L10n.Chats.Chats.Message.Info.floodedUnder(name))
+      case let .ambiguous(names):
+        Text(L10n.Chats.Chats.Message.Info.regionAmbiguous(ListFormatter.localizedString(byJoining: names)))
+      }
     }
     Text(L10n.Chats.Chats.Message.Info.sent(
       message.senderDate.formatted(date: .abbreviated, time: .standard))
@@ -121,30 +150,5 @@ struct MessageInfoSheet: View {
     }
     Text(L10n.Chats.Chats.Message.Info.received(
       message.createdAt.formatted(date: .abbreviated, time: .standard)))
-  }
-
-  @ViewBuilder
-  private var pathSection: some View {
-    if isLoading {
-      Section { ProgressView().frame(maxWidth: .infinity) }
-    } else if availability.canShowRepeatDetails {
-      Section(L10n.Chats.Chats.Message.Action.repeatDetails) {
-        RepeatDetailsContent(
-          repeats: repeats,
-          contacts: contacts,
-          discoveredNodes: discoveredNodes,
-          userLocation: appState.bestAvailableLocation
-        )
-      }
-    } else if availability.canViewPath {
-      Section(L10n.Chats.Chats.Message.Action.viewPath) {
-        MessagePathContent(
-          message: message,
-          viewModel: pathViewModel,
-          receiverName: appState.connectedDevice?.nodeName ?? L10n.Chats.Chats.Path.Receiver.you,
-          userLocation: appState.bestAvailableLocation
-        )
-      }
-    }
   }
 }

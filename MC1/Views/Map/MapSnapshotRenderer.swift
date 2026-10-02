@@ -23,8 +23,12 @@ final class MapSnapshotRenderer: MapSnapshotRendering {
       center: coordinate,
       span: MKCoordinateSpan(latitudeDelta: Self.singlePointSpanDelta, longitudeDelta: Self.singlePointSpanDelta)
     )
-    let sprite = Self.pinSprite(for: .droppedPin)
-    let options = Self.makeOptions(region: region, isDark: request.isDark)
+    let sprite = Self.pinSprite(style: .droppedPin, hopIndex: nil)
+    let options = Self.makeOptions(
+      region: region,
+      size: CGSize(width: MapSnapshotLayout.width, height: MapSnapshotLayout.height),
+      isDark: request.isDark
+    )
 
     return await start(MKMapSnapshotter(options: options)) { snapshot in
       UIGraphicsImageRenderer(size: snapshot.image.size).image { _ in
@@ -34,27 +38,39 @@ final class MapSnapshotRenderer: MapSnapshotRendering {
     }
   }
 
-  /// Renders a static thumbnail of a plotted location path: the polyline plus its
-  /// pins, framed to the path's bounding region. A single-point path falls back
-  /// to the standard centered single-pin render.
-  func render(points: [MapPoint], line: MapLine?, isDark: Bool, isOffline: Bool) async -> UIImage? {
+  private static let minimumSnapshotDimension: CGFloat = 1
+
+  /// Path thumbnail (polyline + pins). `region` frames when set; otherwise a
+  /// multi-point path uses its bounding region and a single point uses chat-card zoom.
+  func render(
+    points: [MapPoint],
+    line: MapLine?,
+    region: MKCoordinateRegion?,
+    size: CGSize,
+    isDark: Bool,
+    isOffline: Bool
+  ) async -> UIImage? {
+    guard size.width >= Self.minimumSnapshotDimension,
+          size.height >= Self.minimumSnapshotDimension else { return nil }
     guard let first = points.first else { return nil }
     let coordinates = points.map(\.coordinate)
-    guard coordinates.count > 1, let region = coordinates.boundingRegion() else {
-      return await render(MapSnapshotRequest(
-        latitude: first.coordinate.latitude,
-        longitude: first.coordinate.longitude,
-        isDark: isDark,
-        isOffline: isOffline
-      ))
+    let framing: MKCoordinateRegion = if let region {
+      region
+    } else if coordinates.count > 1, let bounding = coordinates.boundingRegion() {
+      bounding
+    } else {
+      MKCoordinateRegion(
+        center: first.coordinate,
+        span: MKCoordinateSpan(latitudeDelta: Self.singlePointSpanDelta, longitudeDelta: Self.singlePointSpanDelta)
+      )
     }
 
     let pins = points.map { point in
-      (coordinate: point.coordinate, sprite: Self.pinSprite(for: point.pinStyle))
+      (coordinate: point.coordinate, sprite: Self.pinSprite(for: point))
     }
     let lineCoordinates = line.map(\.coordinates)
     let casingColor = UIColor.white.withAlphaComponent(Self.pathCasingOpacity)
-    let options = Self.makeOptions(region: region, isDark: isDark)
+    let options = Self.makeOptions(region: framing, size: size, isDark: isDark)
 
     return await start(MKMapSnapshotter(options: options)) { snapshot in
       UIGraphicsImageRenderer(size: snapshot.image.size).image { context in
@@ -85,10 +101,10 @@ final class MapSnapshotRenderer: MapSnapshotRendering {
 
   // MARK: - Snapshotting
 
-  private static func makeOptions(region: MKCoordinateRegion, isDark: Bool) -> MKMapSnapshotter.Options {
+  private static func makeOptions(region: MKCoordinateRegion, size: CGSize, isDark: Bool) -> MKMapSnapshotter.Options {
     let options = MKMapSnapshotter.Options()
     options.region = region
-    options.size = CGSize(width: MapSnapshotLayout.width, height: MapSnapshotLayout.height)
+    options.size = size
     options.mapType = .standard
     options.showsBuildings = false
     options.traitCollection = UITraitCollection(userInterfaceStyle: isDark ? .dark : .light)
@@ -123,12 +139,18 @@ final class MapSnapshotRenderer: MapSnapshotRendering {
   /// Rasterizes the same SwiftUI pin view the live map uses, so a snapshot
   /// thumbnail's pin always matches the live map's — one rendering path
   /// instead of two kept manually in sync.
-  private static func pinSprite(for style: MapPoint.PinStyle) -> UIImage {
+  private static func pinSprite(for point: MapPoint) -> UIImage {
+    pinSprite(style: point.pinStyle, hopIndex: point.hopIndex)
+  }
+
+  private static func pinSprite(style: MapPoint.PinStyle, hopIndex: Int?) -> UIImage {
     let resolvedStyle: MapPoint.PinStyle = switch style {
-    case .pointA, .pointB: style
+    case .pointA, .pointB, .repeaterHop: style
     default: .droppedPin
     }
-    let renderer = ImageRenderer(content: MapPinView(style: resolvedStyle, hopIndex: nil, isDarkMode: false))
+    let renderer = ImageRenderer(
+      content: MapPinView(style: resolvedStyle, hopIndex: hopIndex, isDarkMode: false)
+    )
     renderer.scale = UIScreen.main.scale
     return renderer.uiImage ?? UIImage()
   }

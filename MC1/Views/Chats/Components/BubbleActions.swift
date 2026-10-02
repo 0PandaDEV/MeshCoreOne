@@ -19,7 +19,6 @@ import UIKit
 @MainActor
 struct BubbleActions {
   let onRetryMessage: (MessageDTO) -> Void
-  let onReaction: (String, MessageDTO) -> Void
   /// Builds the native context-menu content for a message, attached to its bubble.
   let makeActionsMenu: (MessageDTO) -> AnyView
   let onImageTap: (MessageDTO) -> Void
@@ -32,4 +31,5 @@ struct BubbleActions {
   let snapshotResolver: (MapSnapshotRequest) -> UIImage?
   let requestSnapshot: (MapSnapshotRequest) -> Void
   let retrySnapshot: (MapSnapshotRequest) -> Void
+  let onTranslationAction: (UUID) -> Void
 }

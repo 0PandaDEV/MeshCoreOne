@@ -120,14 +120,23 @@ public extension PersistenceStore {
     try modelContext.save()
   }
 
-  /// Clean up duplicate remote node sessions with the same public key.
-  /// Keeps the session with the specified ID and deletes any others.
-  /// This prevents stale sessions from causing connection state issues.
+  /// Deletes extra sessions that share `publicKey` with `keepID` on `keepID`'s radio.
+  /// Another radio's session for the same node is a separate partition.
   func cleanupDuplicateRemoteNodeSessions(publicKey: Data, keepID: UUID) throws {
-    let targetKey = publicKey
     let targetKeepID = keepID
+    let keepPredicate = #Predicate<RemoteNodeSession> { session in
+      session.id == targetKeepID
+    }
+    var keepDescriptor = FetchDescriptor(predicate: keepPredicate)
+    keepDescriptor.fetchLimit = 1
+    guard let kept = try modelContext.fetch(keepDescriptor).first else { return }
+
+    let targetKey = publicKey
+    let targetRadioID = kept.radioID
     let predicate = #Predicate<RemoteNodeSession> { session in
-      session.publicKey == targetKey && session.id != targetKeepID
+      session.publicKey == targetKey
+        && session.id != targetKeepID
+        && session.radioID == targetRadioID
     }
     let duplicates = try modelContext.fetch(FetchDescriptor(predicate: predicate))
 
@@ -290,6 +299,9 @@ public extension PersistenceStore {
     guard let message = try modelContext.fetch(descriptor).first else {
       return
     }
+    if status == .failed, message.status != .failed {
+      message.failureSeen = false
+    }
     message.statusRawValue = status.rawValue
     if let ackCode {
       message.ackCode = ackCode
@@ -315,6 +327,9 @@ public extension PersistenceStore {
     descriptor.fetchLimit = 1
     guard let message = try modelContext.fetch(descriptor).first else {
       return
+    }
+    if status == .failed, message.status != .failed {
+      message.failureSeen = false
     }
     message.statusRawValue = status.rawValue
     message.retryAttempt = retryAttempt

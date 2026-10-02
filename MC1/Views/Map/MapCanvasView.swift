@@ -7,6 +7,7 @@ struct MapCanvasView: View {
   @Bindable var viewModel: MapViewModel
   @Binding var mapStyleSelection: MapStyleSelection
   @Binding var showLabels: Bool
+  @Binding var clusteringEnabled: Bool
   @Binding var isNorthLocked: Bool
   @Binding var selectedCallout: MapCalloutSelection?
   @Binding var selectedPointScreenPosition: CGPoint?
@@ -29,6 +30,7 @@ struct MapCanvasView: View {
         viewModel: viewModel,
         mapStyleSelection: mapStyleSelection,
         showLabels: showLabels,
+        clusteringEnabled: clusteringEnabled,
         isNorthLocked: isNorthLocked,
         selectedCallout: $selectedCallout,
         selectedPointScreenPosition: $selectedPointScreenPosition,
@@ -49,6 +51,7 @@ struct MapCanvasView: View {
         MapCanvasControls(
           isNorthLocked: $isNorthLocked,
           showLabels: $showLabels,
+          clusteringEnabled: $clusteringEnabled,
           mapStyleSelection: $mapStyleSelection,
           isCenteredOnUser: isCenteredOnUser,
           centerAllEmpty: !viewModel.hasPinsForCenterAll,
@@ -72,6 +75,7 @@ struct MapCanvasView: View {
 private struct MapCanvasControls: View {
   @Binding var isNorthLocked: Bool
   @Binding var showLabels: Bool
+  @Binding var clusteringEnabled: Bool
   @Binding var mapStyleSelection: MapStyleSelection
   let isCenteredOnUser: Bool
   let centerAllEmpty: Bool
@@ -88,6 +92,7 @@ private struct MapCanvasControls: View {
         isCenteredOnUser: isCenteredOnUser,
         isNorthLocked: $isNorthLocked,
         showLabels: $showLabels,
+        clusteringEnabled: $clusteringEnabled,
         mapStyleSelection: $mapStyleSelection,
         filter: filter
       ) {

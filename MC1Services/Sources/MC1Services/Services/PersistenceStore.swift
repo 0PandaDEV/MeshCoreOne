@@ -32,13 +32,72 @@ extension PersistenceStoreError: LocalizedError {
 
 // MARK: - PersistenceStore Actor
 
+/// `DefaultSerialModelExecutor` runs jobs on the caller's thread, so a
+/// main-actor caller would run SwiftData work on the main thread.  This runs
+/// the actor and owns its `ModelContext` on a dedicated queue instead.
+private final class StoreExecutor: SerialModelExecutor, @unchecked Sendable {
+  let modelContext: ModelContext
+  private let queue: DispatchSerialQueue
+
+  init(container: ModelContainer) {
+    let queue = DispatchSerialQueue(label: "PersistenceStore")
+    modelContext = queue.sync { ModelContext(container) }
+    self.queue = queue
+  }
+
+  func enqueue(_ job: consuming ExecutorJob) {
+    queue.enqueue(job)
+  }
+
+  func asUnownedSerialExecutor() -> UnownedSerialExecutor {
+    queue.asUnownedSerialExecutor()
+  }
+}
+
 /// ModelActor for background SwiftData operations.
 /// Provides per-device data isolation and thread-safe access.
-@ModelActor
-public actor PersistenceStore: PersistenceStoreProtocol {
+public actor PersistenceStore: ModelActor, PersistenceStoreProtocol {
+  public nonisolated let modelExecutor: any ModelExecutor
+  public nonisolated let modelContainer: ModelContainer
+
+  public init(modelContainer: ModelContainer) {
+    modelExecutor = StoreExecutor(container: modelContainer)
+    self.modelContainer = modelContainer
+  }
+
   var rxLogEntryCountsByDevice: [UUID: Int] = [:]
+  var unsavedRxLogInsertCount = 0
+  var rxLogFlushTask: Task<Void, Never>?
+
+  func commitPendingRxLogEntries() throws {
+    rxLogFlushTask?.cancel()
+    rxLogFlushTask = nil
+    guard unsavedRxLogInsertCount > 0 else { return }
+    try modelContext.save()
+    #if DEBUG
+      rxLogInitiatedSaveCount += 1
+    #endif
+    unsavedRxLogInsertCount = 0
+    for radioID in Array(rxLogEntryCountsByDevice.keys) {
+      try pruneRxLogEntries(radioID: radioID)
+    }
+  }
 
   #if DEBUG
+    /// Inserts since the last RxLog-initiated `modelContext.save()`. Does not
+    /// count piggyback saves from other store APIs.
+    var rxLogInitiatedSaveCount = 0
+
+    /// Test-only hook fired immediately before `modelContext.save()` in `batchSaveChannels`.
+    var batchSaveChannelsFaultInjection: (@Sendable () throws -> Void)?
+
+    /// Test-only hook fired immediately before `modelContext.save()` in
+    /// `deleteMessagesForChannel`.
+    var deleteMessagesForChannelFaultInjection: (@Sendable () throws -> Void)?
+
+    /// Test-only hook fired immediately before `modelContext.save()` in `deleteContacts`.
+    var deleteContactsFaultInjection: (@Sendable () throws -> Void)?
+
     /// Test-only fault-injection hook fired immediately before `modelContext.save()`
     /// in `importBackupDatabase`. Debug-only so the production API stays clean.
     /// SwiftData upserts on unique-constraint conflicts, so there is no reliable
@@ -56,6 +115,13 @@ public actor PersistenceStore: PersistenceStoreProtocol {
     /// closures — a real SwiftData save failure here is otherwise hard to
     /// provoke from a well-formed row.
     var incrementPendingSendAttemptCountFaultInjection: (@Sendable () throws -> Void)?
+
+    /// Test-only hook at the top of `fetchDevice(id:)`. The pairing query skips that id on throw.
+    var fetchDeviceByIDFaultInjection: (@Sendable () throws -> Void)?
+
+    func setDeleteContactsFaultInjection(_ hook: (@Sendable () throws -> Void)?) {
+      deleteContactsFaultInjection = hook
+    }
   #endif
 
   /// Shared schema for MeshCore One models
@@ -82,8 +148,9 @@ public actor PersistenceStore: PersistenceStoreProtocol {
   /// Creates a ModelContainer for the app.
   ///
   /// Schema evolution (no VersionedSchema — handled via lightweight migration):
-  /// - v1→v2: Contact.outPathLength, DiscoveredNode.outPathLength changed Int8→UInt8
-  ///          (SQLite INTEGER is identical for both; bit pattern -1 == 0xFF).
+  /// - v1→v2: Contact.outPathLength, DiscoveredNode.outPathLength changed Int8→UInt8.
+  ///          SQLite INTEGER is identical; leftover Int8 flood sentinels (-1)
+  ///          still trap UInt8 fetch (SwiftData value-preserves, not bit-cast).
   ///          Added MessageRepeat.pathLength (UInt8, default 0).
   ///          Added SavedTracePath.hashSize (Int, default 1).
   /// - v2→v3: Added PendingSend (new table; no migration impact on existing rows).
@@ -96,6 +163,10 @@ public actor PersistenceStore: PersistenceStoreProtocol {
   ///          index.
   /// - v5→v6: Added Contact.avatarImageData (Data?, default nil) storing a
   ///          user-picked profile picture as a compressed JPEG blob.
+  /// - v6→v7: DiscoveredNode.outPathLength changed UInt8→Int so leftover -1
+  ///          rows fetch. DTO still exposes UInt8 via truncatingIfNeeded.
+  /// - v7→v8: Contact.outPathLength changed UInt8→Int for the same leftover
+  ///          Int8 flood sentinel. DTO still exposes UInt8 via truncatingIfNeeded.
   public static func createContainer(inMemory: Bool = false) throws -> ModelContainer {
     if !inMemory {
       let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -180,7 +251,7 @@ public actor PersistenceStore: PersistenceStoreProtocol {
       existingNode.lastAdvertTimestamp = frame.lastAdvertTimestamp
       existingNode.latitude = frame.latitude
       existingNode.longitude = frame.longitude
-      existingNode.outPathLength = frame.outPathLength
+      existingNode.outPathLength = Int(frame.outPathLength)
       existingNode.outPath = frame.outPath
       node = existingNode
       isNew = false

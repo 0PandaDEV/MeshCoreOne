@@ -134,6 +134,7 @@ enum MessageFragmentBuilderFixtures {
       showIncomingPath: false,
       showIncomingHopCount: false,
       showIncomingRegion: false,
+      showIncomingHeardCount: false,
       showIncomingSendTime: false,
       previewsEnabled: false,
       isHighContrast: false,
@@ -142,7 +143,8 @@ enum MessageFragmentBuilderFixtures {
       isOffline: false,
       currentUserName: isOutgoing ? "Me" : "Sender",
       themeID: "default",
-      contentSizeCategory: EnvInputs.defaultContentSizeCategory
+      contentSizeCategory: EnvInputs.defaultContentSizeCategory,
+      preferredLanguageCode: EnvInputs.defaultPreferredLanguageCode
     )
   }
 }

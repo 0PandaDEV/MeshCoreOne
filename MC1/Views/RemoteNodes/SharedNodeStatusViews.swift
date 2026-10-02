@@ -4,11 +4,7 @@ import SwiftUI
 // MARK: - Status Header
 
 struct NodeStatusHeaderSection: View {
-  /// Clock drift below this magnitude is normal RTC scatter and not shown.
-  private static let clockDriftWarningThreshold: TimeInterval = 300
-
   let session: RemoteNodeSessionDTO
-  var clockDrift: TimeInterval?
 
   var body: some View {
     Section {
@@ -25,13 +21,6 @@ struct NodeStatusHeaderSection: View {
               .font(.subheadline)
               .foregroundStyle(.secondary)
           }
-
-          if let drift = clockDrift, abs(drift) >= Self.clockDriftWarningThreshold {
-            Label(clockDriftWarning(drift), systemImage: "clock.badge.exclamationmark")
-              .font(.footnote)
-              .foregroundStyle(.orange)
-              .multilineTextAlignment(.center)
-          }
         }
         Spacer()
       }
@@ -39,15 +28,6 @@ struct NodeStatusHeaderSection: View {
       .listRowInsets(EdgeInsets())
     }
     .listSectionSpacing(.compact)
-  }
-
-  private func clockDriftWarning(_ drift: TimeInterval) -> String {
-    let magnitude = Duration.seconds(abs(drift)).formatted(
-      .units(allowed: [.days, .hours, .minutes, .seconds], width: .abbreviated, maximumUnitCount: 2)
-    )
-    return drift > 0
-      ? L10n.RemoteNodes.RemoteNodes.Status.clockAhead(magnitude)
-      : L10n.RemoteNodes.RemoteNodes.Status.clockBehind(magnitude)
   }
 }
 
@@ -210,6 +190,7 @@ struct NodeMetricRow: View {
 struct NodeTelemetryRow: View {
   let dataPoint: LPPDataPoint
   let ocvArray: [Int]
+  var label: String?
 
   var body: some View {
     if dataPoint.type == .voltage, case let .float(voltage) = dataPoint.value {
@@ -217,7 +198,7 @@ struct NodeTelemetryRow: View {
       let battery = BatteryInfo(level: millivolts)
       let percentage = battery.percentage(using: ocvArray)
 
-      LabeledContent(dataPoint.type.localizedName) {
+      LabeledContent(label ?? dataPoint.type.localizedName) {
         VStack(alignment: .trailing, spacing: 2) {
           Text(dataPoint.formattedValue)
           Text("\(percentage)%")
@@ -226,9 +207,21 @@ struct NodeTelemetryRow: View {
         }
       }
     } else {
-      LabeledContent(dataPoint.type.localizedName, value: dataPoint.formattedValue)
+      LabeledContent(label ?? dataPoint.type.localizedName, value: dataPoint.formattedValue)
     }
   }
+}
+
+/// A second temperature on the same channel is MCU, matching `ChannelGroup`.
+/// `index` is the row's position in `points`; occurrence, not value equality.
+func telemetryLabel(for dataPoint: LPPDataPoint, at index: Int, in points: [LPPDataPoint]) -> String {
+  guard dataPoint.type == .temperature else { return dataPoint.type.localizedName }
+  let prior = points.prefix(index).filter {
+    $0.channel == dataPoint.channel && $0.type == .temperature
+  }.count
+  return prior == 0
+    ? L10n.RemoteNodes.RemoteNodes.Status.Sensor.temperature
+    : L10n.RemoteNodes.RemoteNodes.Status.Sensor.mcuTemperature
 }
 
 // MARK: - Battery Curve Disclosure Section
@@ -302,8 +295,12 @@ struct NodeTelemetryDisclosureSection: View {
           } else if helper.hasMultipleChannels {
             ForEach(helper.groupedDataPoints, id: \.channel) { group in
               Section {
-                ForEach(group.dataPoints, id: \.self) { dataPoint in
-                  NodeTelemetryRow(dataPoint: dataPoint, ocvArray: helper.ocvValues)
+                ForEach(Array(group.dataPoints.enumerated()), id: \.offset) { index, dataPoint in
+                  NodeTelemetryRow(
+                    dataPoint: dataPoint,
+                    ocvArray: helper.ocvValues,
+                    label: telemetryLabel(for: dataPoint, at: index, in: group.dataPoints)
+                  )
                 }
               } header: {
                 Text(L10n.RemoteNodes.RemoteNodes.Status.channel(Int(group.channel)))
@@ -311,8 +308,12 @@ struct NodeTelemetryDisclosureSection: View {
               }
             }
           } else {
-            ForEach(helper.cachedDataPoints, id: \.self) { dataPoint in
-              NodeTelemetryRow(dataPoint: dataPoint, ocvArray: helper.ocvValues)
+            ForEach(Array(helper.cachedDataPoints.enumerated()), id: \.offset) { index, dataPoint in
+              NodeTelemetryRow(
+                dataPoint: dataPoint,
+                ocvArray: helper.ocvValues,
+                label: telemetryLabel(for: dataPoint, at: index, in: helper.cachedDataPoints)
+              )
             }
           }
 

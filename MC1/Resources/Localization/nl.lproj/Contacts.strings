@@ -287,6 +287,30 @@
 /* Location: ContactDetailView.swift - Purpose: Error shown when the picked file is not a valid image */
 "contacts.detail.avatar.invalidImage" = "Dit bestand kan niet als profielfoto worden gebruikt.";
 
+/* Location: AvatarCropView.swift - Purpose: Crop screen navigation title */
+"contacts.detail.avatar.crop.title" = "Verplaatsen en schalen";
+
+/* Location: AvatarCropView.swift - Purpose: Crop screen confirm button */
+"contacts.detail.avatar.crop.choose" = "Kies";
+
+/* Location: AvatarCropView.swift - Purpose: VoiceOver label for the crop preview */
+"contacts.detail.avatar.crop.preview" = "Uitsnede van profielfoto";
+
+/* Location: AvatarCropView.swift - Purpose: VoiceOver hint for zoom and move */
+"contacts.detail.avatar.crop.previewHint" = "Veeg omhoog of omlaag om te zoomen. Gebruik de handelingen om de foto te verplaatsen.";
+
+/* Location: AvatarCropView.swift - Purpose: VoiceOver action that pans the photo up */
+"contacts.detail.avatar.crop.moveUp" = "Omhoog verplaatsen";
+
+/* Location: AvatarCropView.swift - Purpose: VoiceOver action that pans the photo down */
+"contacts.detail.avatar.crop.moveDown" = "Omlaag verplaatsen";
+
+/* Location: AvatarCropView.swift - Purpose: VoiceOver action that pans the photo left */
+"contacts.detail.avatar.crop.moveLeft" = "Naar links verplaatsen";
+
+/* Location: AvatarCropView.swift - Purpose: VoiceOver action that pans the photo right */
+"contacts.detail.avatar.crop.moveRight" = "Naar rechts verplaatsen";
+
 /* Location: ContactDetailView.swift - Purpose: Nickname label */
 "contacts.detail.nickname" = "Bijnaam";
 
@@ -440,6 +464,12 @@
 /* Location: AddContactSheet.swift - Purpose: Add button */
 "contacts.add.add" = "Toevoegen";
 
+/* Location: ContactAddConfirmationContent.swift - Purpose: Primary button when the scanned contact already exists */
+"contacts.add.view" = "View";
+
+/* Location: ContactAddConfirmationContent.swift - Purpose: VoiceOver label for View; %@ is the saved contact name */
+"contacts.add.viewAccessibility" = "View %@";
+
 /* Location: AddContactSheet.swift - Purpose: Scan QR button label */
 "contacts.add.scanQR" = "Scan QR-code";
 
@@ -466,6 +496,12 @@
 
 /* Location: AddContactSheet.swift - Purpose: Public key footer */
 "contacts.add.publicKeyFooter" = "Voer de %d-karakter hexadecimale publieke sleutel van het contact in";
+
+/* Location: ContactAddConfirmationContent.swift - Purpose: Footer when the scanned public key already matches a contact */
+"contacts.add.alreadyAdded" = "Already added";
+
+/* Location: ContactAddConfirmationContent.swift - Purpose: Caption when the QR name differs from the saved contact; %@ is the QR name */
+"contacts.add.scannedAs" = "Scanned as %@";
 
 /* Location: AddContactSheet.swift - Purpose: Not connected error */
 "contacts.add.error.notConnected" = "Niet verbonden met apparaat";
@@ -544,6 +580,12 @@
 /* Location: ScanContactQRView.swift - Purpose: Invalid public key error */
 /* Location: ScanContactQRView.swift - Purpose: Contact import failed, %@ is the error description */
 "contacts.scan.error.importFailed" = "Kan contact niet importeren: %@";
+
+/* Location: ScanContactQRView.swift - Purpose: Scan a different QR code */
+"contacts.scan.scanAgain" = "Scan Again";
+
+/* Location: ScanContactQRView.swift - Purpose: VoiceOver announcement after a node is added, %@ is the node name */
+"contacts.scan.accessibility.added" = "Added %@";
 
 // MARK: - Discovery View
 

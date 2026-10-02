@@ -19,8 +19,17 @@ struct ChatTiledView<Item: Identifiable & Hashable & Sendable, Content: View>: V
   @Binding var isAtBottom: Bool
   @Binding var unreadCount: Int
 
-  /// Bumped by callers to scroll to the visual bottom (e.g. on send).
+  /// Bumped by callers to pin the visual bottom. Honored only while `isAtBottom`
+  /// is already true; `ScrollToBottomButton` calls `scrollPosition.scrollTo` itself.
   var scrollToBottomRequest: Int = 0
+
+  /// Bumped to scroll to the bottom even when scrolled up. Conversation
+  /// views omit this and use `ScrollToBottomButton`; hosted tests bump it
+  /// because Liquid Glass is not hittable in a headless `UIWindow`.
+  var userScrollToBottomRequest: Int = 0
+
+  /// Returns whether an appended row raises the unread badge while scrolled up.
+  var countsTowardUnread: (Item) -> Bool = { _ in true }
 
   /// Bumped by callers to jump to `scrollTargetID` (mention / reply / deeplink / divider).
   var scrollToTargetRequest: Int = 0
@@ -39,6 +48,10 @@ struct ChatTiledView<Item: Identifiable & Hashable & Sendable, Content: View>: V
   /// later `.id` rebuild does not re-jump to it.
   var onInitialTargetConsumed: (() -> Void)?
 
+  /// Message heights kept across views, so a reopen skips measuring
+  /// unchanged items. Nil measures on each open.
+  var sizeCache: TiledSizeCache<Item>?
+
   @Environment(\.appTheme) private var appTheme
   @Environment(\.colorScheme) private var colorScheme
   @Environment(\.colorSchemeContrast) private var colorSchemeContrast
@@ -56,11 +69,14 @@ struct ChatTiledView<Item: Identifiable & Hashable & Sendable, Content: View>: V
     isAtBottom: Binding<Bool>,
     unreadCount: Binding<Int>,
     scrollToBottomRequest: Int = 0,
+    userScrollToBottomRequest: Int = 0,
+    countsTowardUnread: @escaping (Item) -> Bool = { _ in true },
     scrollToTargetRequest: Int = 0,
     scrollTargetID: Item.ID? = nil,
     initialScrollTargetID: Item.ID? = nil,
     onLoadOlder: (@MainActor @Sendable () async -> Void)? = nil,
-    onInitialTargetConsumed: (() -> Void)? = nil
+    onInitialTargetConsumed: (() -> Void)? = nil,
+    sizeCache: TiledSizeCache<Item>? = nil
   ) {
     self.items = items
     self.cellContent = cellContent
@@ -68,11 +84,14 @@ struct ChatTiledView<Item: Identifiable & Hashable & Sendable, Content: View>: V
     _isAtBottom = isAtBottom
     _unreadCount = unreadCount
     self.scrollToBottomRequest = scrollToBottomRequest
+    self.userScrollToBottomRequest = userScrollToBottomRequest
+    self.countsTowardUnread = countsTowardUnread
     self.scrollToTargetRequest = scrollToTargetRequest
     self.scrollTargetID = scrollTargetID
     self.initialScrollTargetID = initialScrollTargetID
     self.onLoadOlder = onLoadOlder
     self.onInitialTargetConsumed = onInitialTargetConsumed
+    self.sizeCache = sizeCache
     // Open at the bottom by default; with an initial target present, hold off
     // append-follow until the geometry callback re-derives it from the resting
     // position, so an append during open does not fight the target.
@@ -84,10 +103,13 @@ struct ChatTiledView<Item: Identifiable & Hashable & Sendable, Content: View>: V
 
   var body: some View {
     host.content = cellContent
+    // Cached heights are only valid for the appearance they were measured in.
+    sizeCache?.context = appearanceIdentity
 
     return TiledView(items: items, scrollPosition: $scrollPosition) { item in
       ChatTiledCell(item: item, host: host)
     }
+    .sizeCache(sizeCache)
     .prependLoader(onLoadOlder.map { load in
       .loader(perform: load) {
         ProgressView().padding(.vertical, 8)
@@ -112,18 +134,25 @@ struct ChatTiledView<Item: Identifiable & Hashable & Sendable, Content: View>: V
     .onDragIntoBottomSafeArea {
       UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
+    .softTopScrollEdgeEffect()
     .background(contentBackground ?? .clear)
     .id(appearanceIdentity)
     .overlay(alignment: .bottomTrailing) {
       ScrollToBottomButton(
         isVisible: !isAtBottom,
         unreadCount: unreadCount,
-        onTap: { scrollPosition.scrollTo(edge: .bottom) }
+        onTap: { scrollUserToBottom() }
       )
       .padding(.trailing, 16)
       .padding(.bottom, 8)
     }
-    .onChange(of: scrollToBottomRequest) { scrollPosition.scrollTo(edge: .bottom) }
+    .onChange(of: scrollToBottomRequest) {
+      guard isAtBottom else { return }
+      scrollPosition.scrollTo(edge: .bottom, animated: false)
+    }
+    .onChange(of: userScrollToBottomRequest) {
+      scrollUserToBottom()
+    }
     .onChange(of: scrollToTargetRequest) {
       guard let id = scrollTargetID else { return }
       scrollPosition.scrollTo(id: id)
@@ -132,9 +161,16 @@ struct ChatTiledView<Item: Identifiable & Hashable & Sendable, Content: View>: V
       defer { newestID = latest }
       guard !isAtBottom, let previous = newestID,
             let previousIndex = items.firstIndex(where: { $0.id == previous }) else { return }
-      let appended = items.count - 1 - previousIndex
-      if appended > 0 { unreadCount += appended }
+      let incoming = items.suffix(from: previousIndex + 1).filter(countsTowardUnread).count
+      if incoming > 0 { unreadCount += incoming }
     }
+  }
+
+  /// Unconditional jump to the visual bottom. Used by `ScrollToBottomButton`
+  /// and by `userScrollToBottomRequest`. Distinct from `scrollToBottomRequest`,
+  /// which must not yank a scrolled-up thread.
+  private func scrollUserToBottom() {
+    scrollPosition.scrollTo(edge: .bottom)
   }
 
   /// Fingerprint of theme + appearance. A change fully rebuilds the list (via `.id`) so the
@@ -147,5 +183,18 @@ struct ChatTiledView<Item: Identifiable & Hashable & Sendable, Content: View>: V
       dynamicTypeSize: dynamicTypeSize
     )
     return "\(appTheme.id)|\(appearance)"
+  }
+}
+
+private extension TiledView {
+  /// OS 27 defaults the top fade to hard. Soft keeps the progressive blur
+  /// under the conversation title capsule.
+  @ViewBuilder
+  consuming func softTopScrollEdgeEffect() -> some View {
+    if #available(iOS 26.0, *) {
+      scrollEdgeEffectStyle(.soft, for: .top)
+    } else {
+      self
+    }
   }
 }

@@ -9,6 +9,7 @@ struct MapContentView: View {
   @Bindable var viewModel: MapViewModel
   let mapStyleSelection: MapStyleSelection
   let showLabels: Bool
+  let clusteringEnabled: Bool
   let isNorthLocked: Bool
   @Binding var selectedCallout: MapCalloutSelection?
   @Binding var selectedPointScreenPosition: CGPoint?
@@ -48,6 +49,7 @@ struct MapContentView: View {
       mapStyle: mapStyleSelection,
       isDarkMode: mapIsDark,
       showLabels: showLabels,
+      clusteringEnabled: clusteringEnabled,
       showsUserLocation: true,
       isInteractive: true,
       showsScale: true,

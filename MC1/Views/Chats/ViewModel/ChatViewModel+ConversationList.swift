@@ -34,10 +34,25 @@ extension ChatViewModel {
     }
   }
 
-  /// Toggles between muted and all (for swipe action)
+  /// Live row for `id` from the fetch buffers.
+  /// Swipe chrome keeps the value from first reveal, so toggles must not use that snapshot.
+  func liveConversation(id: UUID) -> Conversation? {
+    if let contact = conversations.first(where: { $0.id == id }) {
+      return .direct(contact)
+    }
+    if let channel = channels.first(where: { $0.id == id }) {
+      return .channel(channel)
+    }
+    if let session = roomSessions.first(where: { $0.id == id }) {
+      return .room(session)
+    }
+    return nil
+  }
+
   func toggleMute(_ conversation: Conversation) async {
-    let newLevel: NotificationLevel = conversation.isMuted ? .all : .muted
-    await setNotificationLevel(conversation, level: newLevel)
+    guard let current = liveConversation(id: conversation.id) else { return }
+    let newLevel: NotificationLevel = current.isMuted ? .all : .muted
+    await setNotificationLevel(current, level: newLevel)
   }
 
   /// Updates the notification level in the local conversations array
@@ -55,10 +70,11 @@ extension ChatViewModel {
   /// Sets favorite state for a conversation with optimistic UI update
   func setFavorite(_ conversation: Conversation, isFavorite: Bool) async {
     guard connectionStateProvider() == .ready else { return }
-    guard conversation.isFavorite != isFavorite else { return }
+    guard let current = liveConversation(id: conversation.id) else { return }
+    guard current.isFavorite != isFavorite else { return }
 
     // Reuse existing toggle logic
-    await toggleFavorite(conversation)
+    await toggleFavorite(current)
   }
 
   /// Toggles favorite state for a conversation.
@@ -73,10 +89,11 @@ extension ChatViewModel {
   ///     conflicts with swipe action dismissal animations
   func toggleFavorite(_ conversation: Conversation, disableAnimation: Bool = false) async {
     guard connectionStateProvider() == .ready else { return }
-    let originalState = conversation.isFavorite
+    guard let current = liveConversation(id: conversation.id) else { return }
+    let originalState = current.isFavorite
     let newState = !originalState
 
-    switch conversation {
+    switch current {
     case let .direct(contact):
       // Contacts sync with device - wait for confirmation
       togglingFavoriteID = contact.id
@@ -85,32 +102,32 @@ extension ChatViewModel {
       do {
         try await contactService?.setContactFavorite(contact.id, isFavorite: newState)
         // Device confirmed - update local UI
-        applyFavoriteUpdate(conversation, isFavorite: newState, disableAnimation: disableAnimation)
+        applyFavoriteUpdate(current, isFavorite: newState, disableAnimation: disableAnimation)
       } catch {
         logger.error("Failed to toggle contact favorite: \(error)")
       }
 
     case let .channel(channel):
       // Channels are app-only - optimistic update
-      applyFavoriteUpdate(conversation, isFavorite: newState, disableAnimation: disableAnimation)
+      applyFavoriteUpdate(current, isFavorite: newState, disableAnimation: disableAnimation)
 
       do {
         try await dataStore?.setChannelFavorite(channel.id, isFavorite: newState)
       } catch {
         // Rollback on failure
-        applyFavoriteUpdate(conversation, isFavorite: originalState, disableAnimation: disableAnimation)
+        applyFavoriteUpdate(current, isFavorite: originalState, disableAnimation: disableAnimation)
         logger.error("Failed to toggle channel favorite: \(error)")
       }
 
     case let .room(session):
       // Rooms are app-only - optimistic update
-      applyFavoriteUpdate(conversation, isFavorite: newState, disableAnimation: disableAnimation)
+      applyFavoriteUpdate(current, isFavorite: newState, disableAnimation: disableAnimation)
 
       do {
         try await dataStore?.setSessionFavorite(session.id, isFavorite: newState)
       } catch {
         // Rollback on failure
-        applyFavoriteUpdate(conversation, isFavorite: originalState, disableAnimation: disableAnimation)
+        applyFavoriteUpdate(current, isFavorite: originalState, disableAnimation: disableAnimation)
         logger.error("Failed to toggle room favorite: \(error)")
       }
     }
@@ -182,6 +199,9 @@ extension ChatViewModel {
     channelSenderOrder = [:]
     contactNameSet = []
     lastMessageCache = [:]
+    // Invalidates in-flight indicator refreshes; the list event task is not `reloadTask`.
+    failedSendRefreshGeneration &+= 1
+    failedSendConversationIDs = []
     recomputeSnapshot()
   }
 
@@ -320,6 +340,8 @@ extension ChatViewModel {
     // Skip the trailing preview load if this reload was superseded.
     if Task.isCancelled { return }
     await loadLastMessagePreviews()
+    if Task.isCancelled { return }
+    await refreshFailedSendIndicators()
   }
 
   // MARK: - Message Previews
@@ -389,6 +411,63 @@ extension ChatViewModel {
       } catch {
         logger.warning("Failed to load channel message previews: \(error)")
       }
+    }
+  }
+
+  // MARK: - Failed-send indicators
+
+  /// True when the conversation row for `id` should show the failed-send badge.
+  func conversationHasFailedSend(_ id: UUID) -> Bool {
+    failedSendConversationIDs.contains(id)
+  }
+
+  /// Replaces `failedSendConversationIDs` with the union of the store's list ids.
+  func applyFailedSendKeys(_ keys: FailedSendConversationKeys) {
+    failedSendConversationIDs = keys.contactIDs
+      .union(keys.channelIDs)
+      .union(keys.roomSessionIDs)
+  }
+
+  /// Re-runs the failed-send query and applies the keys. Does not reload
+  /// contacts, channels, or rooms.
+  func refreshFailedSendIndicators() async {
+    failedSendRefreshGeneration &+= 1
+    let generation = failedSendRefreshGeneration
+    guard let dataStore, let radioID = currentRadioIDProvider() else {
+      failedSendConversationIDs = []
+      return
+    }
+    do {
+      #if DEBUG
+        try failedSendRefreshFaultInjection?()
+      #endif
+      let keys = try await dataStore.fetchFailedSendConversationKeys(radioID: radioID)
+      #if DEBUG
+        await failedSendRefreshInterleaveHook?()
+      #endif
+      guard generation == failedSendRefreshGeneration, !Task.isCancelled else { return }
+      applyFailedSendKeys(keys)
+    } catch is CancellationError {
+      return
+    } catch {
+      guard generation == failedSendRefreshGeneration, !Task.isCancelled else { return }
+      logger.warning("Failed to load failed-send indicators: \(error)")
+    }
+  }
+
+  /// Whether a list `MessageEvent` should trigger `refreshFailedSendIndicators()`.
+  /// Status-resolved ACKs (DM and room) only requery when a badge is already
+  /// showing, so a retry success can drop it without hitting the store on every ACK.
+  func shouldRefreshFailedSendIndicators(for event: MessageEvent) -> Bool {
+    switch event {
+    case .messageFailed, .messageResent, .roomMessageFailed:
+      true
+    case .messageStatusResolved, .roomMessageStatusUpdated:
+      !failedSendConversationIDs.isEmpty
+    case .directMessageReceived, .channelMessageReceived, .roomMessageReceived,
+         .messageRetrying, .heardRepeatRecorded, .reactionReceived,
+         .messagesRegionUpdated, .routingChanged:
+      false
     }
   }
 }

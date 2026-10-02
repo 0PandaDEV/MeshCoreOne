@@ -10,7 +10,6 @@ import UIKit
 /// than reaching `MapSnapshotStore.shared` from the view body.
 struct MessageBubbleCallbacks {
   var onRetry: (() -> Void)?
-  var onReaction: ((String) -> Void)?
   /// Builds this message's native context-menu content, attached to the bubble
   /// via `.contextMenu`. Nil renders an empty (absent) menu.
   var makeActionsMenu: (() -> AnyView)?
@@ -22,4 +21,5 @@ struct MessageBubbleCallbacks {
   var snapshotResolver: ((MapSnapshotRequest) -> UIImage?)?
   var requestSnapshot: ((MapSnapshotRequest) -> Void)?
   var retrySnapshot: ((MapSnapshotRequest) -> Void)?
+  var onTranslationAction: (() -> Void)?
 }

@@ -18,13 +18,15 @@ public extension ConnectionManager {
   ///   `accessoryAdded` removes the bond immediately. The device is not registered
   ///   when this point is reached, so no cleanup needed here.
   /// - `waitForOtherAppReconnection` — checks `Task.isCancelled` at the top of
-  ///   each iteration and short-circuits to `false`. The subsequent
-  ///   `try await connect(to:)` then surfaces the cancellation via its
-  ///   entry-point `Task.checkCancellation()`.
+  ///   each iteration and short-circuits to `false`. A system-connected result
+  ///   proceeds to `connect(to:)` rather than throwing other-app. Cancellation
+  ///   is surfaced at `connect(to:)`'s entry-point `Task.checkCancellation()`.
   /// - `connect(to:)` — runs `Task.checkCancellation()` before any state mutation
   ///   so a cancelled task cannot drive a real BLE connect through to success.
-  ///   Propagates `CancellationError` normally; we catch it explicitly and
-  ///   re-throw without re-wrapping so the UI alert path stays quiet.
+  ///   Leftover GATT this app owns is adopted; while pairing, that path waits
+  ///   until `isOperational` or throws. Propagates `CancellationError` normally;
+  ///   we catch it explicitly and re-throw without re-wrapping so the UI alert
+  ///   path stays quiet.
   ///
   /// Hard quit: process death; defer doesn't fire; the in-memory flag resets to
   /// `false` on next launch. No persistent state corruption.
@@ -49,16 +51,17 @@ public extension ConnectionManager {
 
     await stopBLEScanning()
 
-    // Enumeration must follow activation: the system registry reads empty until the
-    // session is active. Sweeping strays before the picker keeps its confirmation
-    // dialogs in the context of the pairing the user just started.
+    // ASK's picker is empty until the session is active.
     try await pairing.activate()
-    await removeStrandedAssociations()
 
     let deviceID = try await pairing.discoverDevice()
 
+    // ASK has just associated this radio. A leftover system GATT link is ours
+    // (or the accessory we just set up); `connect(to:)` adopts or connects.
     if await waitForOtherAppReconnection(deviceID) {
-      throw PairingError.deviceConnectedToOtherApp(deviceID: deviceID)
+      logger.info(
+        "[OtherAppCheck] System-connected after pairing \(deviceID.uuidString.prefix(8)); connecting"
+      )
     }
 
     do {
@@ -92,46 +95,82 @@ public extension ConnectionManager {
   private func cleanupPartialPairing(deviceID: UUID) async {
     logger.info("Removing partially-paired device \(deviceID.uuidString.prefix(8)) from pairing registry")
     try? await pairing.removeDevice(deviceID)
+    reconnectionCoordinator.cancelTimeout()
+    reconnectionCoordinator.clearReconnectingDevice()
+    await transport.disconnect()
     // Defensive backstop — connectWithRetry and switchDevice both reset state
     // on throw, so this is normally a no-op. Kept so a future cancellation
     // path that lands here without doing so still leaves a clean UI.
     connectionState = .disconnected
   }
 
-  /// Sweeps system pairing associations that no longer map to a saved device, run once at
-  /// the start of each pairing attempt before the picker appears. A fresh pairing that failed
-  /// authentication leaves its association behind when the user declines the system removal
-  /// dialog, and iOS then hides it from the picker, so it can only be cleared here, while the
-  /// user is actively pairing. Saved radios (their `id` matches a `Device` row), demoted ghosts
-  /// (fresh random ids whose associations were already removed), and the live connection are
-  /// never touched. A removal may present a system confirmation the user can decline; a decline
-  /// or any other failure leaves that association in place and the flow proceeds to the picker
-  /// regardless. No-op on platforms without a system pairing registry.
-  private func removeStrandedAssociations() async {
-    guard pairing.hasSystemPairingRegistry else { return }
+  /// Pairing leftover-GATT wait. `.syncing` already has a session
+  /// (`promoteToReady(syncSucceeded: false)`); `.connected` is still rebuilding.
+  func waitForPairingAdoptionToSettle() async throws {
+    #if DEBUG
+      if let strategy = pairingAdoptionSettleStrategyOverride {
+        try await strategy()
+        return
+      }
+    #endif
 
+    let timeout: Duration
+    #if DEBUG
+      timeout = testPairingAdoptionSettleTimeout ?? Self.pairingAdoptionSettleTimeout
+    #else
+      timeout = Self.pairingAdoptionSettleTimeout
+    #endif
+    let deadline = ContinuousClock.now + timeout
+
+    while true {
+      try Task.checkCancellation()
+      if connectionState.isOperational {
+        guard services != nil else {
+          throw BLEError.connectionFailed(Self.pairingAdoptionMissingSessionDetail)
+        }
+        return
+      }
+      if connectionState == .disconnected {
+        throw BLEError.connectionFailed(Self.pairingAdoptionFailedDetail)
+      }
+      guard ContinuousClock.now < deadline else {
+        throw BLEError.connectionFailed(Self.pairingAdoptionTimedOutDetail)
+      }
+      try await Task.sleep(for: Self.pairingAdoptionSettlePollInterval)
+    }
+  }
+
+  /// ASK accessories with no `Device` row. Activates the pairing session first.
+  /// Omits saved radios, the live connection, and the in-flight attempt; a fetch throw skips that id.
+  func systemAccessoriesMissingDeviceRecord() async throws -> [(id: UUID, name: String)] {
+    guard pairing.hasSystemPairingRegistry else { return [] }
+    try await pairing.activate()
     var protectedIDs = Set<UUID>()
     if let connectedID = connectedDevice?.id { protectedIDs.insert(connectedID) }
     if let attemptID = activeConnectionAttemptDeviceID { protectedIDs.insert(attemptID) }
-
-    let dataStore = PersistenceStore(modelContainer: modelContainer)
-
+    var result: [(id: UUID, name: String)] = []
     for info in pairing.registeredDeviceInfos() where !protectedIDs.contains(info.id) {
-      let existingDevice: DeviceDTO?
+      let existing: DeviceDTO?
       do {
-        existingDevice = try await dataStore.fetchDevice(id: info.id)
+        existing = try await persistenceStore.fetchDevice(id: info.id)
       } catch {
-        logger.warning("Skipping association \(info.id.uuidString.prefix(8)); device lookup failed: \(error.localizedDescription)")
+        logger.warning(
+          "Skipping association \(info.id.uuidString.prefix(8)); device lookup failed: \(error.localizedDescription)"
+        )
         continue
       }
-      guard existingDevice == nil else { continue }
+      if existing == nil { result.append(info) }
+    }
+    return result
+  }
 
-      do {
-        try await pairing.removeDevice(info.id)
-        logger.info("Removed stranded pairing association \(info.id.uuidString.prefix(8)) with no device record")
-      } catch {
-        logger.warning("Failed to remove stranded association \(info.id.uuidString.prefix(8)): \(error.localizedDescription)")
-      }
+  /// Removes ASK accessories that still have no `Device` row, limited to `ids`.
+  /// A declined iOS confirmation throws `DevicePairingError.cancelled` and aborts the loop.
+  func removeSystemAccessoriesMissingDeviceRecord(_ ids: [UUID]) async throws {
+    guard pairing.hasSystemPairingRegistry else { return }
+    let allowed = try await Set(systemAccessoriesMissingDeviceRecord().map(\.id))
+    for id in ids where allowed.contains(id) {
+      try await pairing.removeDevice(id)
     }
   }
 
@@ -152,7 +191,7 @@ public extension ConnectionManager {
       logger.warning("Failed to remove from pairing registry: \(error.localizedDescription)")
     }
 
-    let dataStore = PersistenceStore(modelContainer: modelContainer)
+    let dataStore = persistenceStore
     try? await dataStore.demoteDeviceToGhost(id: deviceID)
 
     // Always clear this device's bond verification; store keys are holder-matched.
@@ -218,10 +257,10 @@ public extension ConnectionManager {
 
     logger.info("Forgetting device: \(deviceID), deleteData: \(deleteData)")
 
-    await disconnect(reason: .forgetDevice)
     try await pairing.removeDevice(deviceID)
+    await disconnect(reason: .forgetDevice)
 
-    let dataStore = PersistenceStore(modelContainer: modelContainer)
+    let dataStore = persistenceStore
     do {
       if deleteData {
         try await dataStore.deleteDeviceAndData(id: deviceID)
@@ -250,7 +289,7 @@ public extension ConnectionManager {
       logger.warning("Failed to remove device from pairing registry: \(error.localizedDescription)")
     }
 
-    let dataStore = PersistenceStore(modelContainer: modelContainer)
+    let dataStore = persistenceStore
     do {
       try await dataStore.deleteDeviceAndData(id: id)
     } catch {
@@ -272,7 +311,7 @@ public extension ConnectionManager {
       throw ConnectionError.notConnected
     }
 
-    let dataStore = PersistenceStore(modelContainer: modelContainer)
+    let dataStore = persistenceStore
     let allContacts = try await dataStore.fetchContacts(radioID: radioID)
     return allContacts.count(where: { !$0.isFavorite })
   }
@@ -314,7 +353,7 @@ public extension ConnectionManager {
       throw ConnectionError.notConnected
     }
 
-    let dataStore = PersistenceStore(modelContainer: modelContainer)
+    let dataStore = persistenceStore
     let allContacts = try await dataStore.fetchContacts(radioID: radioID)
     // Never bulk-remove the ZephCore V-contact: CMD_REMOVE turns firmware v.contact off.
     let selfPublicKey = connectedDevice?.publicKey
@@ -382,12 +421,26 @@ public extension ConnectionManager {
   /// Updates the connected device with new settings from SelfInfo.
   /// Called by SettingsService after device settings are successfully changed.
   /// Also persists to SwiftData so changes appear in Connect Device sheet.
-  func updateDevice(from selfInfo: MeshCore.SelfInfo) {
+  func updateDevice(from selfInfo: MeshCore.SelfInfo, appliedRadioPresetID: String?) {
     guard let device = connectedDevice else { return }
-    let updated = device.updating(from: selfInfo)
+    var updated = device.updating(from: selfInfo)
+    if let appliedRadioPresetID {
+      updated.appliedRadioPresetID = appliedRadioPresetID
+    } else if !device.clientRepeat {
+      // Drop a stale catalog id only when live RF no longer matches it. Repeat Mode
+      // keeps the id so restore can still paint the community name.
+      let matches = RadioPresets.matchingPresets(
+        frequencyKHz: updated.frequency,
+        bandwidthKHz: updated.bandwidth,
+        spreadingFactor: updated.spreadingFactor,
+        codingRate: updated.codingRate
+      )
+      if let current = updated.appliedRadioPresetID,
+         !matches.contains(where: { $0.id == current }) {
+        updated.appliedRadioPresetID = nil
+      }
+    }
     connectedDevice = updated
-
-    // Persist to SwiftData
     Task {
       try? await services?.dataStore.saveDevice(updated)
     }
@@ -531,23 +584,41 @@ public extension ConnectionManager {
   /// Available even when disconnected, for device selection UI.
   func fetchSavedDevices() async throws -> [DeviceDTO] {
     logger.info("fetchSavedDevices called, connectionState: \(String(describing: connectionState))")
-    let dataStore = PersistenceStore(modelContainer: modelContainer)
+    let dataStore = persistenceStore
     let devices = try await dataStore.fetchDevices()
     logger.info("fetchSavedDevices returning \(devices.count) devices")
     return devices
   }
 
-  /// Deletes a previously paired device record from storage.
-  /// Demotes to ghost record — preserves publicKey ↔ radioID bridge for data recovery on re-pair.
-  /// - Parameter id: The device UUID to demote
+  /// Forgets the system pairing registry entry (no-op if unregistered), then demotes the row to a ghost.
+  /// Declining iOS Remove Accessory throws `DevicePairingError.cancelled` and leaves the row listed.
+  /// - Parameter id: The device UUID to forget
   func deleteDevice(id: UUID) async throws {
     logger.info("deleteDevice called for device: \(id)")
-    let dataStore = PersistenceStore(modelContainer: modelContainer)
+
+    // Snapshot before removeDevice: ASK can drop BLE, then handleConnectionLoss
+    // nils connectedDevice while wantsConnection stays.
+    let shouldTearDownSession =
+      connectedDevice?.id == id || activeConnectionAttemptDeviceID == id
+    if shouldTearDownSession {
+      isPairingFlowActive = true
+    }
+    defer {
+      if shouldTearDownSession {
+        isPairingFlowActive = false
+      }
+    }
+
+    try await pairing.removeDevice(id)
+    if shouldTearDownSession {
+      await disconnect(reason: .forgetDevice)
+    }
+
+    let dataStore = persistenceStore
     try await dataStore.demoteDeviceToGhost(id: id)
 
     // Always clear this device's bond verification; store keys are holder-matched
-    // so removing a non-last-connected device still drops its shield and, when it
-    // is last-connected, still drops the auto-reconnect / onboarding-resume signal.
+    // so a non-last-connected delete still drops its shield.
     await clearPersistedConnection(for: id)
 
     logger.info("deleteDevice completed for device: \(id)")
@@ -594,8 +665,17 @@ extension ConnectionManager: DevicePairingDelegate {
         await disconnect(reason: .deviceRemovedFromSettings)
       }
 
-      // Demote to ghost — preserve publicKey ↔ radioID bridge
-      let dataStore = PersistenceStore(modelContainer: modelContainer)
+      // iOS can fire accessoryRemoved while session.accessories still lists the
+      // id. Ghosting then turns a still-authorized radio into a Set Up leftover
+      // that blocks Scan. Keep the Device row so Connect still works.
+      if pairing.isDeviceConnectable(bluetoothID) {
+        logger.info(
+          "ASK still lists \(bluetoothID.uuidString.prefix(8)) after removal; keeping Device row"
+        )
+        return
+      }
+
+      let dataStore = persistenceStore
       do {
         try await dataStore.demoteDeviceToGhost(id: bluetoothID)
       } catch {
@@ -621,7 +701,7 @@ extension ConnectionManager: DevicePairingDelegate {
       }
 
       // Delete device record only — no data exists for a failed pairing
-      let dataStore = PersistenceStore(modelContainer: modelContainer)
+      let dataStore = persistenceStore
       do {
         try await dataStore.deleteDevice(id: bluetoothID)
         logger.info("Deleted device record after failed pairing")

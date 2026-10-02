@@ -31,7 +31,6 @@ struct MessageBubbleView: View, Equatable {
         imageResolver: { ref in resolver.image(ref) },
         callbacks: MessageBubbleCallbacks(
           onRetry: { actions.onRetryMessage(message) },
-          onReaction: { emoji in actions.onReaction(emoji, message) },
           makeActionsMenu: { actions.makeActionsMenu(message) },
           onImageTap: { actions.onImageTap(message) },
           onRetryInlineImage: { actions.onRetryInlineImage(message.id) },
@@ -40,7 +39,8 @@ struct MessageBubbleView: View, Equatable {
           onMapPreviewTap: { coordinate in actions.onMapPreviewTap(coordinate) },
           snapshotResolver: actions.snapshotResolver,
           requestSnapshot: actions.requestSnapshot,
-          retrySnapshot: actions.retrySnapshot
+          retrySnapshot: actions.retrySnapshot,
+          onTranslationAction: { actions.onTranslationAction(message.id) }
         )
       )
     } else {

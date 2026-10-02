@@ -22,9 +22,15 @@ public actor RemoteNodeService {
   let logger = PersistentLogger(subsystem: "com.mc1", category: "RemoteNode")
   let auditLogger = CommandAuditLogger()
 
+  struct PendingLogin {
+    /// Session that called `login`, so a prefix match cannot update another radio's row.
+    let sessionID: UUID
+    let continuation: CheckedContinuation<LoginResult, Error>
+  }
+
   /// Pending login continuations keyed by 6-byte public key prefix.
   /// Using 6-byte prefix matches MeshCore protocol format for login results.
-  var pendingLogins: [Data: CheckedContinuation<LoginResult, Error>] = [:]
+  var pendingLogins: [Data: PendingLogin] = [:]
 
   /// Timeout tasks for pending logins, keyed by 6-byte public key prefix.
   /// Cancelled when login succeeds/fails before timeout.
@@ -52,11 +58,6 @@ public actor RemoteNodeService {
   /// Cycling counter for CLI wire prefixes ("00|" through "FF|").
   var cliPrefixCounter: UInt8 = 0
 
-  /// Clock drift measured at the last successful login, keyed by session ID.
-  /// Positive means the remote node's clock is ahead of the connected radio.
-  /// In-memory only; drift is re-measured on every login.
-  var loginClockDrifts: [UUID: TimeInterval] = [:]
-
   /// A task queued for a node's CLI slot while another command is in flight.
   struct CLISlotWaiter {
     let id: UUID
@@ -68,11 +69,6 @@ public actor RemoteNodeService {
 
   /// FIFO waiters for a node's CLI slot, keyed by 6-byte public key prefix.
   var cliSlotWaiters: [Data: [CLISlotWaiter]] = [:]
-
-  /// Reads the connected radio's clock; wired by `ServiceContainer`. Clock
-  /// drift is measured against the radio, not the phone, because mesh packet
-  /// timestamps come from the radio's RTC.
-  var radioClockProvider: (@Sendable () async -> Date?)?
 
   /// Keep-alive timer tasks
   var keepAliveTasks: [UUID: Task<Void, Never>] = [:]
@@ -248,29 +244,6 @@ public actor RemoteNodeService {
     return String(format: "%02X%@", cliPrefixCounter, String(CLIResponse.echoPrefixSeparator))
   }
 
-  // MARK: - Login Clock Drift
-
-  /// Sets the closure used to read the connected radio's clock.
-  public func setRadioClockProvider(_ provider: @escaping @Sendable () async -> Date?) {
-    radioClockProvider = provider
-  }
-
-  /// Records the clock drift measured from a login response, relative to the
-  /// radio's clock (falling back to the phone when the radio can't be read).
-  func recordLoginClockDrift(sessionID: UUID, serverTime: Date?) async {
-    guard let serverTime else { return }
-    let reference = await radioClockProvider?() ?? Date()
-    let drift = serverTime.timeIntervalSince(reference)
-    loginClockDrifts[sessionID] = drift
-    logger.info("Login clock drift for session \(sessionID): \(Int(drift))s")
-  }
-
-  /// The remote node's clock drift measured at its last login this connection.
-  /// Positive means the node's clock is ahead of the connected radio.
-  public func loginClockDrift(sessionID: UUID) -> TimeInterval? {
-    loginClockDrifts[sessionID]
-  }
-
   func timeInterval(for duration: Duration) -> TimeInterval {
     let (seconds, attoseconds) = duration.components
     return TimeInterval(seconds) + TimeInterval(attoseconds) / 1e18
@@ -278,8 +251,8 @@ public actor RemoteNodeService {
 
   func cancelPendingLogin(for prefix: Data) {
     pendingLoginTimeoutTasks.removeValue(forKey: prefix)?.cancel()
-    if let continuation = pendingLogins.removeValue(forKey: prefix) {
-      continuation.resume(throwing: RemoteNodeError.cancelled)
+    if let pending = pendingLogins.removeValue(forKey: prefix) {
+      pending.continuation.resume(throwing: RemoteNodeError.cancelled)
     }
   }
 
@@ -335,8 +308,8 @@ public actor RemoteNodeService {
 
     let pubKeyHex = contact.publicKey.prefix(6).map { String(format: "%02x", $0) }.joined()
 
-    // Check for existing session - reuse to avoid duplicates
-    let existing = try? await dataStore.fetchRemoteNodeSession(publicKey: contact.publicKey)
+    let existing = try await dataStore.fetchRemoteNodeSessions(radioID: radioID)
+      .first { $0.publicKey == contact.publicKey }
 
     if let existing {
       logger.info("createSession: reusing existing session \(existing.id) for \(pubKeyHex), isConnected=\(existing.isConnected)")
@@ -348,10 +321,9 @@ public actor RemoteNodeService {
 
     try await dataStore.saveRemoteNodeSessionDTO(dto)
 
-    // Clean up any duplicate sessions with the same public key but different IDs
     try await dataStore.cleanupDuplicateRemoteNodeSessions(publicKey: contact.publicKey, keepID: dto.id)
 
-    guard let saved = try await dataStore.fetchRemoteNodeSession(publicKey: contact.publicKey) else {
+    guard let saved = try await dataStore.fetchRemoteNodeSession(id: dto.id) else {
       logger.error("createSession: failed to fetch saved session for \(pubKeyHex)")
       throw RemoteNodeError.sessionNotFound
     }

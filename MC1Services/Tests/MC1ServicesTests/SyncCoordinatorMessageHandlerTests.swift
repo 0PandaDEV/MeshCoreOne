@@ -234,4 +234,404 @@ struct SyncCoordinatorMessageHandlerTests {
     )
     #expect(SyncCoordinator.shouldPostChannelNotification(forResolvedChannel: channel) == true)
   }
+
+  // MARK: - lastHeard mesh-liveness stamps
+
+  @Test
+  func `inbound DM stamps contact lastHeard`() async throws {
+    let radioID = UUID()
+    let dataStore = try await createTestDataStore(radioID: radioID)
+    let publicKey = Data(repeating: 0xAB, count: 32)
+    let contact = ContactDTO.testContact(
+      radioID: radioID,
+      publicKey: publicKey,
+      name: "Peer",
+      lastHeardTimestamp: 0
+    )
+    try await dataStore.saveContact(contact)
+
+    let mockPolling = MockMessagePollingService()
+    let (_, services) = try await createTestServices()
+    let dependencies = services.syncDependencies
+      .with(dataStore: dataStore, messagePollingService: mockPolling)
+
+    let coordinator = SyncCoordinator()
+    await coordinator.wireMessageHandlers(dependencies: dependencies, radioID: radioID)
+
+    let message = ContactMessage(
+      senderPublicKeyPrefix: Data(publicKey.prefix(6)),
+      pathLength: 0,
+      textType: 0,
+      senderTimestamp: Date(),
+      signature: nil,
+      text: "hello mesh",
+      snr: nil
+    )
+    await mockPolling.capturedContactMessageHandler?(message, contact, .live)
+
+    let updated = try #require(
+      await dataStore.fetchContact(radioID: radioID, publicKey: publicKey)
+    )
+    #expect((updated.lastHeardTimestamp ?? 0) > 0)
+  }
+
+  @Test
+  func `inbound channel message does not stamp lastHeard on a contact`() async throws {
+    let radioID = UUID()
+    let dataStore = try await createTestDataStore(radioID: radioID)
+    let publicKey = Data(repeating: 0xCD, count: 32)
+    let contact = ContactDTO.testContact(
+      radioID: radioID,
+      publicKey: publicKey,
+      name: "ChannelPeer",
+      lastHeardTimestamp: 0
+    )
+    try await dataStore.saveContact(contact)
+
+    let mockPolling = MockMessagePollingService()
+    let (_, services) = try await createTestServices()
+    let dependencies = services.syncDependencies
+      .with(dataStore: dataStore, messagePollingService: mockPolling)
+
+    let coordinator = SyncCoordinator()
+    await coordinator.wireMessageHandlers(dependencies: dependencies, radioID: radioID)
+
+    let channelMessage = ChannelMessage(
+      channelIndex: 0,
+      pathLength: 0,
+      textType: 0,
+      senderTimestamp: Date(),
+      text: "ChannelPeer: hello channel",
+      snr: nil
+    )
+    await mockPolling.capturedChannelMessageHandler?(channelMessage, nil, .live)
+
+    let updated = try #require(
+      await dataStore.fetchContact(radioID: radioID, publicKey: publicKey)
+    )
+    #expect((updated.lastHeardTimestamp ?? 0) == 0)
+  }
+
+  // MARK: - Live receive region propagation
+
+  @Test
+  func `live channel receive with undecryptable RX does not copy regionScope onto Message`() async throws {
+    let radioID = UUID()
+    let dataStore = try await createTestDataStore(radioID: radioID)
+    let channelIndex: UInt8 = 0
+    // Dummy 0x88 payload cannot re-decrypt, so DeduplicationKey matching misses.
+    let senderTimestamp: UInt32 = 1_704_000_500
+
+    let parsed = ParsedRxLogData(
+      snr: 5,
+      rssi: -80,
+      rawPayload: Data([0x10, 0x20, 0x30]),
+      routeType: .flood,
+      payloadType: .groupText,
+      payloadVersion: 0,
+      payloadTypeBits: 5,
+      transportCode: nil,
+      pathLength: 0,
+      pathNodes: [],
+      packetPayload: Data([0xAA, 0xBB, 0xCC])
+    )
+    let rxEntry = RxLogEntryDTO(
+      radioID: radioID,
+      from: parsed,
+      channelIndex: channelIndex,
+      channelName: "Public",
+      decryptStatus: .success,
+      senderTimestamp: senderTimestamp,
+      regionScope: "Germany",
+      regionScopeMatches: ["Germany"]
+    )
+    try await dataStore.saveRxLogEntry(rxEntry)
+
+    let mockPolling = MockMessagePollingService()
+    let (_, services) = try await createTestServices()
+    let dependencies = services.syncDependencies
+      .with(dataStore: dataStore, messagePollingService: mockPolling)
+
+    let coordinator = SyncCoordinator()
+    await coordinator.wireMessageHandlers(dependencies: dependencies, radioID: radioID)
+
+    let channelMessage = ChannelMessage(
+      channelIndex: channelIndex,
+      pathLength: 0,
+      textType: 0,
+      senderTimestamp: Date(timeIntervalSince1970: TimeInterval(senderTimestamp)),
+      text: "NodeAlpha: region scope test",
+      snr: nil
+    )
+    await mockPolling.capturedChannelMessageHandler?(channelMessage, nil, .live)
+
+    let saved = try await dataStore.fetchMessages(radioID: radioID, channelIndex: channelIndex)
+    let message = try #require(saved.first)
+    #expect(message.regionScope == nil)
+    #expect(message.regionScopeMatches.isEmpty)
+  }
+
+  // MARK: - Incoming extra-path harvest and duplicate backstop
+
+  @Test
+  func `channel save with undecryptable RX harvests no extras and still broadcasts`() async throws {
+    let radioID = UUID()
+    let dataStore = try await createTestDataStore(radioID: radioID)
+    let channelIndex: UInt8 = 0
+    let senderTimestamp: UInt32 = 1_704_000_700
+    let pathA: [UInt8] = [0xA1]
+    let pathB: [UInt8] = [0xB2]
+    let earlier = Date(timeIntervalSince1970: TimeInterval(senderTimestamp))
+    try await dataStore.saveRxLogEntry(makeGroupTextRX(
+      radioID: radioID,
+      channelIndex: channelIndex,
+      senderTimestamp: senderTimestamp,
+      pathNodes: pathA,
+      receivedAt: earlier
+    ))
+    try await dataStore.saveRxLogEntry(makeGroupTextRX(
+      radioID: radioID,
+      channelIndex: channelIndex,
+      senderTimestamp: senderTimestamp,
+      pathNodes: pathB,
+      receivedAt: earlier.addingTimeInterval(1)
+    ))
+
+    let heardRepeatsService = HeardRepeatsService(dataStore: dataStore)
+    await heardRepeatsService.configure(radioID: radioID)
+    let mockPolling = MockMessagePollingService()
+    let (_, services) = try await createTestServices()
+    let dependencies = services.syncDependencies.with(
+      dataStore: dataStore,
+      messagePollingService: mockPolling,
+      heardRepeatsService: heardRepeatsService
+    )
+    let coordinator = SyncCoordinator()
+    let events = coordinator.dataEventBroadcaster.subscribe()
+    await coordinator.wireMessageHandlers(dependencies: dependencies, radioID: radioID)
+
+    await mockPolling.capturedChannelMessageHandler?(
+      ChannelMessage(
+        channelIndex: channelIndex,
+        pathLength: 1,
+        textType: 0,
+        senderTimestamp: Date(timeIntervalSince1970: TimeInterval(senderTimestamp)),
+        text: "NodeAlpha: harvest broadcast",
+        snr: nil
+      ),
+      nil,
+      .live
+    )
+
+    let saved = try await dataStore.fetchMessages(radioID: radioID, channelIndex: channelIndex)
+    #expect(saved.count == 1)
+    #expect(saved.first?.heardRepeats == 0)
+    let extras = try await dataStore.fetchMessageRepeats(messageID: #require(saved.first?.id))
+    #expect(extras.isEmpty)
+
+    var iterator = events.makeAsyncIterator()
+    var broadcast: MessageDTO?
+    for _ in 0..<8 {
+      guard let event = await iterator.next() else { break }
+      if case let .channelMessageReceived(message, _) = event {
+        broadcast = message
+        break
+      }
+    }
+    #expect(broadcast?.heardRepeats == 0)
+  }
+
+  @Test
+  func `duplicate channel receive with unknown path does not save a second message`() async throws {
+    let radioID = UUID()
+    let dataStore = try await createTestDataStore(radioID: radioID)
+    let channel = ChannelDTO.testChannel(radioID: radioID, index: 0)
+    try await dataStore.saveChannel(channel)
+    let channelIndex: UInt8 = 0
+    let senderTimestamp: UInt32 = 1_704_000_800
+    let pathA = Data([0xA1])
+    let key = DeduplicationKey.contentBased(
+      contactID: nil,
+      channelIndex: channelIndex,
+      senderNodeName: "NodeAlpha",
+      timestamp: senderTimestamp,
+      content: "dup path"
+    )
+    var existing = MessageDTO.testChannelMessage(
+      radioID: radioID,
+      channelIndex: channelIndex,
+      text: "dup path",
+      timestamp: senderTimestamp,
+      direction: .incoming,
+      pathLength: 1,
+      senderNodeName: "NodeAlpha",
+      heardRepeats: 0
+    )
+    existing.pathNodes = pathA
+    existing.deduplicationKey = key
+    try await dataStore.saveMessage(existing)
+    try await dataStore.saveRxLogEntry(makeGroupTextRX(
+      radioID: radioID,
+      channelIndex: channelIndex,
+      senderTimestamp: senderTimestamp,
+      pathNodes: [0xB2]
+    ))
+
+    let heardRepeatsService = HeardRepeatsService(dataStore: dataStore)
+    await heardRepeatsService.configure(radioID: radioID)
+    let mockPolling = MockMessagePollingService()
+    let (_, services) = try await createTestServices()
+    let dependencies = services.syncDependencies.with(
+      dataStore: dataStore,
+      messagePollingService: mockPolling,
+      heardRepeatsService: heardRepeatsService
+    )
+    let coordinator = SyncCoordinator()
+    await coordinator.wireMessageHandlers(dependencies: dependencies, radioID: radioID)
+
+    await mockPolling.capturedChannelMessageHandler?(
+      ChannelMessage(
+        channelIndex: channelIndex,
+        pathLength: 1,
+        textType: 0,
+        senderTimestamp: Date(timeIntervalSince1970: TimeInterval(senderTimestamp)),
+        text: "NodeAlpha: dup path",
+        snr: nil
+      ),
+      channel,
+      .live
+    )
+
+    let saved = try await dataStore.fetchMessages(radioID: radioID, channelIndex: channelIndex)
+    #expect(saved.count == 1)
+    #expect(saved.first?.id == existing.id)
+    let repeats = try await dataStore.fetchMessageRepeats(messageID: existing.id)
+    #expect(repeats.count == 0)
+    let updated = try #require(await dataStore.fetchMessage(id: existing.id))
+    #expect(updated.heardRepeats == 0)
+    let unread = try #require(await dataStore.fetchChannel(id: channel.id))
+    #expect(unread.unreadCount == 0)
+  }
+
+  @Test
+  func `same-path duplicate channel receive inserts nothing`() async throws {
+    let radioID = UUID()
+    let dataStore = try await createTestDataStore(radioID: radioID)
+    let channelIndex: UInt8 = 0
+    let senderTimestamp: UInt32 = 1_704_000_900
+    let pathA: [UInt8] = [0xA1]
+    let key = DeduplicationKey.contentBased(
+      contactID: nil,
+      channelIndex: channelIndex,
+      senderNodeName: "NodeAlpha",
+      timestamp: senderTimestamp,
+      content: "same path"
+    )
+    var existing = MessageDTO.testChannelMessage(
+      radioID: radioID,
+      channelIndex: channelIndex,
+      text: "same path",
+      timestamp: senderTimestamp,
+      direction: .incoming,
+      pathLength: 1,
+      senderNodeName: "NodeAlpha"
+    )
+    existing.pathNodes = Data(pathA)
+    existing.deduplicationKey = key
+    try await dataStore.saveMessage(existing)
+    try await dataStore.saveRxLogEntry(makeGroupTextRX(
+      radioID: radioID,
+      channelIndex: channelIndex,
+      senderTimestamp: senderTimestamp,
+      pathNodes: pathA
+    ))
+
+    let heardRepeatsService = HeardRepeatsService(dataStore: dataStore)
+    let mockPolling = MockMessagePollingService()
+    let (_, services) = try await createTestServices()
+    let dependencies = services.syncDependencies.with(
+      dataStore: dataStore,
+      messagePollingService: mockPolling,
+      heardRepeatsService: heardRepeatsService
+    )
+    let coordinator = SyncCoordinator()
+    await coordinator.wireMessageHandlers(dependencies: dependencies, radioID: radioID)
+
+    await mockPolling.capturedChannelMessageHandler?(
+      ChannelMessage(
+        channelIndex: channelIndex,
+        pathLength: 1,
+        textType: 0,
+        senderTimestamp: Date(timeIntervalSince1970: TimeInterval(senderTimestamp)),
+        text: "NodeAlpha: same path",
+        snr: nil
+      ),
+      nil,
+      .live
+    )
+
+    #expect(try await dataStore.fetchMessages(radioID: radioID, channelIndex: channelIndex).count == 1)
+    #expect(try await dataStore.fetchMessageRepeats(messageID: existing.id).isEmpty)
+    #expect(try await dataStore.fetchMessage(id: existing.id)?.heardRepeats == 0)
+  }
+
+  private func makeGroupTextRX(
+    radioID: UUID,
+    channelIndex: UInt8,
+    senderTimestamp: UInt32,
+    pathNodes: [UInt8],
+    receivedAt: Date = Date()
+  ) -> RxLogEntryDTO {
+    let parsed = ParsedRxLogData(
+      snr: 5,
+      rssi: -80,
+      rawPayload: Data([0x10, 0x20, 0x30]),
+      routeType: .flood,
+      payloadType: .groupText,
+      payloadVersion: 0,
+      payloadTypeBits: 5,
+      transportCode: nil,
+      pathLength: UInt8(pathNodes.count),
+      pathNodes: pathNodes,
+      packetPayload: Data([0xAA, 0xBB, 0xCC])
+    )
+    return RxLogEntryDTO(
+      radioID: radioID,
+      receivedAt: receivedAt,
+      from: parsed,
+      channelIndex: channelIndex,
+      channelName: "Public",
+      decryptStatus: .success,
+      senderTimestamp: senderTimestamp
+    )
+  }
+}
+
+// MARK: - SyncDependencies test helpers
+
+extension SyncDependencies {
+  /// Copy with a different data store and message polling service for tests.
+  func with(
+    dataStore: any PersistenceStoreProtocol,
+    messagePollingService: any MessagePollingServiceProtocol,
+    heardRepeatsService: HeardRepeatsService? = nil
+  ) -> SyncDependencies {
+    SyncDependencies(
+      dataStore: dataStore,
+      contactService: contactService,
+      channelService: channelService,
+      messagePollingService: messagePollingService,
+      notificationService: notificationService,
+      reactionService: reactionService,
+      advertisementService: advertisementService,
+      rxLogService: rxLogService,
+      heardRepeatsService: heardRepeatsService ?? self.heardRepeatsService,
+      roomServerService: roomServerService,
+      roomAdminService: roomAdminService,
+      repeaterAdminService: repeaterAdminService,
+      appStateProvider: appStateProvider,
+      startEventMonitoring: startEventMonitoring,
+      exportPrivateKey: exportPrivateKey
+    )
+  }
 }

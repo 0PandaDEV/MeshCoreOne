@@ -42,9 +42,14 @@ struct ChatConversationMessagesContent: View {
   /// (`ChatConversationView`), which has the dispatch/sheet state the menu's
   /// actions need.
   let makeActionsMenu: (MessageDTO) -> AnyView
+  let onTranslationAction: (UUID) -> Void
 
+  @Environment(\.appState) private var appState
   @Environment(\.appTheme) private var theme
   @Environment(\.openURL) private var openURL
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+  @State private var incomingAvatarFlight = IncomingAvatarFlight()
 
   // MARK: - Body
 
@@ -78,17 +83,36 @@ struct ChatConversationMessagesContent: View {
   private var messagesList: some View {
     ChatTiledView(
       items: viewModel.items,
-      cellContent: cellFactory.makeContent(for:),
+      cellContent: { item in
+        cellFactory.makeContent(for: item)
+          .environment(\.incomingAvatarFlight, incomingAvatarFlight)
+      },
       contentBackground: theme.surfaces?.canvas,
       isAtBottom: $isAtBottom,
       unreadCount: $unreadCount,
       scrollToBottomRequest: scrollToBottomRequest,
+      countsTowardUnread: { !$0.envelope.isOutgoing },
       scrollToTargetRequest: scrollToTargetRequest,
       scrollTargetID: scrollToTargetID,
       initialScrollTargetID: initialScrollTargetID,
       onLoadOlder: { await viewModel.loadOlderMessages() },
-      onInitialTargetConsumed: onDividerTargetConsumed
+      onInitialTargetConsumed: onDividerTargetConsumed,
+      sizeCache: appState.chatSizeCache
     )
+    .overlay {
+      incomingAvatarFlight.overlay()
+    }
+    .onAppear {
+      viewModel.incomingAvatarFlight = incomingAvatarFlight
+      incomingAvatarFlight.isAtBottom = isAtBottom
+      incomingAvatarFlight.reduceMotion = reduceMotion
+    }
+    .onChange(of: isAtBottom, initial: true) { _, atBottom in
+      incomingAvatarFlight.isAtBottom = atBottom
+    }
+    .onChange(of: reduceMotion, initial: true) { _, reduce in
+      incomingAvatarFlight.reduceMotion = reduce
+    }
     .onChange(of: envInputs) { _, new in
       viewModel.applyEnvInputs(new)
     }
@@ -104,10 +128,6 @@ struct ChatConversationMessagesContent: View {
       resolver: BubbleResolver(viewModel: viewModel),
       actions: BubbleActions(
         onRetryMessage: onRetryMessage,
-        onReaction: { emoji, message in
-          recentEmojisStore.recordUsage(emoji)
-          Task { await viewModel.sendReaction(emoji: emoji, to: message) }
-        },
         makeActionsMenu: makeActionsMenu,
         onImageTap: { message in
           if let data = viewModel.imageData(for: message.id) {
@@ -139,7 +159,10 @@ struct ChatConversationMessagesContent: View {
         },
         snapshotResolver: { MapSnapshotStore.shared.image(for: $0) },
         requestSnapshot: { MapSnapshotStore.shared.request($0) },
-        retrySnapshot: { MapSnapshotStore.shared.retry($0) }
+        retrySnapshot: { MapSnapshotStore.shared.retry($0) },
+        onTranslationAction: { messageID in
+          onTranslationAction(messageID)
+        }
       )
     )
   }
@@ -252,7 +275,8 @@ private struct ChannelEmptyMessagesView: View {
       onDividerTargetConsumed: {},
       imageViewerData: .constant(nil),
       onRetryMessage: { _ in },
-      makeActionsMenu: { _ in AnyView(EmptyView()) }
+      makeActionsMenu: { _ in AnyView(EmptyView()) },
+      onTranslationAction: { _ in }
     )
   }
   .environment(\.appState, AppState())
@@ -279,7 +303,8 @@ private struct ChannelEmptyMessagesView: View {
       onDividerTargetConsumed: {},
       imageViewerData: .constant(nil),
       onRetryMessage: { _ in },
-      makeActionsMenu: { _ in AnyView(EmptyView()) }
+      makeActionsMenu: { _ in AnyView(EmptyView()) },
+      onTranslationAction: { _ in }
     )
   }
   .environment(\.appState, AppState())

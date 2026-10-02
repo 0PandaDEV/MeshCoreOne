@@ -349,19 +349,34 @@
 /* Location: RepeaterSettingsView.swift - Regions section footer */
 "remoteNodes.settings.regionsFooter" = "Enregistrez sur le répéteur pour conserver les modifications après les redémarrages.";
 
-/* Location: RepeaterSettingsView.swift - Wildcard region display name */
-"remoteNodes.settings.regions.allTraffic" = "Tout le trafic";
+/* Location: RepeaterSettingsView.swift - Unscoped region display name */
+"remoteNodes.settings.regions.allTraffic" = "Portée non assignée";
 
-/* Location: RepeaterSettingsView.swift - Wildcard with asterisk display */
-"remoteNodes.settings.regions.allTrafficWildcard" = "* (Tout le trafic)";
+/* Location: RepeaterSettingsView.swift - Unscoped region with asterisk display */
+"remoteNodes.settings.regions.allTrafficWildcard" = "* (Portée non assignée)";
 
 /* Location: RepeaterSettingsView.swift - Home region picker label */
 "remoteNodes.settings.regions.homeRegion" = "Région d'origine";
 
+/* Location: RepeaterSettingsView.swift - Default scope picker label */
+"remoteNodes.settings.regions.defaultScope" = "Portée par défaut";
+
+/* Location: RepeaterSettingsView.swift - Load default scope button */
+"remoteNodes.settings.regions.loadDefaultScope" = "Charger";
+
+/* Location: RepeaterSettingsView.swift - No default scope */
+"remoteNodes.settings.regions.noDefault" = "Aucune";
+
+/* Location: RepeaterSettingsView.swift - Caption under default scope picker */
+"remoteNodes.settings.regions.defaultScopeCaption" = "Applique cette portée aux paquets émis par ce nœud, comme les annonces. Ce réglage est enregistré immédiatement sur le répéteur.";
+
 /* Location: RepeaterSettingsView.swift - No home region set */
 /* Location: RepeaterSettingsView.swift - Toggle label for flood allow per region */
 /* Location: RepeaterSettingsView.swift - Accessibility hint for flood toggle */
-"remoteNodes.settings.regions.floodToggleHint" = "Si désactivé, les paquets d'inondation de cette région sont ignorés";
+"remoteNodes.settings.regions.floodToggleHint" = "Si désactivé, les paquets flood de cette région sont rejetés";
+
+/* Location: RepeaterSettingsView.swift - Caption under the region flood list */
+"remoteNodes.settings.regions.floodToggleCaption" = "Les paquets flood de toute région désactivée sont rejetés.";
 
 /* Location: RepeaterSettingsView.swift - Add region button */
 "remoteNodes.settings.regions.addRegion" = "Ajouter une région";
@@ -385,8 +400,28 @@
 /* Location: RepeaterSettingsViewModel.swift - Region has children error */
 "remoteNodes.settings.regions.notEmpty" = "Retirez d'abord les régions enfants";
 
+/* Location: RepeaterSettingsView.swift - Alert title when deleting a parent region */
+"remoteNodes.settings.regions.cannotDelete" = "Impossible de supprimer « %@ »";
+
 /* Location: RepeaterSettingsViewModel.swift - Region add failure */
 "remoteNodes.settings.regions.addFailed" = "Échec de l'ajout de la région";
+
+/* Location: RepeaterSettingsView.swift - Region name charset validation */
+"remoteNodes.settings.regions.invalidName" = "Les noms de région ne peuvent contenir que des lettres, des chiffres et des traits d'union.";
+
+/* Location: RepeaterSettingsView.swift - Region name length validation */
+"remoteNodes.settings.regions.nameTooLong" = "Les noms de région sont limités à %d octets.";
+
+/* Location: RepeaterSettingsView.swift - Duplicate region name validation */
+"remoteNodes.settings.regions.duplicate" = "Cette région existe déjà.";
+
+/* Location: RepeaterAddRegionSheet.swift - Parent picker label */
+"remoteNodes.settings.regions.parent" = "Région parente";
+
+/* Location: RepeaterSettingsView.swift - Add child region context menu item */
+"remoteNodes.settings.regions.addChild" = "Ajouter une région enfant";
+/* Location: RegionFloodToggleRow.swift - Full VoiceOver label (name, parent) */
+"remoteNodes.settings.regions.childOf" = "%@, enfant de %@";
 
 /* Location: RepeaterSettingsViewModel.swift - Region remove failure */
 "remoteNodes.settings.regions.removeFailed" = "Échec de la suppression de la région";
@@ -877,6 +912,7 @@
 "remoteNodes.status.sensor.illuminance" = "Éclairement";
 "remoteNodes.status.sensor.presence" = "Présence";
 "remoteNodes.status.sensor.temperature" = "Température";
+"remoteNodes.status.sensor.mcuTemperature" = "Température MCU";
 "remoteNodes.status.sensor.humidity" = "Humidité";
 "remoteNodes.status.sensor.accelerometer" = "Accéléromètre";
 "remoteNodes.status.sensor.barometer" = "Pression";

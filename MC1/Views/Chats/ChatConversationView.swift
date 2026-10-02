@@ -1,6 +1,7 @@
 import MC1Services
 import OSLog
 import SwiftUI
+import Translation
 import UIKit // UIPasteboard for .copy action
 
 private let logger = Logger(subsystem: "com.mc1", category: "ChatConversationView")
@@ -47,6 +48,10 @@ struct ChatConversationView: View {
   /// cancelled-then-flushed synchronously on view teardown and app suspension.
   @State private var draftSaveTask: Task<Void, Never>?
 
+  /// `AppState.channelSlotGenerations` value for this channel slot when the view
+  /// appeared; a higher value later means a different channel now owns the slot.
+  @State private var slotGenerationOnAppear: Int?
+
   // MARK: - Sheet State
 
   @State private var showingInfo = false
@@ -55,6 +60,9 @@ struct ChatConversationView: View {
   @State private var blockSenderContext: BlockSenderContext?
   @State private var sendDMContext: SendDMContext?
   @State private var imageViewerData: ImageViewerData?
+  @State private var translationConfiguration: TranslationSession.Configuration?
+  @State private var systemTranslationText = ""
+  @State private var showSystemTranslation = false
 
   // MARK: - Other State
 
@@ -70,10 +78,18 @@ struct ChatConversationView: View {
   @AppStorage(AppStorageKey.showIncomingPath.rawValue) private var showIncomingPath = AppStorageKey.defaultShowIncomingPath
   @AppStorage(AppStorageKey.showIncomingHopCount.rawValue) private var showIncomingHopCount = AppStorageKey.defaultShowIncomingHopCount
   @AppStorage(AppStorageKey.showIncomingRegion.rawValue) private var showIncomingRegion = AppStorageKey.defaultShowIncomingRegion
+  @AppStorage(AppStorageKey.showIncomingHeardCount.rawValue)
+  private var showIncomingHeardCount = AppStorageKey.defaultShowIncomingHeardCount
   @AppStorage(AppStorageKey.showIncomingSendTime.rawValue) private var showIncomingSendTime = AppStorageKey.defaultShowIncomingSendTime
   @AppStorage(AppStorageKey.linkPreviewsEnabled.rawValue) private var previewsEnabled = AppStorageKey.defaultLinkPreviewsEnabled
   @AppStorage(AppStorageKey.replyWithQuote.rawValue) private var replyWithQuote = AppStorageKey.defaultReplyWithQuote
   @AppStorage(AppStorageKey.showMapPreviewThumbnails.rawValue) private var showMapPreviewThumbnails = AppStorageKey.defaultShowMapPreviewThumbnails
+  @AppStorage(AppStorageKey.translationTargetLanguage.rawValue)
+  private var translationTargetLanguage = AppStorageKey.defaultTranslationTargetLanguage
+  @AppStorage(AppStorageKey.useDefaultTranslationApp.rawValue)
+  private var useDefaultTranslationApp = AppStorageKey.defaultUseDefaultTranslationApp
+  @AppStorage(AppStorageKey.translationOffersEnabled.rawValue)
+  private var translationOffersEnabled = AppStorageKey.defaultTranslationOffersEnabled
 
   // MARK: - Environment
 
@@ -81,6 +97,7 @@ struct ChatConversationView: View {
   @Environment(\.colorScheme) private var colorScheme
   @Environment(\.dynamicTypeSize) private var dynamicTypeSize
   @Environment(\.appTheme) private var theme
+  @Environment(\.locale) private var locale
 
   /// Snapshot of env-derived inputs the view model needs to construct
   /// MessageItems at write time. Recomputed on every render — Equatable
@@ -95,6 +112,7 @@ struct ChatConversationView: View {
       showIncomingPath: showIncomingPath,
       showIncomingHopCount: showIncomingHopCount,
       showIncomingRegion: showIncomingRegion,
+      showIncomingHeardCount: showIncomingHeardCount,
       showIncomingSendTime: showIncomingSendTime,
       previewsEnabled: previewsEnabled,
       isHighContrast: colorSchemeContrast == .increased,
@@ -103,7 +121,10 @@ struct ChatConversationView: View {
       isOffline: !appState.networkMonitor.isNetworkAvailable,
       currentUserName: appState.localNodeName,
       themeID: theme.id,
-      contentSizeCategory: AppearanceToken.contentSizeCategoryToken(dynamicTypeSize)
+      contentSizeCategory: AppearanceToken.contentSizeCategoryToken(dynamicTypeSize),
+      preferredLanguageCode: TranslationTargetPreference(rawValue: translationTargetLanguage)
+        .resolvedLanguageCode(appLocale: locale),
+      translationOffersEnabled: translationOffersEnabled
     )
   }
 
@@ -161,7 +182,8 @@ struct ChatConversationView: View {
       onDividerTargetConsumed: { chatViewModel.timeline.consumeAnchor() },
       imageViewerData: $imageViewerData,
       onRetryMessage: { retryMessage($0) },
-      makeActionsMenu: { AnyView(messageContextMenu(for: $0)) }
+      makeActionsMenu: { AnyView(messageContextMenu(for: $0)) },
+      onTranslationAction: { handleInBubbleTranslation(for: $0) }
     )
     .mentionTapHandling(
       contacts: chatViewModel.allContacts,
@@ -235,12 +257,12 @@ struct ChatConversationView: View {
         chatViewModel: chatViewModel,
         onClearChannelMessages: {
           guard case let .channel(channel) = conversationType else { return }
-          await chatViewModel.loadChannelMessages(for: channel)
+          await chatViewModel.loadChannelMessages(for: channel, populateMode: .replace)
           parentViewModel?.requestConversationReload()
         },
         onClearDirectMessages: {
           guard case let .dm(contact) = conversationType else { return }
-          await chatViewModel.loadMessages(for: contact)
+          await chatViewModel.loadMessages(for: contact, populateMode: .replace)
           parentViewModel?.requestConversationReload()
         },
         onDeleteChannel: {
@@ -295,15 +317,46 @@ struct ChatConversationView: View {
     .task(id: appState.servicesVersion) {
       await performInitialLoad()
     }
+    .conversationTranslationSession(
+      configuration: $translationConfiguration,
+      request: $chatViewModel.translationSessionRequest,
+      perform: { translator, request in
+        let result = await chatViewModel.performPendingTranslation(using: translator, for: request)
+        if case let .presentSystemOverlay(text: text) = result {
+          systemTranslationText = text
+          showSystemTranslation = true
+        }
+        return result
+      }
+    )
+    // Overlay after `.conversationTranslationSession`: `.translationPresentation`
+    // must not sit in that modifier's `.translationTask` content tree.
+    .background {
+      Color.clear
+        .accessibilityHidden(true)
+        .translationPresentation(
+          isPresented: $showSystemTranslation,
+          text: systemTranslationText
+        )
+    }
     .onDisappear {
       // Load-bearing on iPad: MainSidebarView pins the Chats detail stack with
       // `.id(chatsSelectedRoute.conversationID)`, so a detail swap tears down this view's
       // @State (including draftSaveTask) before the debounce fires — flush here.
       flushDraft()
+      chatViewModel.cancelPendingTranslation()
       performCleanup()
     }
     .onChange(of: chatViewModel.composingText) { _, _ in
       scheduleDraftSave()
+    }
+    .onAppear {
+      if slotGenerationOnAppear == nil {
+        slotGenerationOnAppear = currentSlotGeneration
+      }
+    }
+    .onChange(of: currentSlotGeneration) { _, _ in
+      leaveIfSlotReassigned()
     }
     .onChange(of: scenePhase) { _, newPhase in
       // Notifications usually arrive while the app is backgrounded with this
@@ -377,7 +430,7 @@ struct ChatConversationView: View {
 
     switch conversationType {
     case let .dm(contact):
-      await chatViewModel.loadMessages(for: contact)
+      await chatViewModel.loadMessages(for: contact, populateMode: .refreshWindow)
       await chatViewModel.loadConversations(radioID: contact.radioID)
       await chatViewModel.loadAllContacts(radioID: contact.radioID)
       chatViewModel.restoreComposerDraft(from: appState.draftStore, id: conversationType.draftConversationID)
@@ -385,7 +438,7 @@ struct ChatConversationView: View {
     case let .channel(channel):
       // Load contacts first so contactNameSet is populated before buildChannelSenders runs
       await chatViewModel.loadAllContacts(radioID: channel.radioID)
-      await chatViewModel.loadChannelMessages(for: channel)
+      await chatViewModel.loadChannelMessages(for: channel, populateMode: .refreshWindow)
       await chatViewModel.loadConversations(radioID: channel.radioID)
       chatViewModel.restoreComposerDraft(from: appState.draftStore, id: conversationType.draftConversationID)
     }
@@ -443,7 +496,35 @@ struct ChatConversationView: View {
   private func flushDraft() {
     draftSaveTask?.cancel()
     draftSaveTask = nil
+    // The slot's draft was already cleared for the next occupant; persisting the old
+    // composer here would hand it to the new channel.
+    if slotWasReassigned {
+      chatViewModel.composingText = ""
+    }
     chatViewModel.saveDraft(to: appState.draftStore, id: conversationType.draftConversationID)
+  }
+
+  // MARK: - Slot Reassignment
+
+  private var currentSlotGeneration: Int? {
+    guard case .channel = conversationType else { return nil }
+    return appState.channelSlotGenerations[conversationType.coordinatorID] ?? 0
+  }
+
+  private var slotWasReassigned: Bool {
+    guard let seen = slotGenerationOnAppear, let current = currentSlotGeneration else { return false }
+    return current > seen
+  }
+
+  /// Closes the chat when another channel took over its slot. Drop the composer
+  /// first so `flushDraft` cannot restore the old text; `AppState` cannot pop this view-owned stack.
+  private func leaveIfSlotReassigned() {
+    guard slotWasReassigned, case let .channel(channel) = conversationType else { return }
+    chatViewModel.composingText = ""
+    if case let .channel(selected) = appState.navigation.chatsSelectedRoute, selected.id == channel.id {
+      appState.navigation.chatsSelectedRoute = nil
+    }
+    dismiss()
   }
 
   // MARK: - Cleanup (.onDisappear)
@@ -618,6 +699,11 @@ struct ChatConversationView: View {
     } label: {
       Label(L10n.Chats.Chats.Message.Action.copy, systemImage: "doc.on.doc")
     }
+    Button {
+      dispatch(.translate, for: message)
+    } label: {
+      Label(L10n.Chats.Chats.Message.Action.translate, systemImage: "translate")
+    }
     if availability.canSendAgain {
       Button {
         dispatch(.sendAgain, for: message)
@@ -774,6 +860,8 @@ struct ChatConversationView: View {
       handleReply(for: message)
     case .copy:
       handleCopy(for: message)
+    case .translate:
+      presentSystemTranslation(text: message.text)
     case .sendAgain:
       handleSendAgain(for: message)
     case .details:
@@ -824,7 +912,33 @@ struct ChatConversationView: View {
   }
 
   private func handleCopy(for message: MessageDTO) {
-    UIPasteboard.general.string = message.text
+    UIPasteboard.general.string = chatViewModel.displayedText(for: message)
+  }
+
+  private func presentSystemTranslation(text: String) {
+    systemTranslationText = text
+    Task {
+      try? await Task.sleep(for: MessageActionsPresentation.dismissalDelay)
+      showSystemTranslation = true
+    }
+  }
+
+  private func handleInBubbleTranslation(for messageID: UUID) {
+    if let chrome = chatViewModel.translation(for: messageID),
+       case .showing = chrome.phase {
+      chatViewModel.performTranslationAction(for: messageID)
+      return
+    }
+    if TranslationTargetPreference.usesSystemOverlay(
+      languageRawValue: translationTargetLanguage,
+      useDefaultTranslationApp: useDefaultTranslationApp
+    ) {
+      guard let text = chatViewModel.messagesByID[messageID]?.text else { return }
+      systemTranslationText = text
+      showSystemTranslation = true
+      return
+    }
+    chatViewModel.performTranslationAction(for: messageID)
   }
 
   private func handleSendAgain(for message: MessageDTO) {
@@ -902,7 +1016,7 @@ struct ChatConversationView: View {
     }
 
     if case let .channel(channel) = conversationType {
-      await chatViewModel.loadChannelMessages(for: channel)
+      await chatViewModel.loadChannelMessages(for: channel, populateMode: .replace)
     }
     services.syncCoordinator.notifyConversationsChanged()
   }

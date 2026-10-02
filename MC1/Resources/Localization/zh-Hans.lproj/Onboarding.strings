@@ -105,7 +105,11 @@
 
 /* Location: ConnectionUIState.presentPairingFailure(_:) - Pairing failure alert messages */
 "deviceScan.error.authenticationFailed" = "与此电台保存的配对已失效。点按“移除并重试”在应用内重新配对；电台可能会显示新的配对码。";
+/* Location: ConnectionUIState.presentPairingFailure(_:) - macOS copy; app cannot forget the OS Bluetooth bond */
+"deviceScan.error.authenticationFailedMac" = "与此电台保存的配对已失效。在系统设置的蓝牙中忘记此电台，然后点按“移除并重试”。";
 "deviceScan.error.pinRejected" = "PIN 码未被接受。请检查设备上显示的 PIN 码，然后重试。iOS 会先要求你确认移除失败的配对。";
+/* Location: ConnectionUIState.presentFreshPairingFailure(_:) - macOS copy; app cannot forget the OS Bluetooth bond */
+"deviceScan.error.pinRejectedMac" = "PIN 码未被接受。在系统设置的蓝牙中忘记此电台，然后重试。";
 "deviceScan.error.connectionFailed" = "无法连接到设备。请重试，或在问题持续时移除设备。";
 
 // MARK: - Troubleshooting Sheet
@@ -191,8 +195,8 @@
 /* Location: PresetStepView.swift - Title */
 "preset.title" = "选择预设";
 
-/* Location: PresetStepView.swift - Subtitle when recommendation exists */
-"preset.subtitle.recommended" = "为 %@ 推荐";
+/* Location: PresetStepView.swift - Subtitle listing presets for the selected place */
+"preset.subtitle.recommended" = "%@ 的预设";
 
 /* Location: PresetStepView.swift - Subtitle for empty-region fallback */
 "preset.subtitle.locale" = "为您的无线电选择预设。";
@@ -202,18 +206,6 @@
 
 /* Location: PresetStepView.swift - Apply CTA "Use %@" */
 "preset.use" = "使用 %@";
-
-/* Location: PresetStepView.swift - Already-configured title */
-"preset.alreadyConfigured.title" = "已配置";
-
-/* Location: PresetStepView.swift - Already-configured subtitle */
-"preset.alreadyConfigured.subtitle" = "您的无线电已在 %@，这是 %@ 的推荐预设。";
-
-/* Location: PresetStepView.swift - Already-configured primary CTA */
-"preset.alreadyConfigured.done" = "完成";
-
-/* Location: PresetStepView.swift - Already-configured secondary link */
-"preset.alreadyConfigured.choose" = "选择其他预设";
 
 /* Location: PresetStepView.apply(id:) - Error shown when user taps Apply before services finished wiring */
 "preset.error.notConnected" = "连接到您的设备以应用此预设。";
@@ -232,11 +224,11 @@
 /* Location: WiFiConnectionSheet.swift - Section header for connection details */
 "wifiConnection.connectionDetails.header" = "连接详情";
 
-/* Location: WiFiConnectionSheet.swift - Placeholder for IP address field */
-"wifiConnection.ipAddress.placeholder" = "IP 地址";
+/* Location: WiFiConnectionSheet.swift - Placeholder for hostname or IP address field */
+"wifiConnection.ipAddress.placeholder" = "主机名或 IP 地址";
 
-/* Location: WiFiConnectionSheet.swift - Accessibility label for clear IP button */
-"wifiConnection.ipAddress.clearAccessibility" = "清除 IP 地址";
+/* Location: WiFiConnectionSheet.swift - Accessibility label for clear hostname or IP button */
+"wifiConnection.ipAddress.clearAccessibility" = "清除主机名或 IP 地址";
 
 /* Location: WiFiConnectionSheet.swift - Placeholder for port field */
 "wifiConnection.port.placeholder" = "端口";
@@ -245,7 +237,7 @@
 "wifiConnection.port.clearAccessibility" = "清除端口";
 
 /* Location: WiFiConnectionSheet.swift - Footer explaining connection details */
-"wifiConnection.connectionDetails.footer" = "输入您的 MeshCore 设备的本地网络地址。默认端口为 5000。";
+"wifiConnection.connectionDetails.footer" = "输入您的 MeshCore 设备的主机名或 IP 地址。默认端口为 5000。";
 
 /* Location: WiFiConnectionSheet.swift - Button label while connecting */
 "wifiConnection.connecting" = "连接中...";
@@ -262,8 +254,11 @@
 /* Location: RegionPickerView.swift - Country picker label */
 "region.country" = "国家";
 
-/* Location: RegionPickerView.swift - State/Province picker label */
-"region.administrativeArea" = "省 / 州";
+/* Location: RegionPickerView.swift - State picker label (US, AU) */
+"region.state" = "州";
+
+/* Location: RegionPickerView.swift - Province picker label (Canada) */
+"region.province" = "省";
 
 /* Location: RegionPickerView.swift - Continue CTA in manual picker */
 "region.continue" = "继续";

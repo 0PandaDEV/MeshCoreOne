@@ -40,9 +40,8 @@ final class RepeaterSettingsViewModel {
 
   // MARK: - Repeater-Only: Region Settings
 
-  nonisolated static let wildcardName = "*"
   var regions: [RepeaterRegionEntry] = []
-  private var originalRegions: [RepeaterRegionEntry]?
+  var originalRegions: [RepeaterRegionEntry]?
   var isLoadingRegions = false
   var regionsError = false
   var regionsLoaded: Bool {
@@ -50,9 +49,24 @@ final class RepeaterSettingsViewModel {
   }
 
   var hasUnsavedRegionChanges = false
-  var isAddingRegion = false
-  var newRegionName = ""
   var regionsSaveSuccess = false
+  /// Unset when nil. Scopes flood traffic this node originates, not which regions it repeats.
+  var defaultScopeName: String?
+  /// False until a `region default` reply parses. Distinct from `defaultScopeName == nil`.
+  var defaultScopeLoaded = false
+  var isLoadingDefaultScope = false
+  /// `region default` exists on MeshCore repeater v1.15.0+. Unknown version is unsupported.
+  var supportsRegionDefaultScope: Bool {
+    helper.firmwareVersion?.isAtLeast(
+      major: Firmware.regionDefaultScopeMinMajor,
+      minor: Firmware.regionDefaultScopeMinMinor
+    ) == true
+  }
+
+  private enum Firmware {
+    static let regionDefaultScopeMinMajor = 1
+    static let regionDefaultScopeMinMinor = 15
+  }
 
   // MARK: - Expansion State (repeater-only sections)
 
@@ -66,7 +80,7 @@ final class RepeaterSettingsViewModel {
     repeaterAdminServiceProvider()
   }
 
-  private let logger = Logger(subsystem: "com.mc1", category: "RepeaterSettings")
+  let logger = Logger(subsystem: "com.mc1", category: "RepeaterSettings")
 
   // MARK: - Cleanup
 
@@ -306,202 +320,5 @@ final class RepeaterSettingsViewModel {
     }
 
     helper.isApplying = false
-  }
-
-  // MARK: - Region Methods
-
-  func fetchRegions() async {
-    isLoadingRegions = true
-    regionsError = false
-
-    do {
-      let treeResponse = try await helper.sendAndWait("region", timeout: .seconds(10), rawMatching: true)
-      let parsed = Self.parseRegionTree(treeResponse)
-      regions = parsed
-      originalRegions = parsed
-    } catch {
-      if case RemoteNodeError.timeout = error {
-        regionsError = true
-      }
-      logger.warning("Failed to fetch regions: \(error)")
-    }
-
-    isLoadingRegions = false
-  }
-
-  static func parseRegionTree(_ response: String) -> [RepeaterRegionEntry] {
-    var entries: [RepeaterRegionEntry] = []
-    let lines = response.split(separator: "\n", omittingEmptySubsequences: true)
-
-    for line in lines {
-      var text = String(line)
-      text = String(text.drop(while: { $0 == " " }))
-      guard !text.isEmpty else { continue }
-
-      let floodAllowed: Bool
-      if text.hasSuffix(" F") {
-        floodAllowed = true
-        text = String(text.dropLast(2))
-      } else {
-        floodAllowed = false
-      }
-
-      let isHome: Bool
-      if text.hasSuffix("^") {
-        isHome = true
-        text = String(text.dropLast(1))
-      } else {
-        isHome = false
-      }
-
-      guard !text.isEmpty else { continue }
-
-      entries.append(RepeaterRegionEntry(
-        name: text,
-        floodAllowed: floodAllowed,
-        isHome: isHome
-      ))
-    }
-
-    return entries
-  }
-
-  func toggleRegionFlood(name: String) async {
-    guard let index = regions.firstIndex(where: { $0.name == name }) else { return }
-    let currentlyAllowed = regions[index].floodAllowed
-    let command = currentlyAllowed ? "region denyf \(name)" : "region allowf \(name)"
-
-    helper.isApplying = true
-    helper.errorMessage = nil
-
-    do {
-      let response = try await helper.sendAndWait(command)
-      if case .ok = CLIResponse.parse(response) {
-        regions[index].floodAllowed = !currentlyAllowed
-        hasUnsavedRegionChanges = true
-      } else {
-        helper.errorMessage = L10n.RemoteNodes.RemoteNodes.Settings.Regions.unknownRegion
-      }
-    } catch {
-      helper.errorMessage = error.userFacingMessage
-    }
-
-    helper.isApplying = false
-  }
-
-  func setHomeRegion(name: String) async {
-    let command = "region home \(name)"
-
-    helper.isApplying = true
-    helper.errorMessage = nil
-
-    do {
-      let response = try await helper.sendAndWait(command, rawMatching: true)
-      if response.contains("home is now") {
-        for i in regions.indices {
-          regions[i].isHome = (regions[i].name == name)
-        }
-        hasUnsavedRegionChanges = true
-      } else {
-        helper.errorMessage = L10n.RemoteNodes.RemoteNodes.Settings.Regions.unknownRegion
-      }
-    } catch {
-      helper.errorMessage = error.userFacingMessage
-    }
-
-    helper.isApplying = false
-  }
-
-  func addRegion(name: String) async {
-    let trimmed = name.trimmingCharacters(in: .whitespaces)
-    if let validationError = RegionNameValidator.validate(trimmed, existingRegions: regions.map(\.name)) {
-      switch validationError {
-      case .empty: return
-      case .invalidCharacters, .tooLong, .duplicate:
-        helper.errorMessage = L10n.RemoteNodes.RemoteNodes.Settings.Regions.addFailed
-      }
-      return
-    }
-
-    helper.isApplying = true
-    helper.errorMessage = nil
-
-    do {
-      let response = try await helper.sendAndWait("region put \(trimmed)")
-      if case .ok = CLIResponse.parse(response) {
-        regions.append(RepeaterRegionEntry(
-          name: trimmed,
-          floodAllowed: false,
-          isHome: false
-        ))
-        hasUnsavedRegionChanges = true
-        newRegionName = ""
-      } else {
-        helper.errorMessage = L10n.RemoteNodes.RemoteNodes.Settings.Regions.addFailed
-      }
-    } catch {
-      helper.errorMessage = error.userFacingMessage
-    }
-
-    helper.isApplying = false
-  }
-
-  func removeRegion(name: String) async {
-    helper.isApplying = true
-    helper.errorMessage = nil
-
-    do {
-      let response = try await helper.sendAndWait("region remove \(name)")
-      if case .ok = CLIResponse.parse(response) {
-        regions.removeAll { $0.name == name }
-        hasUnsavedRegionChanges = true
-      } else if response.contains("not empty") {
-        helper.errorMessage = L10n.RemoteNodes.RemoteNodes.Settings.Regions.notEmpty
-      } else {
-        helper.errorMessage = L10n.RemoteNodes.RemoteNodes.Settings.Regions.removeFailed
-      }
-    } catch {
-      helper.errorMessage = error.userFacingMessage
-    }
-
-    helper.isApplying = false
-  }
-
-  func saveRegions() async {
-    helper.isApplying = true
-    helper.errorMessage = nil
-
-    do {
-      let response = try await helper.sendAndWait("region save")
-      if case .ok = CLIResponse.parse(response) {
-        hasUnsavedRegionChanges = false
-        await helper.flashSuccess(
-          setApplying: { helper.isApplying = $0 },
-          setSuccess: { regionsSaveSuccess = $0 }
-        )
-        return
-      } else {
-        helper.errorMessage = L10n.RemoteNodes.RemoteNodes.Settings.Regions.saveFailed
-      }
-    } catch {
-      helper.errorMessage = error.userFacingMessage
-    }
-
-    helper.isApplying = false
-  }
-}
-
-// MARK: - Region Entry
-
-struct RepeaterRegionEntry: Identifiable, Equatable {
-  var id: String {
-    name
-  }
-
-  let name: String
-  var floodAllowed: Bool
-  var isHome: Bool
-  var isWildcard: Bool {
-    name == RepeaterSettingsViewModel.wildcardName
   }
 }

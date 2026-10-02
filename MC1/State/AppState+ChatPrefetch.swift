@@ -80,12 +80,15 @@ extension AppState {
 
     let showMapPreviews = bool(.showMapPreviewThumbnails, AppStorageKey.defaultShowMapPreviewThumbnails)
       && !(conversation?.suppressesMapPreviews ?? false)
+    let translationTarget = defaults.string(forKey: AppStorageKey.translationTargetLanguage.rawValue)
+      ?? AppStorageKey.defaultTranslationTargetLanguage
 
     return EnvInputs(
       autoPlayGIFs: bool(.autoPlayGIFs, AppStorageKey.defaultAutoPlayGIFs),
       showIncomingPath: bool(.showIncomingPath, AppStorageKey.defaultShowIncomingPath),
       showIncomingHopCount: bool(.showIncomingHopCount, AppStorageKey.defaultShowIncomingHopCount),
       showIncomingRegion: bool(.showIncomingRegion, AppStorageKey.defaultShowIncomingRegion),
+      showIncomingHeardCount: bool(.showIncomingHeardCount, AppStorageKey.defaultShowIncomingHeardCount),
       showIncomingSendTime: bool(.showIncomingSendTime, AppStorageKey.defaultShowIncomingSendTime),
       previewsEnabled: bool(.linkPreviewsEnabled, AppStorageKey.defaultLinkPreviewsEnabled),
       isHighContrast: isHighContrast,
@@ -94,7 +97,10 @@ extension AppState {
       isOffline: !networkMonitor.isNetworkAvailable,
       currentUserName: localNodeName,
       themeID: themeID,
-      contentSizeCategory: contentSizeCategory
+      contentSizeCategory: contentSizeCategory,
+      preferredLanguageCode: TranslationTargetPreference(rawValue: translationTarget)
+        .resolvedLanguageCode(appLocale: Locale.current),
+      translationOffersEnabled: bool(.translationOffersEnabled, AppStorageKey.defaultTranslationOffersEnabled)
     )
   }
 
@@ -152,7 +158,7 @@ extension AppState {
   /// Lazily builds the refresher that re-primes warm coordinators when
   /// messages arrive for closed conversations (see `ChatPrewarmRefresher`).
   /// Every hook resolves through `self` weakly at call time, so the refresher
-  /// stays valid across reconnects and registry rebinds.
+  /// stays valid across reconnects.
   func ensureChatPrewarmRefresher() -> ChatPrewarmRefresher {
     if let chatPrewarmRefresher { return chatPrewarmRefresher }
     let refresher = ChatPrewarmRefresher(hooks: ChatPrewarmRefresher.Hooks(

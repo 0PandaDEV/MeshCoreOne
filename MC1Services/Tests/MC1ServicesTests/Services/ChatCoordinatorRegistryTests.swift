@@ -35,23 +35,6 @@ struct ChatCoordinatorRegistryTests {
     #expect(dm !== channel)
   }
 
-  @MainActor
-  @Test func `rebind with different store clears existing coordinators`() throws {
-    let containerA = try PersistenceStore.createContainer(inMemory: true)
-    let containerB = try PersistenceStore.createContainer(inMemory: true)
-    let storeA = PersistenceStore(modelContainer: containerA)
-    let storeB = PersistenceStore(modelContainer: containerB)
-    let registry = ChatCoordinatorRegistry(dataStore: storeA)
-    let id = ChatConversationID.dm(radioID: UUID(), contactID: UUID())
-    let first = registry.coordinator(for: id)
-
-    registry.rebind(dataStore: storeB)
-    let second = registry.coordinator(for: id)
-
-    #expect(first !== second)
-    #expect(registry.dataStore === storeB)
-  }
-
   @Test func `coordinator exceeding cap evicts least recently used`() throws {
     let container = try PersistenceStore.createContainer(inMemory: true)
     let store = PersistenceStore(modelContainer: container)
@@ -87,5 +70,21 @@ struct ChatCoordinatorRegistryTests {
 
     let secondA = registry.coordinator(for: idA)
     #expect(firstA === secondA, "Touched entry should survive eviction")
+  }
+
+  @Test func `remove(for:) evicts only that conversation so the next lookup starts fresh`() throws {
+    let registry = try makeRegistry()
+    let radioID = UUID()
+    let channelID = ChatConversationID.channel(radioID: radioID, channelIndex: 3)
+    let dmID = ChatConversationID.dm(radioID: radioID, contactID: UUID())
+
+    let staleChannel = registry.coordinator(for: channelID)
+    let dm = registry.coordinator(for: dmID)
+
+    registry.remove(for: channelID)
+    registry.remove(for: .channel(radioID: radioID, channelIndex: 7)) // absent: no-op
+
+    #expect(registry.coordinator(for: channelID) !== staleChannel)
+    #expect(registry.coordinator(for: dmID) === dm)
   }
 }

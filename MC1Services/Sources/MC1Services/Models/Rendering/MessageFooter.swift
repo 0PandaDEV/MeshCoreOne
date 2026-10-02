@@ -14,7 +14,11 @@ public struct MessageFooter: Sendable, Hashable {
   public let showHop: Bool
   public let hopCount: Int
   public let formattedPath: String?
+  /// Compact chip text; nil hides the region chip. Multi-match is the
+  /// slash-joined label baked at footer build time.
   public let regionToShow: String?
+  /// Candidate region names for popover and accessibility. Count > 1 is ambiguous.
+  public let regionMatchNames: [String]
   /// Send time to display inside the bubble; nil means do not show it. Holds the
   /// clock-corrected `senderDate`, so a skewed sender clock never surfaces a
   /// misleading time here — `sendTimeWasCorrected` flags the substitution and the
@@ -34,21 +38,31 @@ public struct MessageFooter: Sendable, Hashable {
   /// `.sent` stays terminal success. Render-only, never persisted.
   public let isChannelMessage: Bool
   public let heardRepeats: Int
+  /// Incoming extra-arrival ear chip. Outgoing repeats use `heardRepeats` with
+  /// `showStatusRow` and ignore this flag.
+  public let showHeardCount: Bool
   public let retryAttempt: Int
   public let maxRetryAttempts: Int
   public let sendCount: Int
+
+  /// True when `regionMatchNames` has more than one entry. Derived, not stored.
+  public var regionIsAmbiguous: Bool {
+    regionMatchNames.count > 1
+  }
 
   public init(
     showHop: Bool,
     hopCount: Int,
     formattedPath: String?,
     regionToShow: String?,
+    regionMatchNames: [String] = [],
     sendTimeToShow: Date?,
     sendTimeWasCorrected: Bool,
     showStatusRow: Bool,
     status: MessageStatus,
     isChannelMessage: Bool,
     heardRepeats: Int,
+    showHeardCount: Bool = false,
     retryAttempt: Int,
     maxRetryAttempts: Int,
     sendCount: Int
@@ -57,18 +71,20 @@ public struct MessageFooter: Sendable, Hashable {
     self.hopCount = hopCount
     self.formattedPath = formattedPath
     self.regionToShow = regionToShow
+    self.regionMatchNames = regionMatchNames
     self.sendTimeToShow = sendTimeToShow
     self.sendTimeWasCorrected = sendTimeWasCorrected
     self.showStatusRow = showStatusRow
     self.status = status
     self.isChannelMessage = isChannelMessage
     self.heardRepeats = heardRepeats
+    self.showHeardCount = showHeardCount
     self.retryAttempt = retryAttempt
     self.maxRetryAttempts = maxRetryAttempts
     self.sendCount = sendCount
   }
 
-  /// Returns a new footer with `status` overridden. Eliminates the 10-field
+  /// Returns a new footer with `status` overridden. Eliminates the multi-field
   /// rebuild at status-flip sites.
   public func with(status: MessageStatus) -> MessageFooter {
     MessageFooter(
@@ -76,12 +92,14 @@ public struct MessageFooter: Sendable, Hashable {
       hopCount: hopCount,
       formattedPath: formattedPath,
       regionToShow: regionToShow,
+      regionMatchNames: regionMatchNames,
       sendTimeToShow: sendTimeToShow,
       sendTimeWasCorrected: sendTimeWasCorrected,
       showStatusRow: showStatusRow,
       status: status,
       isChannelMessage: isChannelMessage,
       heardRepeats: heardRepeats,
+      showHeardCount: showHeardCount,
       retryAttempt: retryAttempt,
       maxRetryAttempts: maxRetryAttempts,
       sendCount: sendCount

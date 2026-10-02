@@ -4,6 +4,8 @@ import SwiftUI
 /// SF Symbol shown beside the send time when the sender's clock was invalid and the
 /// app substituted a corrected value, signalling that the displayed time was adjusted.
 private let correctedClockBadgeSymbol = "clock.badge.exclamationmark"
+private let incomingHeardCountSymbol = "ear"
+private let outgoingHeardRepeatsSymbol = "repeat"
 
 /// Renders the in-bubble footer from a `MessageFooter`: send time, then the
 /// incoming network slots (hop / path / region) or the outgoing status slots
@@ -63,8 +65,15 @@ struct BubbleFooterRow: View {
       )))
     }
 
-    if footer.heardRepeats > 0, footer.showStatusRow {
-      badges.append(AnyView(BubbleRepeatFooter(count: footer.heardRepeats, color: timeColor)))
+    if footer.heardRepeats > 0 && (footer.showStatusRow || footer.showHeardCount) {
+      let repeatCount = footer.showStatusRow
+        ? footer.heardRepeats
+        : 1 + footer.heardRepeats
+      badges.append(AnyView(BubbleRepeatFooter(
+        count: repeatCount,
+        color: footer.showStatusRow ? timeColor : .secondary,
+        usesHeardTimesAccessibility: !footer.showStatusRow
+      )))
     }
     if footer.sendCount > 1, footer.showStatusRow {
       badges.append(AnyView(BubbleSendCountFooter(count: footer.sendCount, color: timeColor)))
@@ -78,6 +87,7 @@ struct BubbleFooterRow: View {
     if let region = footer.regionToShow {
       badges.append(AnyView(BubbleRegionFooter(
         regionName: region,
+        matchNames: footer.regionMatchNames,
         allowsWrap: dynamicTypeSize.isAccessibilitySize
       )))
     }
@@ -167,28 +177,65 @@ private struct BubblePathFooter: View {
 
 private struct BubbleRegionFooter: View {
   let regionName: String
+  let matchNames: [String]
   let allowsWrap: Bool
+
+  private var isAmbiguous: Bool {
+    matchNames.count > 1
+  }
 
   var body: some View {
     HStack(spacing: 2) {
       Image(systemName: "globe")
       Text(regionName)
         .lineLimit(allowsWrap ? nil : 1)
+      if isAmbiguous {
+        // Explicit region L10n only; do not use path-hop default strings.
+        let listBody = "\n" + matchNames.joined(separator: "\n")
+        FallbackMatchIndicatorView(
+          accessibilityLabel: L10n.Chats.Chats.Message.Region.Ambiguous.possibleMatch,
+          accessibilityHint: L10n.Chats.Chats.Message.Region.Ambiguous.possibleMatchHint,
+          title: L10n.Chats.Chats.Message.Region.Ambiguous.popoverTitle,
+          explanation: L10n.Chats.Chats.Message.Region.Ambiguous.popoverBody(listBody)
+        )
+      }
     }
     .font(.caption2)
     .foregroundStyle(.secondary)
     .footerChip(color: .secondary)
     .accessibilityElement(children: .combine)
-    .accessibilityLabel(L10n.Chats.Chats.Message.Region.accessibilityLabel(regionName))
+    .accessibilityLabel(MessageRegionAccessibility.label(regionName: regionName, matchNames: matchNames))
   }
 }
 
-/// Repeat count heard back over the mesh: the repeat glyph and the count.
+/// Shared VoiceOver label for the region chip and the whole-bubble combined label.
+enum MessageRegionAccessibility {
+  static func label(regionName: String, matchNames: [String]) -> String {
+    if matchNames.count > 1 {
+      let list = ListFormatter.localizedString(byJoining: matchNames)
+      return L10n.Chats.Chats.Message.Region.ambiguousAccessibilityLabel(list)
+    }
+    return L10n.Chats.Chats.Message.Region.accessibilityLabel(regionName)
+  }
+}
+
+/// How many times this message was heard over the mesh: ear on incoming flood
+/// copies, repeat on outgoing heard-repeats, plus the count.
 private struct BubbleRepeatFooter: View {
   let count: Int
   let color: Color
+  var usesHeardTimesAccessibility: Bool = false
+
+  private var symbolName: String {
+    usesHeardTimesAccessibility ? incomingHeardCountSymbol : outgoingHeardRepeatsSymbol
+  }
 
   private var accessibilityLabel: String {
+    if usesHeardTimesAccessibility {
+      return count == 1
+        ? L10n.Chats.Chats.Message.Action.HeardTimes.singular
+        : L10n.Chats.Chats.Message.Action.HeardTimes.plural(count)
+    }
     let word = count == 1
       ? L10n.Chats.Chats.Message.Repeat.singular
       : L10n.Chats.Chats.Message.Repeat.plural
@@ -197,7 +244,7 @@ private struct BubbleRepeatFooter: View {
 
   var body: some View {
     HStack(spacing: 2) {
-      Image(systemName: "repeat")
+      Image(systemName: symbolName)
       Text("\(count)")
     }
     .font(.caption2)

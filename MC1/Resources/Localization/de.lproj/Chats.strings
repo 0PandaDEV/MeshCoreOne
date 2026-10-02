@@ -322,6 +322,9 @@
 /* Location: ConversationRow.swift, ChannelConversationRow.swift - Default text when no messages exist */
 "chats.row.noMessages" = "Noch keine Nachrichten";
 
+/* Location: ConversationRow.swift, ChannelConversationRow.swift, RoomConversationRow.swift - Accessibility label for failed-send indicator */
+"chats.row.failedSend" = "Senden fehlgeschlagen";
+
 /* Location: MutedIndicator.swift - Accessibility label for muted indicator */
 "chats.row.muted" = "Stumm";
 
@@ -562,6 +565,18 @@
 /* Location: UnifiedMessageBubble.swift - Context menu action to copy */
 "chats.message.action.copy" = "Kopieren";
 
+/* Location: BubbleTranslationControl.swift - In-bubble Translation offer */
+"chats.message.action.translate" = "Übersetzen";
+
+/* Location: BubbleTranslationControl.swift - Restore the stored message body */
+"chats.message.action.showOriginal" = "Original anzeigen";
+
+/* Location: BubbleTranslationControl.swift - Translation in progress */
+"chats.message.action.translating" = "Wird übersetzt...";
+
+/* Location: UnifiedMessageBubble.swift - VoiceOver prefix when the visible body is a translation - %@ is the translated text */
+"chats.message.translatedAccessibility" = "Übersetzt: %@";
+
 /* Location: UnifiedMessageBubble.swift - Context menu action to view repeat details */
 "chats.message.action.repeatDetails" = "Wiederholungsdetails";
 
@@ -585,6 +600,15 @@
 
 /* Location: UnifiedMessageBubble.swift - Context menu action to view path */
 "chats.message.action.viewPath" = "Pfad anzeigen";
+
+/* Location: MessagePathDetailBlock.swift - Disclosure row in the message actions sheet */
+"chats.message.action.pathDetails" = "Pfaddetails";
+
+/* Location: MessagePathDetailBlock.swift - VoiceOver label for a single extra path, not drawn */
+"chats.message.action.heardTimes.singular" = "1 Mal gehört";
+
+/* Location: MessagePathDetailBlock.swift - VoiceOver label for extra path count - %d is the count, not drawn */
+"chats.message.action.heardTimes.plural" = "%d Mal gehört";
 
 /* Location: UnifiedMessageBubble.swift - Context menu text showing hop count - %@ is count or "Direct" */
 "chats.message.info.hops" = "Sprünge: %@";
@@ -611,6 +635,9 @@
 
 /* Location: MessageActionsSheet.swift - Details row shown when region could not be resolved */
 "chats.message.info.regionUnresolved" = "Region: Unbekannt";
+
+/* Location: ActionsDetailsSection.swift - Details row when multiple known regions match the packet transport code - %@ is localized list of names */
+"chats.message.info.regionAmbiguous" = "Region (mehrdeutig): %@";
 
 /* Location: UnifiedMessageBubble.swift - Context menu submenu label */
 "chats.message.action.details" = "Details";
@@ -767,6 +794,12 @@
 /* Location: MessagePathSheet.swift - Empty state description */
 "chats.path.unavailable.description" = "Pfaddaten sind für diese Nachricht nicht verfügbar";
 
+/* Location: MessagePathMapView.swift - Empty state title when hops exist but none can be placed */
+"chats.path.unplaceable.title" = "Pfad nicht platzierbar";
+
+/* Location: MessagePathMapView.swift - Empty state description when hops exist but none can be placed */
+"chats.path.unplaceable.description" = "Sprünge, die unbekannt sind, keinen Standort haben oder zu mehr als einem Knoten passen, werden nicht auf der Karte platziert.";
+
 /* Location: MessagePathSheet.swift - Button to copy path */
 "chats.path.copyButton" = "Pfad kopieren";
 
@@ -780,8 +813,32 @@
 /* Location: MessagePathMapView.swift - Path map button and sheet navigation title */
 "chats.path.map" = "Pfadkarte";
 
+/* Location: MessagePathDetailBlock.swift - Capsule subtitle for the first arrival */
+"chats.path.arrival.first" = "Erste";
+
+/* Location: MessagePathArrivalCapsules.swift - Later capsule subtitle, %@ is a duration like 3s */
+"chats.path.arrival.offset" = "+%@";
+
+/* Location: MessagePathArrivalCapsules.swift - VoiceOver for a later capsule. First %@ is hops/SNR title, second %@ is duration */
+"chats.path.arrival.offsetAccessibility" = "%@, %@ nach der ersten Ankunft";
+
+/* Location: MessagePathPreviewMap.swift - VoiceOver label for expanding the compact path map */
+"chats.path.accessibility.viewOnMap" = "Pfad auf Karte anzeigen";
+
+/* Location: MessageActionsSheet.swift - Alert when extra path fetch fails */
+"chats.path.extrasLoadFailed" = "Zusätzliche Pfade konnten nicht geladen werden.";
+
 /* Location: MessagePathMapView.swift - Center on path map control accessibility label */
 "chats.path.centerOnPath" = "Auf Pfad zentrieren";
+
+/* Location: PathDistanceBanner.swift - VoiceOver label for path distance help */
+"chats.path.distance.incomplete" = "Pfadentfernung";
+
+/* Location: PathDistanceBanner.swift - Title for path distance popover */
+"chats.path.distance.incompleteTitle" = "Pfadentfernung";
+
+/* Location: PathDistanceBanner.swift - Explanation that omitted hops can make distance incorrect */
+"chats.path.distance.incompleteExplanation" = "Die Entfernung kann ungenau sein. Sprünge, die unbekannt sind, keinen Standort haben oder zu mehr als einem Knoten passen, werden in der Berechnung nicht berücksichtigt.";
 
 // MARK: - Path Hop Row View
 
@@ -898,6 +955,21 @@
 
 /* Location: UnifiedMessageBubble.swift - Accessibility label for region footer - %@ is region name. "Flooded" is a domain term for mesh-broadcast across all nodes in a radio region. */
 "chats.message.region.accessibilityLabel" = "Region %@";
+
+/* Location: BubbleFooterRow.swift - VoiceOver when multiple regions match - %@ is localized list of names */
+"chats.message.region.ambiguousAccessibilityLabel" = "Region, mehrdeutig: %@";
+
+/* Location: FallbackMatchIndicatorView.swift - Accessibility label for region multi-match */
+"chats.message.region.ambiguous.possibleMatch" = "Mehrere passende Regionen";
+
+/* Location: FallbackMatchIndicatorView.swift - Accessibility hint for region multi-match */
+"chats.message.region.ambiguous.possibleMatchHint" = "Mehrere Regionen in deiner Liste passen zum Transportcode dieses Pakets. Die App kann nicht feststellen, welche verwendet wurde.";
+
+/* Location: FallbackMatchIndicatorView.swift - Popover title for region multi-match */
+"chats.message.region.ambiguous.popoverTitle" = "Mehrere passende Regionen";
+
+/* Location: FallbackMatchIndicatorView.swift - Popover body; %@ is newline-prefixed list of candidate names */
+"chats.message.region.ambiguous.popoverBody" = "Mehrere Regionen in deiner Liste passen zum Transportcode dieses Pakets. Die App kann nicht feststellen, welche verwendet wurde.%@";
 
 /* Location: BubbleFooterRow.swift - Accessibility label for the raw send time footer - %@ is the time */
 "chats.message.sendTime.accessibilityLabel" = "Sendezeit: %@";
@@ -1029,19 +1101,16 @@
 "reactions.badge" = "%@ %d";
 
 /* Location: ReactionBadgesView.swift - Accessibility hint for reaction badge */
-"reactions.badge_hint" = "Doppeltippen zum Reagieren, lange drücken für Details";
+"reactions.badge_hint" = "Zeigt, wer reagiert hat";
 
 /* Location: ReactionBadgesView.swift - Accessibility label for overflow badge */
 "reactions.more_badge" = "%d weitere Reaktionstypen";
 
 /* Location: ReactionBadgesView.swift - Accessibility hint for overflow badge */
-"reactions.more_badge_hint" = "Doppeltippen, um alle Reaktionen anzuzeigen";
+"reactions.more_badge_hint" = "Zeigt alle Reaktionen";
 
 /* Location: EmojiPickerRow.swift - Label for more emojis button */
 "reactions.more_emojis" = "Mehr Emojis";
-
-/* Location: ReactionBadgesView.swift - VoiceOver accessibility action */
-"reactions.view_details" = "Reaktionsdetails anzeigen";
 
 /* Location: ReactionDetailsSheet.swift - Navigation title */
 /* Location: ChatViewModel.swift - Error message when reaction fails */
@@ -1107,7 +1176,7 @@
 "chats.channelInfo.region" = "Region";
 
 /* Location: ChannelInfoSheet.swift - Purpose: Region value when no scope set */
-"chats.channelInfo.region.allRegions" = "Alle Regionen";
+"chats.channelInfo.region.allRegions" = "Ohne Bereich";
 
 /* Location: ChannelInfoSheet.swift - Purpose: Picker row and summary when channel inherits the device default flood scope */
 "chats.channelInfo.region.useDefaultFormat" = "%@ (Standard)";

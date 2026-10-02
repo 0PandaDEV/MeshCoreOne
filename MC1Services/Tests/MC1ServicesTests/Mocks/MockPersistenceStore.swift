@@ -56,10 +56,18 @@ public actor MockPersistenceStore: PersistenceStoreProtocol {
     stubbedTouchContactHeardError = error
   }
 
+  public func setStubbedDeleteContactError(_ error: Error?) {
+    stubbedDeleteContactError = error
+  }
+
   // MARK: - Message Operations
 
   public func isDuplicateMessage(deduplicationKey: String, radioID: UUID) async throws -> Bool {
     messages.values.contains { $0.deduplicationKey == deduplicationKey && $0.radioID == radioID }
+  }
+
+  public func fetchMessage(deduplicationKey: String, radioID: UUID) async throws -> MessageDTO? {
+    messages.values.first { $0.deduplicationKey == deduplicationKey && $0.radioID == radioID }
   }
 
   public func saveMessage(_ dto: MessageDTO) async throws {
@@ -121,6 +129,55 @@ public actor MockPersistenceStore: PersistenceStoreProtocol {
     let filtered = messages.values.filter { $0.radioID == radioID && $0.channelIndex == channelIndex }
       .sorted { $0.timestamp < $1.timestamp }
     return Array(filtered.dropFirst(offset).prefix(limit))
+  }
+
+  public func fetchMessageWindow(
+    contactID: UUID,
+    anchorSortDate: Date?,
+    floorLimit: Int
+  ) async throws -> (messages: [MessageDTO], hasMore: Bool) {
+    try windowFrom(
+      messages.values.filter { $0.contactID == contactID },
+      anchorSortDate: anchorSortDate,
+      floorLimit: floorLimit
+    )
+  }
+
+  public func fetchMessageWindow(
+    radioID: UUID,
+    channelIndex: UInt8,
+    anchorSortDate: Date?,
+    floorLimit: Int
+  ) async throws -> (messages: [MessageDTO], hasMore: Bool) {
+    try windowFrom(
+      messages.values.filter { $0.radioID == radioID && $0.channelIndex == channelIndex },
+      anchorSortDate: anchorSortDate,
+      floorLimit: floorLimit
+    )
+  }
+
+  private func windowFrom(
+    _ candidates: some Sequence<MessageDTO>,
+    anchorSortDate: Date?,
+    floorLimit: Int
+  ) throws -> (messages: [MessageDTO], hasMore: Bool) {
+    if let error = stubbedFetchMessageError {
+      throw error
+    }
+    let newestFirst = candidates.sorted {
+      if $0.sortDate != $1.sortDate { return $0.sortDate > $1.sortDate }
+      if $0.timestamp != $1.timestamp { return $0.timestamp > $1.timestamp }
+      return $0.createdAt > $1.createdAt
+    }
+    let limit: Int = if let anchorSortDate {
+      max(floorLimit, newestFirst.filter { $0.sortDate >= anchorSortDate }.count)
+    } else {
+      floorLimit
+    }
+    let fetched = Array(newestFirst.prefix(limit + 1))
+    let hasMore = fetched.count > limit
+    let window = hasMore ? Array(fetched.dropLast()) : fetched
+    return (MessageDTO.reorderSameSenderClusters(Array(window.reversed())), hasMore)
   }
 
   public func findChannelMessageForReaction(
@@ -678,6 +735,55 @@ public actor MockPersistenceStore: PersistenceStoreProtocol {
     }
     cascadeDeleteContactData(contactID: id)
     contacts.removeValue(forKey: id)
+  }
+
+  /// When true, the next `deleteContacts` suspends until `releaseDeleteContacts()`.
+  private var deleteContactsHoldRequested = false
+  private var deleteContactsHoldContinuation: CheckedContinuation<Void, Never>?
+  public private(set) var deleteContactsCallCount = 0
+
+  public func holdNextDeleteContacts() {
+    deleteContactsHoldRequested = true
+  }
+
+  public func releaseDeleteContacts() {
+    if let continuation = deleteContactsHoldContinuation {
+      deleteContactsHoldContinuation = nil
+      continuation.resume()
+    }
+    deleteContactsHoldRequested = false
+  }
+
+  public var isDeleteContactsHeld: Bool {
+    deleteContactsHoldContinuation != nil
+  }
+
+  public func deleteContacts(
+    radioID: UUID,
+    publicKeys: Set<Data>,
+    skippingPublicKeys: @Sendable () -> Set<Data>
+  ) async throws -> [UUID] {
+    deleteContactsCallCount += 1
+    if deleteContactsHoldRequested {
+      deleteContactsHoldRequested = false
+      await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        deleteContactsHoldContinuation = continuation
+      }
+    }
+    if let error = stubbedDeleteContactError {
+      throw error
+    }
+    var ids: [UUID] = []
+    for key in publicKeys {
+      if skippingPublicKeys().contains(key) { continue }
+      guard let contact = contacts.values.first(
+        where: { $0.radioID == radioID && $0.publicKey == key }
+      ) else { continue }
+      if skippingPublicKeys().contains(key) { continue }
+      try await deleteContact(id: contact.id)
+      ids.append(contact.id)
+    }
+    return ids
   }
 
   public func deleteContactIfUnreferenced(id: UUID) async throws {
@@ -1291,6 +1397,20 @@ public actor MockPersistenceStore: PersistenceStoreProtocol {
     }
   }
 
+  public func fetchRxLogEntries(
+    radioID: UUID,
+    channelIndex: UInt8,
+    senderTimestamp: UInt32
+  ) throws -> [RxLogEntryDTO] {
+    mockRxLogEntries
+      .filter { entry in
+        entry.radioID == radioID &&
+          entry.channelIndex == channelIndex &&
+          entry.senderTimestamp == senderTimestamp
+      }
+      .sorted { $0.receivedAt < $1.receivedAt }
+  }
+
   public func findRxLogEntryBySenderPrefix(
     radioID: UUID,
     senderPrefixByte: UInt8,
@@ -1308,9 +1428,9 @@ public actor MockPersistenceStore: PersistenceStoreProtocol {
 
   // MARK: - RX Log
 
-  public private(set) var updatedRxLogRegions: [(id: UUID, regionScope: String?)] = []
-  public private(set) var updatedChannelMessageRegions: [(channelIndex: UInt8, senderTimestamp: UInt32, regionScope: String?)] = []
-  public private(set) var updatedDMMessageRegions: [(senderPrefixByte: UInt8, senderTimestamp: UInt32, regionScope: String?)] = []
+  public private(set) var updatedRxLogRegions: [(id: UUID, regionScope: String?, regionScopeMatches: [String])] = []
+  public private(set) var updatedChannelMessageRegions: [(channelIndex: UInt8, senderTimestamp: UInt32, regionScope: String?, regionScopeMatches: [String])] = []
+  public private(set) var updatedDMMessageRegions: [(senderPrefixByte: UInt8, senderTimestamp: UInt32, regionScope: String?, regionScopeMatches: [String])] = []
 
   public func saveRxLogEntry(_ dto: RxLogEntryDTO) async throws {
     mockRxLogEntries.append(dto)
@@ -1336,15 +1456,22 @@ public actor MockPersistenceStore: PersistenceStoreProtocol {
     mockRxLogEntries.removeAll { $0.radioID == radioID && !keptIDs.contains($0.id) }
   }
 
-  public func fetchEntriesWithMissingRegion(radioID: UUID) async throws -> [RxLogEntryDTO] {
-    mockRxLogEntries.filter { $0.radioID == radioID && $0.transportCode != nil && $0.regionScope == nil }
+  public func fetchEntriesWithTransportCode(radioID: UUID, limit: Int) async throws -> [RxLogEntryDTO] {
+    Array(
+      mockRxLogEntries
+        .filter { $0.radioID == radioID && $0.transportCode != nil }
+        .sorted { $0.receivedAt > $1.receivedAt }
+        .prefix(limit)
+    )
   }
 
   public func fetchRecentEntriesByDecryptStatus(radioID: UUID, status: DecryptStatus, since: Date) async throws -> [RxLogEntryDTO] {
     mockRxLogEntries.filter { $0.radioID == radioID && $0.decryptStatus == status && $0.receivedAt >= since }
   }
 
-  public func batchUpdateRxLogRegion(updates: [(id: UUID, regionScope: String?)]) async throws {
+  public func batchUpdateRxLogRegion(
+    updates: [(id: UUID, regionScope: String?, regionScopeMatches: [String])]
+  ) async throws {
     updatedRxLogRegions.append(contentsOf: updates)
   }
 
@@ -1359,18 +1486,22 @@ public actor MockPersistenceStore: PersistenceStoreProtocol {
     }
   }
 
+  @discardableResult
   public func batchUpdateChannelMessageRegion(
     radioID: UUID,
-    updates: [(channelIndex: UInt8, senderTimestamp: UInt32, regionScope: String?)]
-  ) async throws {
+    updates: [(channelIndex: UInt8, senderTimestamp: UInt32, regionScope: String?, regionScopeMatches: [String])]
+  ) async throws -> [UUID] {
     updatedChannelMessageRegions.append(contentsOf: updates)
+    return []
   }
 
+  @discardableResult
   public func batchUpdateDMMessageRegion(
     radioID: UUID,
-    updates: [(senderPrefixByte: UInt8, senderTimestamp: UInt32, regionScope: String?)]
-  ) async throws {
+    updates: [(senderPrefixByte: UInt8, senderTimestamp: UInt32, regionScope: String?, regionScopeMatches: [String])]
+  ) async throws -> [UUID] {
     updatedDMMessageRegions.append(contentsOf: updates)
+    return []
   }
 
   // MARK: - Saved Trace Paths
@@ -1459,6 +1590,15 @@ public actor MockPersistenceStore: PersistenceStoreProtocol {
 
   public func incrementMessageHeardRepeats(id: UUID) async throws -> Int {
     0 // Stub
+  }
+
+  public func adoptIncomingPathIfUnknown(id: UUID, pathNodes: Data, pathLength: UInt8) async throws -> Bool {
+    guard var message = messages[id] else { return false }
+    if message.pathNodes != nil { return false }
+    message.pathNodes = pathNodes
+    message.pathLength = pathLength
+    messages[id] = message
+    return true
   }
 
   public func incrementMessageSendCount(id: UUID) async throws -> Int {
@@ -1638,8 +1778,9 @@ public actor MockPersistenceStore: PersistenceStoreProtocol {
   }
 
   public func cleanupDuplicateRemoteNodeSessions(publicKey: Data, keepID: UUID) async throws {
+    guard let kept = remoteNodeSessions[keepID] else { return }
     let duplicateIDs = remoteNodeSessions.values
-      .filter { $0.publicKey == publicKey && $0.id != keepID }
+      .filter { $0.publicKey == publicKey && $0.id != keepID && $0.radioID == kept.radioID }
       .map(\.id)
     for id in duplicateIDs {
       remoteNodeSessions.removeValue(forKey: id)

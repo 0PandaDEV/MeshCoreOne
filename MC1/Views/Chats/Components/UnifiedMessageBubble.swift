@@ -38,7 +38,16 @@ struct UnifiedMessageBubble: View, Equatable {
   @Environment(\.openURL) private var openURL
   @Environment(\.appTheme) private var theme
 
-  @State private var showingReactionDetails = false
+  private struct ReactionDetailsRequest: Identifiable {
+    var id: UUID {
+      messageID
+    }
+
+    let messageID: UUID
+    let initialEmoji: String?
+  }
+
+  @State private var reactionDetails: ReactionDetailsRequest?
 
   nonisolated static func == (lhs: UnifiedMessageBubble, rhs: UnifiedMessageBubble) -> Bool {
     lhs.item == rhs.item
@@ -86,26 +95,33 @@ struct UnifiedMessageBubble: View, Equatable {
              item.grouping.showSenderName {
             SenderNameLabel(resolution: item.envelope.senderResolution, nameColor: senderColor)
               .senderNamePlacement(enclosingStackSpacing: bubbleStackSpacing)
+              .padding(.leading, reserveAvatarColumn ? IncomingBubbleAvatarMetrics.columnWidth : 0)
           }
 
-          bubbleActionsMenu(
-            BubbleFragmentStack(
-              item: item,
-              layout: layout,
-              bubbleColor: resolvedBubbleColor,
-              timeColor: footerTimeColor,
-              callbacks: callbacks,
-              imageResolver: imageResolver
-            )
-          )
+          bubbleWithOptionalAvatar
 
           ForEach(Array(layout.siblings.enumerated()), id: \.offset) { _, fragment in
             siblingFragmentView(fragment)
+              .padding(.leading, reserveAvatarColumn ? IncomingBubbleAvatarMetrics.columnWidth : 0)
           }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityMessageLabel)
         .accessibilityActions {
+          if let chrome = layout.textPayload?.translation {
+            switch chrome.phase {
+            case .offer:
+              Button(L10n.Chats.Chats.Message.Action.translate) {
+                callbacks.onTranslationAction?()
+              }
+            case .showing:
+              Button(L10n.Chats.Chats.Message.Action.showOriginal) {
+                callbacks.onTranslationAction?()
+              }
+            case .inProgress:
+              EmptyView()
+            }
+          }
           if item.footer.showStatusRow,
              item.footer.status == .failed,
              let onRetry = callbacks.onRetry {
@@ -113,7 +129,7 @@ struct UnifiedMessageBubble: View, Equatable {
           }
           if hasReactionSummary {
             Button(L10n.Chats.Chats.Message.Action.viewReactions) {
-              showingReactionDetails = true
+              reactionDetails = ReactionDetailsRequest(messageID: message.id, initialEmoji: nil)
             }
           }
           ForEach(MessageLinkAccessibility.actions(
@@ -160,8 +176,8 @@ struct UnifiedMessageBubble: View, Equatable {
         callbacks.onRequestPreviewFetch?()
       }
     }
-    .sheet(isPresented: $showingReactionDetails) {
-      ReactionDetailsSheet(messageID: message.id)
+    .sheet(item: $reactionDetails) { request in
+      ReactionDetailsSheet(messageID: request.messageID, initialEmoji: request.initialEmoji)
     }
   }
 
@@ -177,11 +193,8 @@ struct UnifiedMessageBubble: View, Equatable {
       }
   }
 
-  /// Renders one fragment from `layout.siblings` (reactions, malware warning, link preview, map
-  /// preview). Content cards carry the bubble's context menu so a press anywhere opens the same
-  /// menu; reactions keep their own long-press. The text and inline-image kinds never reach the
-  /// sibling list (they render inside `BubbleFragmentStack`), so their arm exists only to keep the
-  /// switch exhaustive.
+  /// Sibling fragment: content cards carry the bubble's context menu; reactions open details on tap.
+  /// Text and inline-image stay in `BubbleFragmentStack`; their switch arm is exhaustive-only.
   @ViewBuilder
   private func siblingFragmentView(_ fragment: MessageFragment) -> some View {
     let content = siblingFragmentBody(fragment)
@@ -198,8 +211,9 @@ struct UnifiedMessageBubble: View, Equatable {
     case let .reactionSummary(summary):
       ReactionsFragmentView(
         summary: summary,
-        onTapReaction: { emoji in callbacks.onReaction?(emoji) },
-        onLongPress: { showingReactionDetails = true }
+        onSelect: { emoji in
+          reactionDetails = ReactionDetailsRequest(messageID: message.id, initialEmoji: emoji)
+        }
       )
     case let .malwareWarning(url):
       MalwareWarningCard(url: url)
@@ -222,9 +236,8 @@ struct UnifiedMessageBubble: View, Equatable {
     }
   }
 
-  /// Whether a sibling fragment carries the bubble's actions-sheet long-press. Content cards
-  /// (link, map, malware) do, so a press anywhere on the bubble opens the sheet. Reactions keep
-  /// their own long-press; text and inline image render in the box, which already carries it.
+  /// Content cards carry the actions-sheet long-press so a press on the card opens it.
+  /// Reactions open details on tap; text and inline image already carry it on the box.
   static func siblingWantsActionsLongPress(_ fragment: MessageFragment) -> Bool {
     switch fragment {
     case .linkPreview, .mapPreview, .malwareWarning:
@@ -232,6 +245,38 @@ struct UnifiedMessageBubble: View, Equatable {
     case .reactionSummary, .text, .inlineImage:
       false
     }
+  }
+
+  /// Channel incoming only. DM incoming and every outgoing row skip the column.
+  private var reserveAvatarColumn: Bool {
+    configuration.showsIncomingAvatars && !item.envelope.isOutgoing
+  }
+
+  private var showAvatar: Bool {
+    reserveAvatarColumn && item.envelope.incomingAvatar != nil
+  }
+
+  private var bubbleWithOptionalAvatar: some View {
+    IncomingAvatarGutter(
+      identity: showAvatar ? item.envelope.incomingAvatar : nil,
+      reserveColumn: reserveAvatarColumn,
+      messageID: message.id
+    ) {
+      stackedBubble
+    }
+  }
+
+  private var stackedBubble: some View {
+    bubbleActionsMenu(
+      BubbleFragmentStack(
+        item: item,
+        layout: layout,
+        bubbleColor: resolvedBubbleColor,
+        timeColor: footerTimeColor,
+        callbacks: callbacks,
+        imageResolver: imageResolver
+      )
+    )
   }
 
   // MARK: - Computed Properties
@@ -287,7 +332,14 @@ struct UnifiedMessageBubble: View, Equatable {
         }
       }
     }
-    label += message.text
+    switch layout.textPayload?.translation?.phase {
+    case let .showing(translated, _):
+      label += L10n.Chats.Chats.Message.translatedAccessibility(translated)
+    case .inProgress:
+      label += "\(message.text), \(L10n.Chats.Chats.Message.Action.translating)"
+    default:
+      label += message.text
+    }
     if item.envelope.isOutgoing {
       label += ", \(MessageStatusText.text(for: item.footer))"
     }
@@ -299,7 +351,7 @@ struct UnifiedMessageBubble: View, Equatable {
         label += ", \(L10n.Chats.Chats.Message.Path.accessibilityLabel(formattedPath))"
       }
       if let region = item.footer.regionToShow {
-        label += ", \(L10n.Chats.Chats.Message.Region.accessibilityLabel(region))"
+        label += ", \(MessageRegionAccessibility.label(regionName: region, matchNames: item.footer.regionMatchNames))"
       }
     }
     return label

@@ -9,7 +9,7 @@ struct MapFilterControl {
 /// Shared liquid-glass toolbar hosting the controls every interactive map uses
 /// (location, map options) plus a slot for one map-specific button.
 /// The map options control is a native menu offering the north lock, map-style
-/// picker, and the labels toggle.
+/// picker, the labels toggle, and an optional clustering toggle.
 struct MapControlsToolbar<AdditionalActions: View>: View {
   /// Centers the map on the user's location.
   var onLocationTap: () -> Void
@@ -19,6 +19,7 @@ struct MapControlsToolbar<AdditionalActions: View>: View {
 
   @Binding var isNorthLocked: Bool
   @Binding var showLabels: Bool
+  var clusteringEnabled: Binding<Bool>?
   @Binding var mapStyleSelection: MapStyleSelection
 
   var filter: MapFilterControl?
@@ -144,6 +145,9 @@ struct MapControlsToolbar<AdditionalActions: View>: View {
       Divider()
 
       Toggle(L10n.Map.Map.Controls.showLabels, systemImage: "character.textbox", isOn: $showLabels)
+      if let clusteringEnabled {
+        Toggle(L10n.Map.Map.Controls.clusterNodes, systemImage: "circle.grid.2x2", isOn: clusteringEnabled)
+      }
       Toggle(L10n.Map.Map.Controls.lockNorth, systemImage: "location.north.line", isOn: $isNorthLocked)
     } label: {
       Label(L10n.Map.Map.Controls.mapOptions, systemImage: "ellipsis.circle")

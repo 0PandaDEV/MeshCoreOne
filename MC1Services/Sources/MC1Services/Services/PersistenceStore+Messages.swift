@@ -108,6 +108,96 @@ public extension PersistenceStore {
     return MessageDTO.reorderSameSenderClusters(dtos)
   }
 
+  /// Fetching one row beyond the limit distinguishes "exactly limit rows
+  /// exist" from "more remain".
+  private static let hasMoreProbeCount = 1
+
+  /// Fetch the newest window for a contact: at least `floorLimit` rows,
+  /// widened to every row with `sortDate` at or newer than `anchorSortDate`
+  /// (nil means the floor alone). `hasMore` is whether older rows remain.
+  ///
+  /// A hidden reaction below the anchor falls out and shifts
+  /// `totalFetchedCount` so the next `loadOlder` offset still points at it.
+  func fetchMessageWindow(
+    contactID: UUID,
+    anchorSortDate: Date?,
+    floorLimit: Int
+  ) throws -> (messages: [MessageDTO], hasMore: Bool) {
+    let targetContactID: UUID? = contactID
+    let limit = try windowLimit(
+      floorLimit: floorLimit,
+      anchorSortDate: anchorSortDate
+    ) { anchor in
+      #Predicate<Message> { message in
+        message.contactID == targetContactID && message.sortDate >= anchor
+      }
+    }
+    let predicate = #Predicate<Message> { message in
+      message.contactID == targetContactID
+    }
+    return try fetchMessageWindow(predicate: predicate, limit: limit)
+  }
+
+  /// Fetch the newest window for a channel; see the contact variant.
+  func fetchMessageWindow(
+    radioID: UUID,
+    channelIndex: UInt8,
+    anchorSortDate: Date?,
+    floorLimit: Int
+  ) throws -> (messages: [MessageDTO], hasMore: Bool) {
+    let targetRadioID = radioID
+    let targetChannelIndex: UInt8? = channelIndex
+    let limit = try windowLimit(
+      floorLimit: floorLimit,
+      anchorSortDate: anchorSortDate
+    ) { anchor in
+      #Predicate<Message> { message in
+        message.radioID == targetRadioID
+          && message.channelIndex == targetChannelIndex
+          && message.sortDate >= anchor
+      }
+    }
+    let predicate = #Predicate<Message> { message in
+      message.radioID == targetRadioID && message.channelIndex == targetChannelIndex
+    }
+    return try fetchMessageWindow(predicate: predicate, limit: limit)
+  }
+
+  private func windowLimit(
+    floorLimit: Int,
+    anchorSortDate: Date?,
+    countPredicate: (Date) -> Predicate<Message>
+  ) throws -> Int {
+    guard let anchorSortDate else { return floorLimit }
+    let count = try modelContext.fetchCount(
+      FetchDescriptor(predicate: countPredicate(anchorSortDate))
+    )
+    return max(floorLimit, count)
+  }
+
+  private func fetchMessageWindow(
+    predicate: Predicate<Message>,
+    limit: Int
+  ) throws -> (messages: [MessageDTO], hasMore: Bool) {
+    var descriptor = FetchDescriptor(
+      predicate: predicate,
+      sortBy: [
+        SortDescriptor(\Message.sortDate, order: .reverse),
+        SortDescriptor(\Message.timestamp, order: .reverse),
+        SortDescriptor(\Message.createdAt, order: .reverse)
+      ]
+    )
+    descriptor.fetchLimit = limit + Self.hasMoreProbeCount
+
+    var fetched = try modelContext.fetch(descriptor)
+    let hasMore = fetched.count > limit
+    if hasMore {
+      fetched.removeLast()
+    }
+    let dtos = fetched.reversed().map { MessageDTO(from: $0) }
+    return (MessageDTO.reorderSameSenderClusters(dtos), hasMore)
+  }
+
   /// Finds a channel message matching a parsed reaction within a timestamp window.
   func findChannelMessageForReaction(
     radioID: UUID,
@@ -289,6 +379,18 @@ public extension PersistenceStore {
     return try modelContext.fetchCount(FetchDescriptor(predicate: predicate)) > 0
   }
 
+  /// Fetch the message with this deduplication key for the given radio, if any.
+  func fetchMessage(deduplicationKey: String, radioID: UUID) throws -> MessageDTO? {
+    let targetKey = deduplicationKey
+    let targetRadioID = radioID
+    let predicate = #Predicate<Message> {
+      $0.deduplicationKey == targetKey && $0.radioID == targetRadioID
+    }
+    var descriptor = FetchDescriptor(predicate: predicate)
+    descriptor.fetchLimit = 1
+    return try modelContext.fetch(descriptor).first.map { MessageDTO(from: $0) }
+  }
+
   /// Save a new message
   func saveMessage(_ dto: MessageDTO) throws {
     modelContext.insert(Message(dto: dto))
@@ -305,6 +407,9 @@ public extension PersistenceStore {
     descriptor.fetchLimit = 1
 
     if let message = try modelContext.fetch(descriptor).first {
+      if status == .failed, message.status != .failed {
+        message.failureSeen = false
+      }
       message.status = status
       try modelContext.save()
     }
@@ -327,6 +432,9 @@ public extension PersistenceStore {
 
     guard let message = try modelContext.fetch(descriptor).first, message.status != .delivered else {
       return false
+    }
+    if status == .failed, message.status != .failed {
+      message.failureSeen = false
     }
     message.status = status
     try modelContext.save()
@@ -703,6 +811,20 @@ public extension PersistenceStore {
     message.heardRepeats += 1
     try modelContext.save()
     return message.heardRepeats
+  }
+
+  /// Writes `pathNodes` and `pathLength` only when the column is still nil.
+  func adoptIncomingPathIfUnknown(id: UUID, pathNodes: Data, pathLength: UInt8) throws -> Bool {
+    let targetID = id
+    let predicate = #Predicate<Message> { message in message.id == targetID }
+    var descriptor = FetchDescriptor(predicate: predicate)
+    descriptor.fetchLimit = 1
+    guard let message = try modelContext.fetch(descriptor).first else { return false }
+    if message.pathNodes != nil { return false }
+    message.pathNodes = pathNodes
+    message.pathLength = pathLength
+    try modelContext.save()
+    return true
   }
 
   /// Increments the sendCount for a message and returns the new count.

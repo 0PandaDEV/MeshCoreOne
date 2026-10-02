@@ -10,7 +10,6 @@ private let logger = Logger(subsystem: "com.mc1", category: "BLEStatus")
 struct BLEStatusIndicatorView: View {
   @Environment(\.appState) private var appState
   @State private var showingDeviceSelection = false
-  @State private var showingAdvancedSettings = false
   @State private var isSendingAdvert = false
   @State private var successFeedbackTrigger = false
   @State private var errorFeedbackTrigger = false
@@ -25,7 +24,14 @@ struct BLEStatusIndicatorView: View {
     ToolbarMenu {
       menuContent
     } label: {
-      StatusIcon(iconName: iconName, iconColor: iconColor, isAnimating: isAnimating)
+      // Overflow uses the title; iconOnly keeps the bar glyph-only.
+      Label {
+        Text(L10n.Settings.BleStatus.accessibilityLabel)
+      } icon: {
+        StatusIcon(iconName: iconName, iconColor: iconColor, isAnimating: isAnimating)
+      }
+      .labelStyle(.iconOnly)
+      .tint(iconColor)
     }
     .popoverTip(deviceMenuTip)
     .dynamicTypeSize(...DynamicTypeSize.xLarge)
@@ -37,13 +43,12 @@ struct BLEStatusIndicatorView: View {
     .onChange(of: appState.connectedDevice != nil, initial: true) { _, isConnected in
       DeviceMenuTip.isConnected = isConnected
     }
-    .sheet(isPresented: $showingDeviceSelection) {
+    .sheet(isPresented: $showingDeviceSelection, onDismiss: {
+      appState.handleDeviceSelectionSheetDismissed()
+    }) {
       DeviceSelectionSheet()
         .presentationDetents([.medium])
         .presentationDragIndicator(.visible)
-    }
-    .navigationDestination(isPresented: $showingAdvancedSettings) {
-      AdvancedSettingsView()
     }
   }
 
@@ -69,6 +74,8 @@ struct BLEStatusIndicatorView: View {
             .foregroundStyle(.secondary)
           }
         }
+        .foregroundStyle(.secondary)
+        .tint(.secondary)
 
         Button {
           showingDeviceSelection = true
@@ -84,6 +91,7 @@ struct BLEStatusIndicatorView: View {
         } label: {
           Label(L10n.Settings.BleStatus.disconnect, systemImage: "eject")
         }
+        .tint(Color(.systemRed))
       }
 
       Section {
@@ -106,7 +114,7 @@ struct BLEStatusIndicatorView: View {
 
       Section {
         Button {
-          showingAdvancedSettings = true
+          appState.navigation.navigateToSetting(.advanced)
         } label: {
           Label(L10n.Settings.AdvancedSettings.title, systemImage: "gearshape")
         }
@@ -199,6 +207,7 @@ private struct StatusIcon: View {
   var body: some View {
     Image(systemName: iconName)
       .foregroundStyle(iconColor)
+      .tint(iconColor)
       .symbolEffect(.pulse, isActive: isAnimating)
   }
 }

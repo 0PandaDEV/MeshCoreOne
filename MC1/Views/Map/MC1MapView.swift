@@ -17,6 +17,7 @@ struct MC1MapView: UIViewRepresentable {
 
   // Configuration
   let showLabels: Bool
+  var clusteringEnabled: Bool = true
   let showsUserLocation: Bool
   let isInteractive: Bool
   let showsScale: Bool
@@ -31,6 +32,10 @@ struct MC1MapView: UIViewRepresentable {
   /// applied region frames its content in the remaining visible area instead
   /// of centering across the whole screen including the obscured strip.
   var cameraBottomSheetFraction: CGFloat?
+  /// Extra inset (points) the camera keeps clear around the framed region.
+  var cameraEdgePadding: UIEdgeInsets = .zero
+  /// When set, the Apple legal label sits this far above the bottom edge so overlay chrome does not cover it.
+  var legalOrnamentBottomMargin: CGFloat?
 
   // Programmatic selection: the id of the point to select, plus a version
   // counter bumped to (re)fire it. Routed through `onPointTap`, so a
@@ -112,6 +117,8 @@ struct MC1MapView: UIViewRepresentable {
     coordinator.setIsCenteredOnUser = { isCenteredOnUser.wrappedValue = $0 }
     coordinator.isDarkMode = isDarkMode
     coordinator.showLabels = showLabels
+    coordinator.setClusteringEnabled(clusteringEnabled, in: mapView)
+    mapView.layoutMargins.bottom = legalOrnamentBottomMargin ?? 0
     coordinator.selectedPointID = selectedPointID
     coordinator.currentPoints = points
 
@@ -164,7 +171,32 @@ struct MC1MapView: UIViewRepresentable {
     let adjusted = regionAccountingForBottomSheet(region)
     coordinator.hasPendingProgrammaticRegion = true
     coordinator.lastAppliedRegion = adjusted
-    mapView.setRegion(mapView.regionThatFits(adjusted), animated: animated)
+    if cameraEdgePadding == .zero {
+      mapView.setRegion(mapView.regionThatFits(adjusted), animated: animated)
+    } else {
+      mapView.setVisibleMapRect(
+        Self.mapRect(for: adjusted),
+        edgePadding: cameraEdgePadding,
+        animated: animated
+      )
+    }
+  }
+
+  private static func mapRect(for region: MKCoordinateRegion) -> MKMapRect {
+    let topLeft = MKMapPoint(CLLocationCoordinate2D(
+      latitude: min(85, region.center.latitude + region.span.latitudeDelta / 2),
+      longitude: region.center.longitude - region.span.longitudeDelta / 2
+    ))
+    let bottomRight = MKMapPoint(CLLocationCoordinate2D(
+      latitude: max(-85, region.center.latitude - region.span.latitudeDelta / 2),
+      longitude: region.center.longitude + region.span.longitudeDelta / 2
+    ))
+    return MKMapRect(
+      x: min(topLeft.x, bottomRight.x),
+      y: min(topLeft.y, bottomRight.y),
+      width: abs(topLeft.x - bottomRight.x),
+      height: abs(topLeft.y - bottomRight.y)
+    )
   }
 
   /// Inflates and shifts the region so its content frames within the visible
@@ -201,6 +233,7 @@ struct MC1MapView: UIViewRepresentable {
     // Configuration mirrored from the representable each update
     var isDarkMode = false
     var showLabels = true
+    var clusteringEnabled = true
     var selectedPointID: UUID?
     var currentPoints: [MapPoint] = []
 
@@ -216,6 +249,17 @@ struct MC1MapView: UIViewRepresentable {
       set { hasPendingProgrammaticRegionInternal = newValue }
     }
     private var hasReceivedInitialRegion = false
+
+    /// MapKit ignores `clusteringIdentifier` changes on a placed annotation, so a
+    /// toggle re-adds every point annotation.
+    func setClusteringEnabled(_ enabled: Bool, in mapView: MKMapView) {
+      guard clusteringEnabled != enabled else { return }
+      clusteringEnabled = enabled
+      let existing = mapView.annotations.compactMap { $0 as? MapPointAnnotation }
+      guard !existing.isEmpty else { return }
+      mapView.removeAnnotations(existing)
+      mapView.addAnnotations(existing.map { MapPointAnnotation(point: $0.point) })
+    }
 
     // MARK: - Annotation diffing
 
@@ -258,7 +302,12 @@ struct MC1MapView: UIViewRepresentable {
         guard let pointAnnotation = annotation as? MapPointAnnotation,
               let view = mapView.view(for: pointAnnotation) as? MC1PinAnnotationView else { continue }
         let showsLabel = showLabels && pointAnnotation.point.id != selectedPointID
-        view.configure(point: pointAnnotation.point, isDarkMode: isDarkMode, showsLabel: showsLabel)
+        view.configure(
+          point: pointAnnotation.point,
+          isDarkMode: isDarkMode,
+          showsLabel: showsLabel,
+          clusteringEnabled: clusteringEnabled
+        )
       }
     }
 
@@ -336,7 +385,12 @@ struct MC1MapView: UIViewRepresentable {
         reuseIdentifier: MC1PinAnnotationView.reuseIdentifier
       )
       let showsLabel = showLabels && pointAnnotation.point.id != selectedPointID
-      view.configure(point: pointAnnotation.point, isDarkMode: isDarkMode, showsLabel: showsLabel)
+      view.configure(
+        point: pointAnnotation.point,
+        isDarkMode: isDarkMode,
+        showsLabel: showsLabel,
+        clusteringEnabled: clusteringEnabled
+      )
       view.onTap = { [weak self, weak mapView] in
         guard let self, let mapView else { return }
         selectPoint(pointAnnotation.point, in: mapView)

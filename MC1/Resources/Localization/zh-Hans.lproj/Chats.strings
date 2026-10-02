@@ -322,6 +322,9 @@
 /* Location: ConversationRow.swift, ChannelConversationRow.swift - Default text when no messages exist */
 "chats.row.noMessages" = "暂无消息";
 
+/* Location: ConversationRow.swift, ChannelConversationRow.swift, RoomConversationRow.swift - Accessibility label for failed-send indicator */
+"chats.row.failedSend" = "发送失败";
+
 /* Location: MutedIndicator.swift - Accessibility label for muted indicator */
 "chats.row.muted" = "已静音";
 
@@ -591,6 +594,18 @@
 /* Location: UnifiedMessageBubble.swift - Context menu action to copy */
 "chats.message.action.copy" = "复制";
 
+/* Location: BubbleTranslationControl.swift - In-bubble Translation offer */
+"chats.message.action.translate" = "翻译";
+
+/* Location: BubbleTranslationControl.swift - Restore the stored message body */
+"chats.message.action.showOriginal" = "显示原文";
+
+/* Location: BubbleTranslationControl.swift - Translation in progress */
+"chats.message.action.translating" = "翻译中...";
+
+/* Location: UnifiedMessageBubble.swift - VoiceOver prefix when the visible body is a translation - %@ is the translated text */
+"chats.message.translatedAccessibility" = "已翻译：%@";
+
 /* Location: UnifiedMessageBubble.swift - Context menu action to view repeat details */
 "chats.message.action.repeatDetails" = "转发详情";
 
@@ -614,6 +629,15 @@
 
 /* Location: UnifiedMessageBubble.swift - Context menu action to view path */
 "chats.message.action.viewPath" = "查看链路";
+
+/* Location: MessagePathDetailBlock.swift - Disclosure row in the message actions sheet */
+"chats.message.action.pathDetails" = "链路详情";
+
+/* Location: MessagePathDetailBlock.swift - VoiceOver label for a single extra path, not drawn */
+"chats.message.action.heardTimes.singular" = "已听到 1 次";
+
+/* Location: MessagePathDetailBlock.swift - VoiceOver label for extra path count - %d is the count, not drawn */
+"chats.message.action.heardTimes.plural" = "已听到 %d 次";
 
 /* Location: UnifiedMessageBubble.swift - Context menu text showing hop count - %@ is count or "Direct" */
 "chats.message.info.hops" = "跳数：%@";
@@ -640,6 +664,9 @@
 
 /* Location: MessageActionsSheet.swift - Details row shown when region could not be resolved */
 "chats.message.info.regionUnresolved" = "区域：未知";
+
+/* Location: ActionsDetailsSection.swift - Details row when multiple known regions match the packet transport code - %@ is localized list of names */
+"chats.message.info.regionAmbiguous" = "区域（有歧义）：%@";
 
 /* Location: UnifiedMessageBubble.swift - Context menu submenu label */
 "chats.message.action.details" = "详情";
@@ -748,6 +775,21 @@
 /* Location: UnifiedMessageBubble.swift - Accessibility label for region footer - %@ is region name. "Flooded" is a domain term for mesh-broadcast across all nodes in a radio region. */
 "chats.message.region.accessibilityLabel" = "区域 %@";
 
+/* Location: BubbleFooterRow.swift - VoiceOver when multiple regions match - %@ is localized list of names */
+"chats.message.region.ambiguousAccessibilityLabel" = "区域，有歧义：%@";
+
+/* Location: FallbackMatchIndicatorView.swift - Accessibility label for region multi-match */
+"chats.message.region.ambiguous.possibleMatch" = "多个匹配区域";
+
+/* Location: FallbackMatchIndicatorView.swift - Accessibility hint for region multi-match */
+"chats.message.region.ambiguous.possibleMatchHint" = "您的列表中有多个区域与此数据包的传输代码匹配。应用无法确定使用了哪一个。";
+
+/* Location: FallbackMatchIndicatorView.swift - Popover title for region multi-match */
+"chats.message.region.ambiguous.popoverTitle" = "多个匹配区域";
+
+/* Location: FallbackMatchIndicatorView.swift - Popover body; %@ is newline-prefixed list of candidate names */
+"chats.message.region.ambiguous.popoverBody" = "您的列表中有多个区域与此数据包的传输代码匹配。应用无法确定使用了哪一个。%@";
+
 /* Location: BubbleFooterRow.swift - Accessibility label for the raw send time footer - %@ is the time */
 "chats.message.sendTime.accessibilityLabel" = "发送时间：%@";
 
@@ -760,19 +802,16 @@
 "reactions.badge" = "%@ %d";
 
 /* Location: ReactionBadgesView.swift - Accessibility hint for reaction badge */
-"reactions.badge_hint" = "双击可添加反应，长按查看详情";
+"reactions.badge_hint" = "显示谁做出了反应";
 
 /* Location: ReactionBadgesView.swift - Accessibility label for overflow badge - %d is count */
 "reactions.more_badge" = "还有 %d 种反应类型";
 
 /* Location: ReactionBadgesView.swift - Accessibility hint for overflow badge */
-"reactions.more_badge_hint" = "双击以查看所有反应";
+"reactions.more_badge_hint" = "显示所有反应";
 
 /* Location: EmojiPickerRow.swift - Label for more emojis button */
 "reactions.more_emojis" = "更多表情";
-
-/* Location: ReactionBadgesView.swift - VoiceOver accessibility action to view reaction details */
-"reactions.view_details" = "查看反应详情";
 
 /* Location: ReactionDetailsSheet.swift - Navigation title */
 /* Location: ChatViewModel.swift - Error message when reaction fails to send */
@@ -846,6 +885,12 @@
 /* Location: MessagePathSheet.swift - Empty state description */
 "chats.path.unavailable.description" = "此消息的路径数据不可用";
 
+/* Location: MessagePathMapView.swift - Empty state title when hops exist but none can be placed */
+"chats.path.unplaceable.title" = "无法标出路径";
+
+/* Location: MessagePathMapView.swift - Empty state description when hops exist but none can be placed */
+"chats.path.unplaceable.description" = "未知、无位置或匹配多个节点的跳不会在地图上标出。";
+
 /* Location: MessagePathSheet.swift - Button to copy path */
 "chats.path.copyButton" = "复制路径";
 
@@ -859,8 +904,32 @@
 /* Location: MessagePathMapView.swift - Path map button and sheet navigation title */
 "chats.path.map" = "路径地图";
 
+/* Location: MessagePathDetailBlock.swift - Capsule subtitle for the first arrival */
+"chats.path.arrival.first" = "首次";
+
+/* Location: MessagePathArrivalCapsules.swift - Later capsule subtitle, %@ is a duration like 3s */
+"chats.path.arrival.offset" = "+%@";
+
+/* Location: MessagePathArrivalCapsules.swift - VoiceOver for a later capsule. First %@ is hops/SNR title, second %@ is duration */
+"chats.path.arrival.offsetAccessibility" = "%@，首次到达后 %@";
+
+/* Location: MessagePathPreviewMap.swift - VoiceOver label for expanding the compact path map */
+"chats.path.accessibility.viewOnMap" = "在地图上查看路径";
+
+/* Location: MessageActionsSheet.swift - Alert when extra path fetch fails */
+"chats.path.extrasLoadFailed" = "无法加载额外链路。";
+
 /* Location: MessagePathMapView.swift - Center on path map control accessibility label */
 "chats.path.centerOnPath" = "在路径上居中";
+
+/* Location: PathDistanceBanner.swift - VoiceOver label for path distance help */
+"chats.path.distance.incomplete" = "路径距离";
+
+/* Location: PathDistanceBanner.swift - Title for path distance popover */
+"chats.path.distance.incompleteTitle" = "路径距离";
+
+/* Location: PathDistanceBanner.swift - Explanation that omitted hops can make distance incorrect */
+"chats.path.distance.incompleteExplanation" = "距离可能不准确。未知、无位置或匹配多个节点的跳不计入计算。";
 
 // MARK: - Path Hop Row View
 
@@ -1105,7 +1174,7 @@
 "chats.channelInfo.region" = "区域";
 
 /* Location: ChannelInfoSheet.swift - Purpose: Region value when no scope set */
-"chats.channelInfo.region.allRegions" = "所有区域";
+"chats.channelInfo.region.allRegions" = "无范围";
 
 /* Location: ChannelInfoSheet.swift - Purpose: Picker row and summary when channel inherits the device default flood scope */
 "chats.channelInfo.region.useDefaultFormat" = "%@（默认）";

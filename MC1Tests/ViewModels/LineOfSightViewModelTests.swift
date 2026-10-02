@@ -104,6 +104,23 @@ actor MockPersistenceStore: PersistenceStoreProtocol {
     []
   }
 
+  func fetchMessageWindow(
+    contactID: UUID,
+    anchorSortDate: Date?,
+    floorLimit: Int
+  ) async throws -> (messages: [MessageDTO], hasMore: Bool) {
+    ([], false)
+  }
+
+  func fetchMessageWindow(
+    radioID: UUID,
+    channelIndex: UInt8,
+    anchorSortDate: Date?,
+    floorLimit: Int
+  ) async throws -> (messages: [MessageDTO], hasMore: Bool) {
+    ([], false)
+  }
+
   func fetchLastMessages(contactIDs: [UUID], limit: Int) throws -> [UUID: [MessageDTO]] {
     [:]
   }
@@ -231,6 +248,10 @@ actor MockPersistenceStore: PersistenceStoreProtocol {
     0
   }
 
+  func adoptIncomingPathIfUnknown(id: UUID, pathNodes: Data, pathLength: UInt8) async throws -> Bool {
+    false
+  }
+
   func deleteMessageRepeats(messageID: UUID) async throws {}
   func incrementMessageSendCount(id: UUID) async throws -> Int {
     0
@@ -272,6 +293,14 @@ actor MockPersistenceStore: PersistenceStoreProtocol {
     nil
   }
 
+  func fetchRxLogEntries(
+    radioID: UUID,
+    channelIndex: UInt8,
+    senderTimestamp: UInt32
+  ) async throws -> [RxLogEntryDTO] {
+    []
+  }
+
   func findRxLogEntryBySenderPrefix(radioID: UUID, senderPrefixByte: UInt8, receivedSince: Date) async throws -> RxLogEntryDTO? {
     nil
   }
@@ -289,6 +318,10 @@ actor MockPersistenceStore: PersistenceStoreProtocol {
 
   func isDuplicateMessage(deduplicationKey: String, radioID: UUID) async throws -> Bool {
     false
+  }
+
+  func fetchMessage(deduplicationKey: String, radioID: UUID) async throws -> MessageDTO? {
+    nil
   }
 
   func isDuplicateRoomMessage(sessionID: UUID, deduplicationKey: String) async throws -> Bool {
@@ -422,7 +455,7 @@ actor MockPersistenceStore: PersistenceStoreProtocol {
 
   func clearRxLogEntries(radioID: UUID) async throws {}
   func pruneRxLogEntries(radioID: UUID, keepCount: Int, pruneThreshold: Int) async throws {}
-  func fetchEntriesWithMissingRegion(radioID: UUID) async throws -> [RxLogEntryDTO] {
+  func fetchEntriesWithTransportCode(radioID: UUID, limit: Int) async throws -> [RxLogEntryDTO] {
     []
   }
 
@@ -430,10 +463,17 @@ actor MockPersistenceStore: PersistenceStoreProtocol {
     []
   }
 
-  func batchUpdateRxLogRegion(updates: [(id: UUID, regionScope: String?)]) async throws {}
+  func batchUpdateRxLogRegion(updates: [(id: UUID, regionScope: String?, regionScopeMatches: [String])]) async throws {}
   func batchUpdateRxLogDecryption(_ updates: [(id: UUID, channelIndex: UInt8?, channelName: String?, senderTimestamp: UInt32?)]) async throws {}
-  func batchUpdateChannelMessageRegion(radioID: UUID, updates: [(channelIndex: UInt8, senderTimestamp: UInt32, regionScope: String?)]) async throws {}
-  func batchUpdateDMMessageRegion(radioID: UUID, updates: [(senderPrefixByte: UInt8, senderTimestamp: UInt32, regionScope: String?)]) async throws {}
+  @discardableResult
+  func batchUpdateChannelMessageRegion(radioID: UUID, updates: [(channelIndex: UInt8, senderTimestamp: UInt32, regionScope: String?, regionScopeMatches: [String])]) async throws -> [UUID] {
+    []
+  }
+
+  @discardableResult
+  func batchUpdateDMMessageRegion(radioID: UUID, updates: [(senderPrefixByte: UInt8, senderTimestamp: UInt32, regionScope: String?, regionScopeMatches: [String])]) async throws -> [UUID] {
+    []
+  }
 
   // MARK: - Channel Message Deletion (stubs)
 

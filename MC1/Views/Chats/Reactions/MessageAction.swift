@@ -5,6 +5,7 @@ enum MessageAction: Equatable {
   case moreEmojis
   case reply
   case copy
+  case translate
   case sendAgain
   case sendDM
   case details

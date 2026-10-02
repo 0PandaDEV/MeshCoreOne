@@ -102,7 +102,7 @@ struct MC1App: App {
               // Tear down the BFU-bootstrap AppState's StoreService listener Task
               // before swapping in the real AppState — otherwise the bootstrap
               // instance's Transaction.updates listener leaks for the process
-              // lifetime and every later transaction event fires `walkCurrentEntitlements`
+              // lifetime and every later transaction event fires `refreshEntitlements`
               // twice (once per orphaned StoreService).
               appState.shutdown()
               let realAppState = AppState(modelContainer: container)
@@ -196,6 +196,10 @@ struct MC1App: App {
   }
 
   private func handleScenePhaseChange(from oldPhase: ScenePhase, to newPhase: ScenePhase) {
+    appState.logToolbarResumeProbe(
+      source: "scenePhase",
+      scene: "\(scenePhaseName(oldPhase))->\(scenePhaseName(newPhase))"
+    )
     switch newPhase {
     case .active:
       Task {
@@ -208,11 +212,21 @@ struct MC1App: App {
       // entries die with the process if iOS terminates the suspended app.
       Task {
         await DebugLogBuffer.shared?.flush()
+        try? await appState.connectionManager.persistenceStore.flushPendingRxLogEntries()
       }
     case .inactive:
       break
     @unknown default:
       break
+    }
+  }
+
+  private func scenePhaseName(_ phase: ScenePhase) -> String {
+    switch phase {
+    case .active: "active"
+    case .inactive: "inactive"
+    case .background: "background"
+    @unknown default: "unknown"
     }
   }
 

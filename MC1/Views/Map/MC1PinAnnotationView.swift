@@ -35,7 +35,7 @@ final class MC1PinAnnotationView: MKAnnotationView {
     onTap?()
   }
 
-  func configure(point: MapPoint, isDarkMode: Bool, showsLabel: Bool) {
+  func configure(point: MapPoint, isDarkMode: Bool, showsLabel: Bool, clusteringEnabled: Bool = true) {
     let content = AnyView(pinContent(point: point, isDarkMode: isDarkMode, showsLabel: showsLabel))
 
     let hosting: UIHostingController<AnyView>
@@ -54,8 +54,9 @@ final class MC1PinAnnotationView: MKAnnotationView {
     bounds = CGRect(origin: .zero, size: size)
     centerOffset = anchorOffset(for: point.pinStyle, size: size)
 
-    clusteringIdentifier = point.isClusterable ? Self.clusteringIdentifier : nil
-    displayPriority = point.isClusterable ? .defaultLow : .required
+    let clusters = clusteringEnabled && point.isClusterable
+    clusteringIdentifier = clusters ? Self.clusteringIdentifier : nil
+    displayPriority = clusters ? .defaultLow : .required
   }
 
   static let clusteringIdentifier = "mc1-point"

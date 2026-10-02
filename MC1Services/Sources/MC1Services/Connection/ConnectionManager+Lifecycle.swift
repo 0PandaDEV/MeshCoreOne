@@ -125,12 +125,11 @@ public extension ConnectionManager {
     """)
 
     // Reset stale room session connections from previous app launch
-    let resetStore = createStandalonePersistenceStore()
-    try? await resetStore.resetAllRemoteNodeSessionConnections()
+    try? await persistenceStore.resetAllRemoteNodeSessionConnections()
 
     // Populate radioID on existing devices and backfill deduplication keys (one-time migration)
     do {
-      try await resetStore.performRadioIDMigration()
+      try await persistenceStore.performRadioIDMigration()
     } catch {
       logger.error("radioID migration failed: \(error)")
     }
@@ -138,7 +137,7 @@ public extension ConnectionManager {
     // Promote legacy per-channel region overrides to `.specific` mode so the
     // corrective flood-scope semantics don't reinterpret them as `.inherit`.
     do {
-      try await resetStore.performChannelFloodScopeMigration()
+      try await persistenceStore.performChannelFloodScopeMigration()
     } catch {
       logger.error("channel flood-scope migration failed: \(error)")
     }
@@ -146,7 +145,7 @@ public extension ConnectionManager {
     // Zero accumulated unread counts on repeater-type contacts and repeater-role
     // sessions so the badge stops including invisible records.
     do {
-      try await resetStore.performRepeaterUnreadCountMigration()
+      try await persistenceStore.performRepeaterUnreadCountMigration()
     } catch {
       logger.error("repeater unread-count migration failed: \(error)")
     }
@@ -154,7 +153,7 @@ public extension ConnectionManager {
     // Backfill sortDate from createdAt on pre-existing messages so date-header
     // grouping keeps their current display order.
     do {
-      try await resetStore.performSortDateBackfillMigration()
+      try await persistenceStore.performSortDateBackfillMigration()
     } catch {
       logger.error("sortDate backfill migration failed: \(error)")
     }
@@ -164,7 +163,7 @@ public extension ConnectionManager {
     // sorted by send time. Must run before stateMachine.activate() so no
     // restoration-driven sync writes a fresh anchor before this resets the baseline.
     do {
-      try await resetStore.performSortDateResetMigration()
+      try await persistenceStore.performSortDateResetMigration()
     } catch {
       logger.error("sortDate reset migration failed: \(error)")
     }
@@ -213,7 +212,7 @@ public extension ConnectionManager {
         connectionIntent = .wantsConnection()
 
         // Check if last device was WiFi - try WiFi first
-        let dataStore = PersistenceStore(modelContainer: modelContainer)
+        let dataStore = persistenceStore
         if let device = try? await dataStore.fetchDevice(id: lastDeviceID),
            let wifiMethod = device.connectionMethods.first(where: { $0.isWiFi }) {
           if case let .wifi(host, port, _) = wifiMethod {
@@ -452,29 +451,9 @@ public extension ConnectionManager {
       }
     }
 
-    // If the user is reconnecting to the last radio and iOS still has a system-level BLE link
-    // (common after app updates), adopt the existing link rather than blocking as "connected elsewhere".
-    if deviceID == lastConnectedDeviceID {
-      connectionIntent = .wantsConnection(forceFullSync: forceFullSync)
-      persistIntent()
-
-      if await startAdoptingLastSystemConnectedPeripheralIfAvailable(
-        deviceID: deviceID,
-        context: "connect(to:)"
-      ) {
-        // Adoption owns the reconnect cycle now; release the claim.
-        if connectingDeviceID == deviceID { connectingDeviceID = nil }
-        return
-      }
-      guard connectingDeviceID == deviceID else { throw CancellationError() }
+    if try await adoptOrRejectSystemConnectedLink(deviceID: deviceID, forceFullSync: forceFullSync) {
+      return
     }
-
-    // Check for other app connection before changing state
-    if await isDeviceConnectedToOtherApp(deviceID) {
-      if connectingDeviceID == deviceID { connectingDeviceID = nil }
-      throw BLEError.deviceConnectedToOtherApp
-    }
-    guard connectingDeviceID == deviceID else { throw CancellationError() }
 
     // Clear intentional disconnect flag before changing state,
     // so the didSet invariant check sees consistent state
@@ -527,6 +506,44 @@ public extension ConnectionManager {
       throw error
     }
     connectingDeviceID = nil
+  }
+
+  /// Adopts leftover GATT this app owns, or throws if another app holds the link.
+  /// Settings forget clears last-connected; ASK membership or an in-flight pair still marks it ours.
+  private func adoptOrRejectSystemConnectedLink(
+    deviceID: UUID,
+    forceFullSync: Bool
+  ) async throws -> Bool {
+    let ownedLink = isOwnedSystemConnectedLink(deviceID)
+    if ownedLink {
+      connectionIntent = .wantsConnection(forceFullSync: forceFullSync)
+      persistIntent()
+
+      if await startAdoptingLastSystemConnectedPeripheralIfAvailable(
+        deviceID: deviceID,
+        context: "connect(to:)",
+        requireLastConnected: false
+      ) {
+        if isPairingInProgress {
+          do {
+            try await waitForPairingAdoptionToSettle()
+          } catch {
+            if connectingDeviceID == deviceID { connectingDeviceID = nil }
+            throw error
+          }
+        }
+        if connectingDeviceID == deviceID { connectingDeviceID = nil }
+        return true
+      }
+      guard connectingDeviceID == deviceID else { throw CancellationError() }
+    }
+
+    if await isDeviceConnectedToOtherApp(deviceID), !ownedLink {
+      if connectingDeviceID == deviceID { connectingDeviceID = nil }
+      throw BLEError.deviceConnectedToOtherApp
+    }
+    guard connectingDeviceID == deviceID else { throw CancellationError() }
+    return false
   }
 
   /// Break-glass teardown for a user-initiated (`forceReconnect`) connect that found
@@ -678,7 +695,7 @@ public extension ConnectionManager {
       // Create services
       let newServices = ServiceContainer(
         session: session,
-        modelContainer: modelContainer,
+        dataStore: persistenceStore,
         radioID: MockDataProvider.simulatorDeviceID,
         appStateProvider: appStateProvider,
         connectionStateEvents: connectionStateEvents,

@@ -107,7 +107,11 @@
 
 /* Location: ConnectionUIState.presentPairingFailure(_:) - Pairing failure alert messages */
 "deviceScan.error.authenticationFailed" = "Zapisane sparowanie z tym radiem przestało działać. Stuknij „Usuń i spróbuj ponownie”, aby sparować je ponownie w aplikacji; radio może wyświetlić nowy kod parowania.";
+/* Location: ConnectionUIState.presentPairingFailure(_:) - macOS copy; app cannot forget the OS Bluetooth bond */
+"deviceScan.error.authenticationFailedMac" = "Zapisane sparowanie z tym radiem przestało działać. W Ustawieniach systemowych zapomnij to radio w Bluetooth, a następnie stuknij „Usuń i spróbuj ponownie”.";
 "deviceScan.error.pinRejected" = "PIN nie został zaakceptowany. Sprawdź PIN wyświetlany na urządzeniu i spróbuj ponownie. iOS najpierw poprosi o potwierdzenie usunięcia nieudanego parowania.";
+/* Location: ConnectionUIState.presentFreshPairingFailure(_:) - macOS copy; app cannot forget the OS Bluetooth bond */
+"deviceScan.error.pinRejectedMac" = "PIN nie został zaakceptowany. W Ustawieniach systemowych zapomnij to radio w Bluetooth, a następnie spróbuj ponownie.";
 "deviceScan.error.connectionFailed" = "Nie można połączyć się z urządzeniem. Spróbuj ponownie lub usuń je, jeśli problem nie ustępuje.";
 
 // MARK: - Troubleshooting Sheet
@@ -194,8 +198,8 @@
 /* Location: PresetStepView.swift - Title */
 "preset.title" = "Wybierz preset";
 
-/* Location: PresetStepView.swift - Subtitle when recommendation exists */
-"preset.subtitle.recommended" = "Zalecany dla %@";
+/* Location: PresetStepView.swift - Subtitle listing presets for the selected place */
+"preset.subtitle.recommended" = "Presety dla %@";
 
 /* Location: PresetStepView.swift - Subtitle for empty-region fallback */
 "preset.subtitle.locale" = "Wybierz preset dla swojego radia.";
@@ -205,18 +209,6 @@
 
 /* Location: PresetStepView.swift - Apply CTA "Use %@" */
 "preset.use" = "Użyj %@";
-
-/* Location: PresetStepView.swift - Already-configured title */
-"preset.alreadyConfigured.title" = "Już skonfigurowano";
-
-/* Location: PresetStepView.swift - Already-configured subtitle */
-"preset.alreadyConfigured.subtitle" = "Twoje radio jest już na %@, zalecanym presecie dla %@.";
-
-/* Location: PresetStepView.swift - Already-configured primary CTA */
-"preset.alreadyConfigured.done" = "Gotowe";
-
-/* Location: PresetStepView.swift - Already-configured secondary link */
-"preset.alreadyConfigured.choose" = "Wybierz inny preset";
 
 /* Location: PresetStepView.apply(id:) - Error shown when user taps Apply before services finished wiring */
 "preset.error.notConnected" = "Połącz się z urządzeniem, aby zastosować ten preset.";
@@ -235,11 +227,11 @@
 /* Location: WiFiConnectionSheet.swift - Section header for connection details */
 "wifiConnection.connectionDetails.header" = "Szczegóły połączenia";
 
-/* Location: WiFiConnectionSheet.swift - Placeholder for IP address field */
-"wifiConnection.ipAddress.placeholder" = "Adres IP";
+/* Location: WiFiConnectionSheet.swift - Placeholder for hostname or IP address field */
+"wifiConnection.ipAddress.placeholder" = "Nazwa hosta lub adres IP";
 
-/* Location: WiFiConnectionSheet.swift - Accessibility label for clear IP button */
-"wifiConnection.ipAddress.clearAccessibility" = "Wyczyść adres IP";
+/* Location: WiFiConnectionSheet.swift - Accessibility label for clear hostname or IP button */
+"wifiConnection.ipAddress.clearAccessibility" = "Wyczyść nazwę hosta lub adres IP";
 
 /* Location: WiFiConnectionSheet.swift - Placeholder for port field */
 "wifiConnection.port.placeholder" = "Port";
@@ -248,7 +240,7 @@
 "wifiConnection.port.clearAccessibility" = "Wyczyść port";
 
 /* Location: WiFiConnectionSheet.swift - Footer explaining connection details */
-"wifiConnection.connectionDetails.footer" = "Wprowadź adres sieci lokalnej urządzenia MeshCore. Domyślny port to 5000.";
+"wifiConnection.connectionDetails.footer" = "Wprowadź nazwę hosta lub adres IP swojego urządzenia MeshCore. Domyślny port to 5000.";
 
 /* Location: WiFiConnectionSheet.swift - Button label while connecting */
 "wifiConnection.connecting" = "Łączenie...";
@@ -265,8 +257,11 @@
 /* Location: RegionPickerView.swift - Country picker label */
 "region.country" = "Kraj";
 
-/* Location: RegionPickerView.swift - State/Province picker label */
-"region.administrativeArea" = "Województwo / Prowincja";
+/* Location: RegionPickerView.swift - State picker label (US, AU) */
+"region.state" = "Stan";
+
+/* Location: RegionPickerView.swift - Province picker label (Canada) */
+"region.province" = "Prowincja";
 
 /* Location: RegionPickerView.swift - Continue CTA in manual picker */
 "region.continue" = "Kontynuuj";
