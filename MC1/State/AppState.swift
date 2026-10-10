@@ -34,7 +34,48 @@ final class AppState {
   /// Disk-backed store for unsent chat-composer text. Recreated on
   /// before-first-unlock, but reads the same `UserDefaults` key, so the fresh
   /// instance recovers every persisted draft — no in-memory-lifetime dependency.
-  let draftStore = DraftStore()
+  private let draftStore: DraftStore
+
+  /// One live editor per conversation opened on this AppState. Repeated lookups
+  /// return the same instance until that conversation's editor is retired.
+  @ObservationIgnored private var chatDraftEditors: [ChatConversationID: ChatDraftEditor] = [:]
+
+  func chatDraftEditor(for id: ChatConversationID) -> ChatDraftEditor {
+    if let editor = chatDraftEditors[id] {
+      return editor
+    }
+    let editor = ChatDraftEditor(conversationID: id, store: draftStore)
+    chatDraftEditors[id] = editor
+    return editor
+  }
+
+  func applyPendingDirectReply(contactID: UUID, to editor: ChatDraftEditor) {
+    editor.importPendingReply {
+      services?.notificationService.consumeDraft(for: contactID)
+    }
+  }
+
+  /// Clears live and saved drafts for backup-affected channel slots. Editors stay
+  /// so a later keystroke starts a new draft.
+  func resetChannelDrafts(slotsByRadio: [UUID: Set<UInt8>]) {
+    for (radioID, indices) in slotsByRadio {
+      for index in indices {
+        let id = ChatConversationID.channel(radioID: radioID, channelIndex: index)
+        chatDraftEditors[id]?.reset()
+      }
+    }
+    draftStore.clearChannelDrafts(slotsByRadio: slotsByRadio)
+  }
+
+  func flushChatDrafts() {
+    for editor in chatDraftEditors.values {
+      editor.flush()
+    }
+  }
+
+  func retireChatDraftEditor(for id: ChatConversationID) {
+    chatDraftEditors.removeValue(forKey: id)?.retire()
+  }
 
   /// Best available location for proximity-based disambiguation.
   var bestAvailableLocation: CLLocation? {
@@ -364,6 +405,8 @@ final class AppState {
     defaults: UserDefaults = .standard,
     injectedConnectionManager: ConnectionManager? = nil
   ) {
+    draftStore = DraftStore(defaults: defaults)
+
     let store = StoreService()
     let theme = ThemeService(store: store)
     storeState = StoreState(service: store)
@@ -459,12 +502,15 @@ final class AppState {
     }
   }
 
-  /// Releases process-scoped resources held by this `AppState` instance so the caller can
-  /// drop it. Currently only cancels `StoreService`'s `Transaction.updates` listener Task,
-  /// which otherwise self-retains via the `for await` loop and leaks across an `MC1App` BFU
-  /// reassignment of `appState`. Connection-layer teardown stays on `ConnectionManager`'s own
-  /// disconnect path and is intentionally not chained here.
+  /// Flushes and retires chat drafts, then cancels `StoreService`'s `Transaction.updates`
+  /// listener, which otherwise leaks across a before-first-unlock `AppState` swap.
+  /// Connection teardown stays on `ConnectionManager`.
   func shutdown() {
+    flushChatDrafts()
+    for editor in chatDraftEditors.values {
+      editor.retire()
+    }
+    chatDraftEditors.removeAll()
     storeState.service.shutdown()
   }
 
@@ -526,6 +572,10 @@ final class AppState {
   /// Drops per-slot drafts, cached `ChatCoordinator`s, and the selected route.
   /// Coordinators outlive the connection, so without eviction the next occupant renders the prior timeline.
   func handleChannelSlotOccupantChanged(radioID: UUID, indices: Set<UInt8>) {
+    for channelIndex in indices {
+      let id = ChatConversationID.channel(radioID: radioID, channelIndex: channelIndex)
+      retireChatDraftEditor(for: id)
+    }
     draftStore.clearChannelDrafts(radioID: radioID, indices: indices)
     for channelIndex in indices {
       let id = ChatConversationID.channel(radioID: radioID, channelIndex: channelIndex)

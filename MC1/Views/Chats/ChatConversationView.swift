@@ -6,10 +6,6 @@ import UIKit // UIPasteboard for .copy action
 
 private let logger = Logger(subsystem: "com.mc1", category: "ChatConversationView")
 
-/// Quiet period after the last keystroke before the composer draft is persisted,
-/// so rapid typing coalesces into a single write.
-private let draftSaveDebounce: Duration = .milliseconds(500)
-
 /// Unified chat conversation view supporting both DMs and Channels.
 struct ChatConversationView: View {
   @Environment(\.appState) private var appState
@@ -19,6 +15,7 @@ struct ChatConversationView: View {
   @Environment(\.scenePhase) private var scenePhase
 
   @State private var conversationType: ChatConversationType
+  let draftEditor: ChatDraftEditor
   let parentViewModel: ChatViewModel?
 
   @State private var chatViewModel: ChatViewModel
@@ -31,10 +28,6 @@ struct ChatConversationView: View {
   /// Request an item-ID scroll to scrollToTargetID for a deeplink or new-messages divider.
   @State private var scrollToTargetRequest = 0
   @State private var scrollToTargetID: UUID?
-
-  /// Pending debounced draft persist; cancelled and restarted on each keystroke,
-  /// cancelled-then-flushed synchronously on view teardown and app suspension.
-  @State private var draftSaveTask: Task<Void, Never>?
 
   /// `AppState.channelSlotGenerations` value for this channel slot when the view
   /// appeared; a higher value later means a different channel now owns the slot.
@@ -122,10 +115,12 @@ struct ChatConversationView: View {
 
   init(
     conversationType: ChatConversationType,
+    draftEditor: ChatDraftEditor,
     parentViewModel: ChatViewModel? = nil,
     coordinatorRegistry: ChatCoordinatorRegistry? = nil
   ) {
     _conversationType = State(initialValue: conversationType)
+    self.draftEditor = draftEditor
     self.parentViewModel = parentViewModel
 
     // Attach the shared coordinator before the first render so warm opens immediately show their messages.
@@ -137,6 +132,13 @@ struct ChatConversationView: View {
     // Stage the anchor before rendering because warm coordinator items can appear in the first frame.
     viewModel.timeline.stageOpen(conversationType)
     _chatViewModel = State(initialValue: viewModel)
+  }
+
+  private var composingText: Binding<String> {
+    Binding(
+      get: { draftEditor.text },
+      set: { draftEditor.setText($0) }
+    )
   }
 
   // MARK: - Body
@@ -186,7 +188,7 @@ struct ChatConversationView: View {
     .chatBottomChrome(canvas: theme.surfaces?.canvas ?? Color(.systemBackground)) {
       ChatConversationInputBar(
         conversationType: conversationType,
-        composingText: $chatViewModel.composingText,
+        composingText: composingText,
         focusRequest: $inputFocusRequest,
         nodeNameByteCount: appState.connectedDevice?.nodeName.utf8.count ?? 0,
         onSend: { text in
@@ -241,9 +243,6 @@ struct ChatConversationView: View {
           parentViewModel?.requestConversationReload()
         },
         onDeleteChannel: {
-          // Clear the composer so the teardown flush doesn't re-persist a draft for the
-          // freed slot — a channel later reusing that slot would otherwise surface it.
-          chatViewModel.composingText = ""
           dismiss()
         }
       )
@@ -310,14 +309,10 @@ struct ChatConversationView: View {
         )
     }
     .onDisappear {
-      // Conversation identity remounts this view, discarding @State before the
-      // debounce fires, so flush the draft here.
-      flushDraft()
+      // Disappearance can beat the debounce, so persist the latest dirty text now.
+      draftEditor.flush()
       chatViewModel.cancelPendingTranslation()
       performCleanup()
-    }
-    .onChange(of: chatViewModel.composingText) { _, _ in
-      scheduleDraftSave()
     }
     .onAppear {
       if slotGenerationOnAppear == nil {
@@ -335,7 +330,7 @@ struct ChatConversationView: View {
       case .background, .inactive:
         // The OS can suspend the process before the debounce fires, so flush
         // the draft synchronously here.
-        flushDraft()
+        draftEditor.flush()
       @unknown default:
         break
       }
@@ -378,6 +373,10 @@ struct ChatConversationView: View {
     didCompleteInitialLoad = false
     scrollToTargetID = nil
 
+    if case let .dm(contact) = conversationType {
+      appState.applyPendingDirectReply(contactID: contact.id, to: draftEditor)
+    }
+
     chatViewModel.configure(
       dependencies: appState.makeChatViewModelDependencies(),
       onNavigateToMap: { appState.navigation.navigateToMap(coordinate: $0) },
@@ -392,14 +391,12 @@ struct ChatConversationView: View {
       await chatViewModel.loadMessages(for: contact, populateMode: .refreshWindow)
       await chatViewModel.loadConversations(radioID: contact.radioID)
       await chatViewModel.loadAllContacts(radioID: contact.radioID)
-      chatViewModel.restoreComposerDraft(from: appState.draftStore, id: conversationType.draftConversationID)
 
     case let .channel(channel):
       // Load contacts first so contactNameSet is populated before buildChannelSenders runs
       await chatViewModel.loadAllContacts(radioID: channel.radioID)
       await chatViewModel.loadChannelMessages(for: channel, populateMode: .refreshWindow)
       await chatViewModel.loadConversations(radioID: channel.radioID)
-      chatViewModel.restoreComposerDraft(from: appState.draftStore, id: conversationType.draftConversationID)
     }
 
     // Opening the conversation counts as seeing its mentions. Without on-screen
@@ -442,32 +439,6 @@ struct ChatConversationView: View {
     await notificationService.updateBadgeCount()
   }
 
-  // MARK: - Draft Persistence
-
-  /// Cancelled sleeps must exit before persisting so a resumed task cannot overwrite a synchronous draft flush.
-  private func scheduleDraftSave() {
-    draftSaveTask?.cancel()
-    let id = conversationType.draftConversationID
-    draftSaveTask = Task {
-      try? await Task.sleep(for: draftSaveDebounce)
-      guard !Task.isCancelled else { return }
-      chatViewModel.saveDraft(to: appState.draftStore, id: id)
-    }
-  }
-
-  /// Cancels any pending debounce and persists the current draft synchronously, reading the
-  /// store from the view's non-optional `@Environment(\.appState)` (matching `performCleanup`).
-  private func flushDraft() {
-    draftSaveTask?.cancel()
-    draftSaveTask = nil
-    // The slot's draft was already cleared for the next occupant; persisting the old
-    // composer here would hand it to the new channel.
-    if slotWasReassigned {
-      chatViewModel.composingText = ""
-    }
-    chatViewModel.saveDraft(to: appState.draftStore, id: conversationType.draftConversationID)
-  }
-
   // MARK: - Slot Reassignment
 
   private var currentSlotGeneration: Int? {
@@ -480,11 +451,10 @@ struct ChatConversationView: View {
     return current > seen
   }
 
-  /// Closes the chat when another channel took over its slot. Drop the composer
-  /// first so `flushDraft` cannot restore the old text; `AppState` cannot pop this view-owned stack.
+  /// Closes the chat when another channel took over its slot. The occupant change
+  /// already retired this editor, so this view's later flush cannot restore the old text.
   private func leaveIfSlotReassigned() {
     guard slotWasReassigned, case let .channel(channel) = conversationType else { return }
-    chatViewModel.composingText = ""
     if case let .channel(selected) = appState.navigation.chatsSelectedRoute, selected.id == channel.id {
       appState.navigation.setChatsRoute(nil)
     }
@@ -598,7 +568,7 @@ struct ChatConversationView: View {
   // MARK: - Mention Suggestions
 
   private var activeMentionQuery: String? {
-    MentionUtilities.detectActiveMention(in: chatViewModel.composingText)
+    MentionUtilities.detectActiveMention(in: draftEditor.text)
   }
 
   private var mentionSuggestions: [ContactDTO] {
@@ -614,12 +584,14 @@ struct ChatConversationView: View {
   }
 
   private func insertMention(for contact: ContactDTO) {
-    guard let query = MentionUtilities.detectActiveMention(in: chatViewModel.composingText) else { return }
+    guard let query = MentionUtilities.detectActiveMention(in: draftEditor.text) else { return }
 
     let searchPattern = "@" + query
-    if let range = chatViewModel.composingText.range(of: searchPattern, options: .backwards) {
+    if let range = draftEditor.text.range(of: searchPattern, options: .backwards) {
       let mention = MentionUtilities.createMention(for: contact.name)
-      chatViewModel.composingText.replaceSubrange(range, with: mention + " ")
+      var updated = draftEditor.text
+      updated.replaceSubrange(range, with: mention + " ")
+      draftEditor.setText(updated)
     }
   }
 
@@ -690,12 +662,12 @@ struct ChatConversationView: View {
       message.senderNodeName ?? L10n.Chats.Chats.Message.Sender.unknown
     }
     if replyWithQuote {
-      chatViewModel.composingText = MentionUtilities.buildReplyText(mentionName: mentionName, messageText: message.text)
+      draftEditor.setText(MentionUtilities.buildReplyText(mentionName: mentionName, messageText: message.text))
     } else {
-      chatViewModel.composingText = MentionUtilities.appendMention(
+      draftEditor.setText(MentionUtilities.appendMention(
         for: mentionName,
-        to: chatViewModel.composingText
-      )
+        to: draftEditor.text
+      ))
     }
     // Raise the keyboard only after the actions sheet has finished dismissing;
     // a focus request issued while the sheet is still animating away is lost.
@@ -837,28 +809,36 @@ private extension View {
 // MARK: - Previews
 
 #Preview("DM") {
+  let appState = AppState()
+  let contact = ContactDTO(from: Contact(
+    radioID: UUID(),
+    publicKey: Data(repeating: 0x42, count: 32),
+    name: "Alice",
+    lastHeardTimestamp: 0
+  ))
   NavigationStack {
     ChatConversationView(
-      conversationType: .dm(ContactDTO(from: Contact(
-        radioID: UUID(),
-        publicKey: Data(repeating: 0x42, count: 32),
-        name: "Alice",
-        lastHeardTimestamp: 0
-      )))
+      conversationType: .dm(contact),
+      draftEditor: appState.chatDraftEditor(for: .dm(radioID: contact.radioID, contactID: contact.id))
     )
   }
-  .environment(\.appState, AppState())
+  .environment(\.appState, appState)
 }
 
 #Preview("Channel") {
+  let appState = AppState()
+  let channel = ChannelDTO(from: Channel(
+    radioID: UUID(),
+    index: 1,
+    name: "General"
+  ))
   NavigationStack {
     ChatConversationView(
-      conversationType: .channel(ChannelDTO(from: Channel(
-        radioID: UUID(),
-        index: 1,
-        name: "General"
-      )))
+      conversationType: .channel(channel),
+      draftEditor: appState.chatDraftEditor(
+        for: .channel(radioID: channel.radioID, channelIndex: channel.index)
+      )
     )
   }
-  .environment(\.appState, AppState())
+  .environment(\.appState, appState)
 }

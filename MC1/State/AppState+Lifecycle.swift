@@ -53,6 +53,7 @@ extension AppState {
 
   /// Called when app enters background
   func handleEnterBackground() {
+    flushChatDrafts()
     logToolbarResumeProbe(source: "enterBackground")
     activeRecoveryFallbackTask?.cancel()
     activeRecoveryFallbackTask = nil

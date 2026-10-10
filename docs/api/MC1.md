@@ -119,7 +119,6 @@ Manages state for both the conversation list and a single chat conversation. Per
 | `channels` | `[ChannelDTO]` | Current channels with messages |
 | `roomSessions` | `[RemoteNodeSessionDTO]` | Current room sessions |
 | `isLoading` | `Bool` | Loading state |
-| `composingText` | `String` | Message text being composed |
 | `errorMessage` | `String?` | Modal load/fetch error |
 | `sendErrorMessage` | `String?` | Modal send-only failure ("Unable to Send") |
 | `errorBannerMessage` | `String?` | Non-modal passive-failure banner |

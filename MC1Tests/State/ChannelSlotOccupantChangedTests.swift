@@ -6,6 +6,13 @@ import Testing
 @Suite("Channel Slot Occupant Changed")
 @MainActor
 struct ChannelSlotOccupantChangedTests {
+  private func makeDefaults() -> UserDefaults {
+    let suiteName = "test.channel-slot.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defaults.removePersistentDomain(forName: suiteName)
+    return defaults
+  }
+
   private func makeChannel(radioID: UUID, index: UInt8) -> ChannelDTO {
     ChannelDTO(
       id: UUID(),
@@ -24,18 +31,44 @@ struct ChannelSlotOccupantChangedTests {
 
   @Test
   func `closes the open chat for a changed slot and drops its draft`() {
-    let appState = AppState()
+    let defaults = makeDefaults()
     let radioID = UUID()
-    let channel = makeChannel(radioID: radioID, index: 5)
     let draftID = ChatConversationID.channel(radioID: radioID, channelIndex: 5)
+    DraftStore(defaults: defaults).setDraft("unsent", for: draftID)
+    let appState = AppState(defaults: defaults)
+    defer { appState.shutdown() }
+    let channel = makeChannel(radioID: radioID, index: 5)
     appState.navigation.chatsSelectedRoute = .channel(channel)
-    appState.draftStore.setDraft("unsent", for: draftID)
 
     appState.handleChannelSlotOccupantChanged(radioID: radioID, indices: [5])
 
     #expect(appState.navigation.chatsSelectedRoute == nil)
-    #expect(appState.draftStore.draft(for: draftID) == nil)
+    #expect(DraftStore(defaults: defaults).draft(for: draftID) == nil)
     #expect(appState.channelSlotGenerations[draftID] == 1)
+  }
+
+  @Test
+  func `a retired slot editor cannot overwrite the replacement draft`() {
+    let defaults = makeDefaults()
+    let appState = AppState(defaults: defaults)
+    defer { appState.shutdown() }
+    let radioID = UUID()
+    let id = ChatConversationID.channel(radioID: radioID, channelIndex: 5)
+    let old = appState.chatDraftEditor(for: id)
+    old.setText("pending")
+
+    appState.handleChannelSlotOccupantChanged(radioID: radioID, indices: [5])
+
+    let replacement = appState.chatDraftEditor(for: id)
+    replacement.setText("fresh")
+    replacement.flush()
+    old.setText("stale")
+    old.flush()
+
+    #expect(replacement !== old)
+    #expect(old.text == "pending")
+    #expect(replacement.text == "fresh")
+    #expect(DraftStore(defaults: defaults).draft(for: id) == "fresh")
   }
 
   @Test

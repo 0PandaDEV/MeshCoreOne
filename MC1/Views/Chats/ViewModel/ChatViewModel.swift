@@ -234,9 +234,6 @@ final class ChatViewModel {
   /// "Unable to Send" alert).
   var errorBannerMessage: String?
 
-  /// Message text being composed
-  var composingText = ""
-
   /// Reentry guard for retry actions. A single `ChatViewModel` is bound to one
   /// conversation at a time (`currentChannel` xor `currentContact`), so this
   /// flag covers both DM and channel retry paths — they can never overlap.

@@ -33,7 +33,7 @@ struct SettingsDetailView: View {
         connectionManager: appState.connectionManager,
         onImportRestoredData: { [appState] in appState.notifyDataRestored() },
         onChannelDraftSlotsAffected: { [appState] slotsByRadio in
-          appState.draftStore.clearChannelDrafts(slotsByRadio: slotsByRadio)
+          appState.resetChannelDrafts(slotsByRadio: slotsByRadio)
         }
       )
     case .support:

@@ -62,6 +62,83 @@ struct NotificationQuickReplyWiringTests {
     #expect(try await messages(in: harness.services, radioID: harness.radioID).isEmpty)
   }
 
+  @Test
+  func `a missing reply leaves the saved draft unchanged`() throws {
+    let contactID = UUID()
+    let harness = try seededHarness(contactID: contactID, text: "saved")
+    defer { harness.cleanup() }
+    let editor = directEditor(in: harness, contactID: contactID)
+
+    harness.appState.applyPendingDirectReply(contactID: contactID, to: editor)
+
+    #expect(editor.text == "saved")
+  }
+
+  @Test
+  func `an empty reply is consumed and the saved draft stays`() throws {
+    let contactID = UUID()
+    let harness = try seededHarness(contactID: contactID, text: "saved")
+    defer { harness.cleanup() }
+    harness.services.notificationService.saveDraft(for: contactID, text: "")
+    let editor = directEditor(in: harness, contactID: contactID)
+
+    harness.appState.applyPendingDirectReply(contactID: contactID, to: editor)
+
+    #expect(editor.text == "saved")
+    #expect(harness.services.notificationService.consumeDraft(for: contactID) == nil)
+  }
+
+  @Test
+  func `a reply replaces a saved draft and a later edit wins`() throws {
+    let contactID = UUID()
+    let harness = try seededHarness(contactID: contactID, text: "saved")
+    defer { harness.cleanup() }
+    harness.services.notificationService.saveDraft(for: contactID, text: "from notification")
+    let editor = directEditor(in: harness, contactID: contactID)
+
+    harness.appState.applyPendingDirectReply(contactID: contactID, to: editor)
+    #expect(editor.text == "from notification")
+    editor.setText("typed after")
+    harness.appState.applyPendingDirectReply(contactID: contactID, to: editor)
+
+    #expect(editor.text == "typed after")
+  }
+
+  @Test
+  func `a retired editor leaves the reply for its replacement`() throws {
+    let contactID = UUID()
+    let harness = try seededHarness(contactID: contactID, text: "saved")
+    defer { harness.cleanup() }
+    let id = ChatConversationID.dm(radioID: harness.radioID, contactID: contactID)
+    let retired = harness.appState.chatDraftEditor(for: id)
+    harness.appState.retireChatDraftEditor(for: id)
+    harness.services.notificationService.saveDraft(for: contactID, text: "for the new one")
+
+    harness.appState.applyPendingDirectReply(contactID: contactID, to: retired)
+    let replacement = harness.appState.chatDraftEditor(for: id)
+    harness.appState.applyPendingDirectReply(contactID: contactID, to: replacement)
+
+    #expect(replacement !== retired)
+    #expect(retired.text == "saved")
+    #expect(replacement.text == "for the new one")
+    #expect(harness.services.notificationService.consumeDraft(for: contactID) == nil)
+  }
+
+  private func seededHarness(contactID: UUID, text: String) throws -> Harness {
+    try makeHarness { defaults, radioID in
+      DraftStore(defaults: defaults).setDraft(
+        text,
+        for: .dm(radioID: radioID, contactID: contactID)
+      )
+    }
+  }
+
+  private func directEditor(in harness: Harness, contactID: UUID) -> ChatDraftEditor {
+    harness.appState.chatDraftEditor(
+      for: .dm(radioID: harness.radioID, contactID: contactID)
+    )
+  }
+
   private func verifyAcceptedReply(_ harness: Harness, radioID: UUID) async throws {
     let channel = ChannelDTO(
       id: UUID(), radioID: radioID, index: Self.channelIndex, name: "Ops",
@@ -115,17 +192,21 @@ struct NotificationQuickReplyWiringTests {
     let session: MeshCoreSession
     let transport: MockTransport
     let radioID: UUID
+    let defaults: UserDefaults
     let cleanup: () -> Void
   }
 
-  private func makeHarness() throws -> Harness {
+  private func makeHarness(
+    prepareDefaults: ((UserDefaults, UUID) -> Void)? = nil
+  ) throws -> Harness {
     let container = try PersistenceStore.createContainer(inMemory: true)
     let suite = "test.notification-reply.\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: suite)!
+    let radioID = UUID()
+    prepareDefaults?(defaults, radioID)
     let appState = AppState(modelContainer: container, isPlaceholder: true, defaults: defaults)
     let transport = MockTransport()
     let session = MeshCoreSession(transport: transport)
-    let radioID = UUID()
     let services = ServiceContainer(
       session: session, dataStore: appState.connectionManager.persistenceStore, radioID: radioID
     )
@@ -136,8 +217,9 @@ struct NotificationQuickReplyWiringTests {
     appState.configureNotificationHandlers()
     return Harness(
       appState: appState, services: services, session: session,
-      transport: transport, radioID: radioID,
+      transport: transport, radioID: radioID, defaults: defaults,
       cleanup: {
+        appState.shutdown()
         UserDefaults().removePersistentDomain(forName: suite)
         Task {
           await services.tearDown()
