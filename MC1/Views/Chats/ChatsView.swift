@@ -58,9 +58,9 @@ private struct ChatsDetailStack: View {
     let route = appState.navigation.chatsSelectedRoute
     NavigationStack(path: $path) {
       ChatsSplitDetailContent(viewModel: viewModel, route: route)
+        .id(route?.conversationID)
         .sectionSplitColumnChrome()
     }
-    .id(route?.conversationID)
   }
 }
 
