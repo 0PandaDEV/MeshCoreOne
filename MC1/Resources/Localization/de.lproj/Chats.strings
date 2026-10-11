@@ -246,6 +246,10 @@
 /* Location: ChatViewModel - Error when saving a chat pin fails */
 "chats.error.pinSaveFailed" = "Die Anheftung konnte nicht gespeichert werden. Versuche es erneut.";
 
+/* Error when saving a conversation's read state fails */
+/* AI-translated - please verify with native speakers. */
+"chats.error.readStateSaveFailed" = "Der Lesestatus konnte nicht gespeichert werden. Versuche es erneut.";
+
 // MARK: - Channel Options Sheet
 
 /* Location: ChannelOptionsSheet.swift - Loading indicator text */
@@ -347,6 +351,10 @@
 
 /* Location: ConversationRowActions.swift - Context-menu action to unpin a chat */
 "chats.action.unpin" = "Loslösen";
+
+/* Context-menu action to mark a conversation as unread */
+/* AI-translated - please verify with native speakers. */
+"chats.action.markAsUnread" = "Als ungelesen markieren";
 
 // MARK: - Room Conversation Row
 
@@ -1097,6 +1105,9 @@
 
 /* Location: MutedIndicator.swift - Accessibility label for mentions-only indicator */
 "chats.row.mentionsOnly" = "Nur Erwähnungen";
+
+/* TODO: translate - Accessibility label for the row actions menu */
+"chats.row.actionsMenu.accessibilityLabel" = "Conversation actions";
 
 // MARK: - Reaction Badges
 

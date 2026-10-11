@@ -21,6 +21,8 @@ public enum L10n {
       public enum Action {
         /// Location: ConversationContextMenuModifier.swift - Context-menu action to delete
         public static let delete = L10n.tr("Chats", "chats.action.delete", fallback: "Delete")
+        /// Context-menu action to mark a conversation as unread
+        public static let markAsUnread = L10n.tr("Chats", "chats.action.markAsUnread", fallback: "Unread")
         /// Location: ConversationContextMenuModifier.swift - Context-menu action to mute
         public static let mute = L10n.tr("Chats", "chats.action.mute", fallback: "Mute")
         /// Location: ConversationRowActions.swift - Context-menu action to pin a chat
@@ -357,6 +359,8 @@ public enum L10n {
         public static let notConnectedToDelete = L10n.tr("Chats", "chats.error.notConnectedToDelete", fallback: "Connect to your radio to delete this conversation.")
         /// Location: ChatViewModel - Error when saving a chat pin fails
         public static let pinSaveFailed = L10n.tr("Chats", "chats.error.pinSaveFailed", fallback: "Couldn't save the pin. Try again.")
+        /// Error when saving a conversation's read state fails
+        public static let readStateSaveFailed = L10n.tr("Chats", "chats.error.readStateSaveFailed", fallback: "Couldn't save the read state. Try again.")
         /// Location: ChatViewModel - Error when persisting a queued send fails (SwiftData write error)
         public static let sendQueuePersistFailed = L10n.tr("Chats", "chats.error.sendQueuePersistFailed", fallback: "Couldn't queue your message. Try again.")
         /// Location: ChannelInfoSheet.swift - Error when services unavailable
@@ -1005,6 +1009,10 @@ public enum L10n {
         public static let noMessages = L10n.tr("Chats", "chats.row.noMessages", fallback: "No messages yet")
         /// Location: ConversationRow.swift, ChannelConversationRow.swift, RoomConversationRow.swift - Accessibility label for the pin indicator
         public static let pin = L10n.tr("Chats", "chats.row.pin", fallback: "Pinned")
+        public enum ActionsMenu {
+          /// Location: ConversationListContent.swift - Accessibility label for the row actions menu
+          public static let accessibilityLabel = L10n.tr("Chats", "chats.row.actionsMenu.accessibilityLabel", fallback: "Conversation actions")
+        }
       }
       public enum ScanQR {
         /// Location: ScanChannelQRView.swift - Instruction to point camera

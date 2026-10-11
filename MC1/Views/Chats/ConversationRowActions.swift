@@ -22,15 +22,33 @@ struct ConversationRowActions: View {
   var body: some View {
     switch edge {
     case .all:
+      readStateButton
       muteButton
       pinButton
       Divider()
       deleteButton
     case .leading:
+      // The first action is the full swipe, so Pin stays ahead of read state.
       pinButton
+      readStateButton
     case .trailing:
       deleteButton
       muteButton
+    }
+  }
+
+  private var readStateButton: some View {
+    let current = viewModel.liveConversation(id: conversation.id) ?? conversation
+    let markAsRead = current.isUnread
+    return Button {
+      Task {
+        await viewModel.setReadState(conversation, isRead: markAsRead)
+      }
+    } label: {
+      Label(
+        markAsRead ? L10n.Localizable.Notifications.Action.markAsRead : L10n.Chats.Chats.Action.markAsUnread,
+        systemImage: markAsRead ? "envelope.open" : "envelope.badge"
+      )
     }
   }
 

@@ -246,6 +246,10 @@
 /* Location: ChatViewModel - Error when saving a chat pin fails */
 "chats.error.pinSaveFailed" = "고정을 저장할 수 없습니다. 다시 시도하십시오.";
 
+/* Error when saving a conversation's read state fails */
+/* AI-translated - please verify with native speakers. */
+"chats.error.readStateSaveFailed" = "읽음 상태를 저장할 수 없습니다. 다시 시도하십시오.";
+
 // MARK: - Channel Options Sheet
 
 /* Location: ChannelOptionsSheet.swift - Loading indicator text */
@@ -334,6 +338,9 @@
 /* Location: MutedIndicator.swift - Accessibility label for mentions-only indicator */
 "chats.row.mentionsOnly" = "멘션만";
 
+/* TODO: translate - Accessibility label for the row actions menu */
+"chats.row.actionsMenu.accessibilityLabel" = "Conversation actions";
+
 // MARK: - Notification Level Picker
 
 /* Location: NotificationLevelPicker.swift - Accessibility label for notification level picker */
@@ -376,6 +383,10 @@
 
 /* Location: ConversationRowActions.swift - Context-menu action to unpin a chat */
 "chats.action.unpin" = "고정 해제";
+
+/* Context-menu action to mark a conversation as unread */
+/* AI-translated - please verify with native speakers. */
+"chats.action.markAsUnread" = "읽지 않음";
 
 // MARK: - Room Conversation Row
 

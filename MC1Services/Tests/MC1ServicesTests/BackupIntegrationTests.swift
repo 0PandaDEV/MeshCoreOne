@@ -8,6 +8,35 @@ import Testing
 /// exercising the complete data flow rather than manually constructed envelopes.
 @Suite("BackupIntegration")
 struct BackupIntegrationTests {
+  @Test
+  func `manual conversation read state survives backup round trip`() async throws {
+    let radioID = UUID()
+    let store = try await PersistenceStore.createTestDataStore(radioID: radioID)
+    let contact = ContactDTO.testContact(radioID: radioID, unreadCount: 4)
+    let channel = ChannelDTO.testChannel(radioID: radioID, unreadCount: 0)
+    let room = RemoteNodeSessionDTO.testSession(radioID: radioID, unreadCount: 4)
+    try await store.saveContact(contact)
+    try await store.saveChannel(channel)
+    try await store.saveRemoteNodeSessionDTO(room)
+    try await store.setContactReadState(contact.id, isRead: true)
+    try await store.setChannelReadState(channel.id, isRead: false)
+    try await store.setRoomReadState(room.id, isRead: true)
+
+    let service = AppBackupService()
+    let exported = try await service.export(persistenceStore: store)
+    let envelope = try parseBackup(data: exported.data)
+    #expect(envelope.contacts.first?.unreadCount == 0)
+    #expect(envelope.channels.first?.unreadCount == 1)
+    #expect(envelope.remoteNodeSessions.first?.unreadCount == 0)
+    let destination = try PersistenceStore(modelContainer: PersistenceStore.createContainer(inMemory: true))
+
+    _ = try await service.importBackup(envelope: envelope, into: destination)
+
+    #expect(try await destination.fetchAllContacts(radioID: radioID).first?.unreadCount == 0)
+    #expect(try await destination.fetchAllChannels(radioID: radioID).first?.unreadCount == 1)
+    #expect(try await destination.fetchRemoteNodeSessions(radioID: radioID).first?.unreadCount == 0)
+  }
+
   // MARK: - Test 1: Full round-trip
 
   /// Exports from a populated store and imports into a fresh store, verifying all data survives.

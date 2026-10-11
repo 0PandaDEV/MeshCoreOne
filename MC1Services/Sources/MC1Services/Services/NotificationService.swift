@@ -767,22 +767,7 @@ public final class NotificationService: NSObject {
     // Get counts from data layer via callback
     let counts = await getBadgeCount()
 
-    var totalUnread = 0
-
-    // Only include contact messages if preference enabled
-    if prefs.contactMessagesEnabled {
-      totalUnread += counts.contacts
-    }
-
-    // Only include channel messages if preference enabled
-    if prefs.channelMessagesEnabled {
-      totalUnread += counts.channels
-    }
-
-    // Only include room messages if preference enabled
-    if prefs.roomMessagesEnabled {
-      totalUnread += counts.rooms
-    }
+    let totalUnread = Self.badgeCount(unreadCounts: counts, preferences: prefs)
 
     // Update badge
     badgeCount = totalUnread

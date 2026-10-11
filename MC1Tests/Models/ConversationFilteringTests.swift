@@ -10,6 +10,7 @@ struct ConversationFilteringTests {
     name: String,
     isFavorite: Bool = false,
     unreadCount: Int = 0,
+    unreadMentionCount: Int = 0,
     isMuted: Bool = false
   ) -> ContactDTO {
     ContactDTO(
@@ -31,13 +32,15 @@ struct ConversationFilteringTests {
       isMuted: isMuted,
       isFavorite: isFavorite,
       lastMessageDate: Date(),
-      unreadCount: unreadCount
+      unreadCount: unreadCount,
+      unreadMentionCount: unreadMentionCount
     )
   }
 
   private func makeChannel(
     name: String,
     unreadCount: Int = 0,
+    unreadMentionCount: Int = 0,
     notificationLevel: NotificationLevel = .all,
     isPinned: Bool = false
   ) -> ChannelDTO {
@@ -50,6 +53,7 @@ struct ConversationFilteringTests {
       isEnabled: true,
       lastMessageDate: Date(),
       unreadCount: unreadCount,
+      unreadMentionCount: unreadMentionCount,
       notificationLevel: notificationLevel,
       isPinned: isPinned
     )
@@ -99,7 +103,8 @@ struct ConversationFilteringTests {
     let result = conversations.filtered(by: .unread, searchText: "")
 
     #expect(result.count == 2)
-    #expect(result.allSatisfy { $0.unreadCount > 0 })
+    // swiftformat:disable:next preferKeyPath
+    #expect(result.allSatisfy { $0.isUnread })
   }
 
   @Test func `filter by direct messages`() {
@@ -188,16 +193,54 @@ struct ConversationFilteringTests {
     #expect(result.isEmpty)
   }
 
-  @Test func `unread filter excludes muted`() {
+  @Test func `unread filter excludes muted conversations including mention only`() {
     let conversations: [Conversation] = [
-      .direct(makeContact(name: "Alice", unreadCount: 5, isMuted: false)),
-      .direct(makeContact(name: "Bob", unreadCount: 3, isMuted: true)),
-      .channel(makeChannel(name: "General", unreadCount: 2, notificationLevel: .all))
+      .direct(makeContact(
+        name: "Ada",
+        unreadCount: 0,
+        unreadMentionCount: 1,
+        isMuted: false
+      )),
+      .direct(makeContact(
+        name: "Muted Mention",
+        unreadCount: 0,
+        unreadMentionCount: 1,
+        isMuted: true
+      )),
+      .direct(makeContact(name: "Muted Count", unreadCount: 1, isMuted: true)),
+      .channel(makeChannel(name: "Mentions", unreadCount: 0, unreadMentionCount: 1)),
+      .channel(makeChannel(
+        name: "Quiet",
+        unreadCount: 0,
+        unreadMentionCount: 1,
+        notificationLevel: .muted
+      )),
+      .room(makeRoom(name: "Loud", unreadCount: 1)),
+      .room(makeRoom(name: "Silent", unreadCount: 1, notificationLevel: .muted))
     ]
 
-    let result = conversations.filtered(by: .unread, searchText: "")
+    let names = conversations.filtered(by: .unread, searchText: "").map(\.displayName)
 
-    #expect(result.count == 2)
-    #expect(!result.contains { $0.displayName == "Bob" })
+    #expect(names == ["Ada", "Mentions", "Loud"])
+    #expect(conversations.first { $0.displayName == "Muted Mention" }?.isUnread == true)
+    #expect(conversations.first { $0.displayName == "Quiet" }?.isUnread == true)
+    #expect(conversations.first { $0.displayName == "Silent" }?.isUnread == true)
+  }
+
+  @Test func `search ignores the unread filter and muted exclusion`() {
+    let conversations: [Conversation] = [
+      .direct(makeContact(name: "Alice", unreadCount: 0)),
+      .direct(makeContact(name: "Bob", unreadCount: 1, isMuted: true)),
+      .channel(makeChannel(
+        name: "Alpine",
+        unreadCount: 0,
+        unreadMentionCount: 1,
+        notificationLevel: .muted
+      ))
+    ]
+
+    #expect(conversations.filtered(by: .unread, searchText: "Ali").map(\.displayName) == ["Alice"])
+    #expect(conversations.filtered(by: .unread, searchText: "Bob").map(\.displayName) == ["Bob"])
+    #expect(conversations.filtered(by: .unread, searchText: "Alp").map(\.displayName) == ["Alpine"])
   }
 }
