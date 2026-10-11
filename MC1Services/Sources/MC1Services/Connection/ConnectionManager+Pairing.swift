@@ -353,10 +353,14 @@ public extension ConnectionManager {
       throw ConnectionError.notConnected
     }
 
+    let selfPublicKey = connectedDevice?.publicKey
     let dataStore = persistenceStore
     let allContacts = try await dataStore.fetchContacts(radioID: radioID)
+    try Task.checkCancellation()
+    guard self.services === services, connectedDevice?.radioID == radioID else {
+      throw ConnectionError.notConnected
+    }
     // Never bulk-remove the ZephCore V-contact: CMD_REMOVE turns firmware v.contact off.
-    let selfPublicKey = connectedDevice?.publicKey
     let targets = allContacts.filter { contact in
       guard predicate(contact) else { return false }
       if let selfPublicKey,
@@ -371,39 +375,63 @@ public extension ConnectionManager {
     }
 
     var removedCount = 0
+    var totalCount = targets.count
+    var deletedIDs: Set<UUID> = []
 
-    for contact in targets {
-      try Task.checkCancellation()
-
-      do {
-        try await services.contactService.removeContact(
-          radioID: radioID,
-          publicKey: contact.publicKey
-        )
-        removedCount += 1
-        onRemove?(contact)
-      } catch ContactServiceError.contactNotFound {
-        do {
-          try await services.contactService.removeLocalContact(
-            contactID: contact.id,
-            publicKey: contact.publicKey
-          )
-          removedCount += 1
-          logger.info("Contact not found on device, cleaned up locally: \(contact.name)")
-        } catch is CancellationError {
-          throw CancellationError()
-        } catch {
-          logger.warning("Failed to clean up local data for \(contact.name): \(error.localizedDescription)")
+    do {
+      for target in targets {
+        try Task.checkCancellation()
+        guard self.services === services, connectedDevice?.radioID == radioID else {
+          break
         }
-      } catch is CancellationError {
-        throw CancellationError()
-      } catch {
-        logger.warning("Failed to remove contact \(contact.name): \(error.localizedDescription)")
-        return RemoveUnfavoritedResult(removed: removedCount, total: targets.count)
-      }
-    }
+        guard let contact = try await dataStore.fetchContact(id: target.id), predicate(contact) else {
+          totalCount -= 1
+          continue
+        }
+        try Task.checkCancellation()
+        guard self.services === services, connectedDevice?.radioID == radioID else {
+          break
+        }
 
-    return RemoveUnfavoritedResult(removed: removedCount, total: targets.count)
+        do {
+          if let id = try await services.contactService.removeContact(
+            radioID: radioID, publicKey: contact.publicKey, deferDeletionUpdates: true
+          ) {
+            deletedIDs.insert(id)
+          }
+          removedCount += 1
+          onRemove?(contact)
+        } catch ContactServiceError.contactNotFound {
+          do {
+            if let id = try await services.contactService.removeLocalContact(
+              contactID: contact.id, publicKey: contact.publicKey, deferDeletionUpdates: true
+            ) {
+              deletedIDs.insert(id)
+            }
+            removedCount += 1
+            logger.info("Contact not found on device, cleaned up locally: \(contact.name)")
+          } catch is CancellationError {
+            try Task.checkCancellation()
+            break
+          } catch {
+            logger.warning("Failed to clean up local data for \(contact.name): \(error.localizedDescription)")
+          }
+        } catch is CancellationError {
+          try Task.checkCancellation()
+          break
+        } catch {
+          logger.warning("Failed to remove contact \(contact.name): \(error.localizedDescription)")
+          break
+        }
+        await services.contactService.flushDeletionUpdatesIfNeeded(contactIDs: &deletedIDs, force: false)
+      }
+    } catch {
+      await services.contactService.flushDeletionUpdatesIfNeeded(contactIDs: &deletedIDs, force: true)
+      throw error
+    }
+    await services.contactService.flushDeletionUpdatesIfNeeded(contactIDs: &deletedIDs, force: true)
+    try Task.checkCancellation()
+    return RemoveUnfavoritedResult(removed: removedCount, total: totalCount)
   }
 
   // MARK: - Stale Pairings

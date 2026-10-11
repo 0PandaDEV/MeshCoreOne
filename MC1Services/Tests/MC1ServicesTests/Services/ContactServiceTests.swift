@@ -414,6 +414,12 @@ struct ContactServiceTests {
     func handleCleanup(contactID: UUID, reason: ContactCleanupReason, publicKey: Data) async {
       await tracker.record(contactID: contactID, reason: reason, publicKey: publicKey)
     }
+
+    func handleDeletion(contactID: UUID, publicKey: Data) async {
+      await handleCleanup(contactID: contactID, reason: .deleted, publicKey: publicKey)
+    }
+
+    func flushDeletionUpdates(contactIDs: Set<UUID>) async {}
   }
 
   @Test

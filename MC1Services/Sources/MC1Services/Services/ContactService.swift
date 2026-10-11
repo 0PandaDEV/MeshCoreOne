@@ -69,6 +69,8 @@ public actor ContactService {
   private let dataStore: any PersistenceStoreProtocol
   private let logger = PersistentLogger(subsystem: "com.mc1", category: "ContactService")
 
+  static let deletionUpdateBatchSize = 20
+
   /// Sync coordinator for UI refresh notifications.
   /// Injected by `ServiceContainer` at construction.
   private weak var syncCoordinator: SyncCoordinator?
@@ -210,14 +212,22 @@ public actor ContactService {
     if !orphans.isEmpty {
       logger.notice("Full sync prune: \(orphans.count) local contact(s) not found on device (device has \(devicePublicKeys.count), local has \(localContacts.count))")
     }
-    for localContact in orphans {
-      let keyPrefix = localContact.publicKey.prefix(4).map { String(format: "%02x", $0) }.joined()
-      logger.notice("Full sync prune: deleting '\(localContact.name)' [\(keyPrefix)…] (favorite=\(localContact.isFavorite), type=\(localContact.typeRawValue), lastModified=\(localContact.lastModified))")
-      try await dataStore.deleteContact(id: localContact.id)
-      await cleanupCoordinator?.handleCleanup(
-        contactID: localContact.id, reason: .deleted, publicKey: localContact.publicKey
-      )
+    var deletedIDs: Set<UUID> = []
+    do {
+      for localContact in orphans {
+        try Task.checkCancellation()
+        let keyPrefix = localContact.publicKey.prefix(4).map { String(format: "%02x", $0) }.joined()
+        logger.notice("Full sync prune: deleting '\(localContact.name)' [\(keyPrefix)…] (favorite=\(localContact.isFavorite), type=\(localContact.typeRawValue), lastModified=\(localContact.lastModified))")
+        try await dataStore.deleteContact(id: localContact.id)
+        deletedIDs.insert(localContact.id)
+        await cleanupCoordinator?.handleDeletion(contactID: localContact.id, publicKey: localContact.publicKey)
+        await flushDeletionUpdatesIfNeeded(contactIDs: &deletedIDs, force: false)
+      }
+    } catch {
+      await flushDeletionUpdatesIfNeeded(contactIDs: &deletedIDs, force: true)
+      throw error
     }
+    await flushDeletionUpdatesIfNeeded(contactIDs: &deletedIDs, force: true)
   }
 
   /// Full contact sync for a user-initiated refresh.
@@ -310,29 +320,34 @@ public actor ContactService {
   /// ZephCore V-contact remove is disabled: no `CMD_REMOVE` (which would turn `v.contact` off),
   /// no local wipe, and no `.nodeDeleted` storage-full clear.
   public func removeContact(radioID: UUID, publicKey: Data) async throws {
+    _ = try await removeContact(radioID: radioID, publicKey: publicKey, deferDeletionUpdates: false)
+  }
+
+  func removeContact(radioID: UUID, publicKey: Data, deferDeletionUpdates: Bool) async throws -> UUID? {
     if await isProtectedVContact(radioID: radioID, publicKey: publicKey) {
       logger.info("removeContact ignored for ZephCore V-contact (remove disabled)")
-      return
+      return nil
     }
 
     do {
       try await session.removeContact(publicKey: publicKey)
 
-      // Remove from local database
+      var deletedID: UUID?
       if let contact = try await dataStore.fetchContact(radioID: radioID, publicKey: publicKey) {
         let contactID = contact.id
 
         try await dataStore.deleteContact(id: contactID)
 
-        // Trigger cleanup (notifications, badge, session)
-        await cleanupCoordinator?.handleCleanup(contactID: contactID, reason: .deleted, publicKey: publicKey)
+        deletedID = contactID
+        await handleContactDeletion(contactID: contactID, publicKey: publicKey, deferUpdates: deferDeletionUpdates)
       }
 
       // Notify that a node was deleted (for clearing storage full flag)
       eventBroadcaster.yield(.nodeDeleted)
 
       // Notify UI to refresh contacts list
-      await syncCoordinator?.notifyContactsChanged()
+      if !deferDeletionUpdates { await syncCoordinator?.notifyContactsChanged() }
+      return deletedID
     } catch let error as MeshCoreError {
       if case let .deviceError(code) = error, code == ProtocolError.notFound.rawValue {
         throw ContactServiceError.contactNotFound
@@ -346,15 +361,36 @@ public actor ContactService {
   ///
   /// ZephCore V-contact remove is disabled (same policy as ``removeContact``).
   public func removeLocalContact(contactID: UUID, publicKey: Data) async throws {
+    _ = try await removeLocalContact(contactID: contactID, publicKey: publicKey, deferDeletionUpdates: false)
+  }
+
+  func removeLocalContact(contactID: UUID, publicKey: Data, deferDeletionUpdates: Bool) async throws -> UUID? {
     if let contact = try? await dataStore.fetchContact(id: contactID),
        await isProtectedVContact(radioID: contact.radioID, publicKey: publicKey) {
       logger.info("removeLocalContact ignored for ZephCore V-contact (remove disabled)")
-      return
+      return nil
     }
 
     try await dataStore.deleteContact(id: contactID)
-    await cleanupCoordinator?.handleCleanup(contactID: contactID, reason: .deleted, publicKey: publicKey)
+    await handleContactDeletion(contactID: contactID, publicKey: publicKey, deferUpdates: deferDeletionUpdates)
     eventBroadcaster.yield(.nodeDeleted)
+    if !deferDeletionUpdates { await syncCoordinator?.notifyContactsChanged() }
+    return contactID
+  }
+
+  private func handleContactDeletion(contactID: UUID, publicKey: Data, deferUpdates: Bool) async {
+    if deferUpdates {
+      await cleanupCoordinator?.handleDeletion(contactID: contactID, publicKey: publicKey)
+    } else {
+      await cleanupCoordinator?.handleCleanup(contactID: contactID, reason: .deleted, publicKey: publicKey)
+    }
+  }
+
+  func flushDeletionUpdatesIfNeeded(contactIDs: inout Set<UUID>, force: Bool) async {
+    guard !contactIDs.isEmpty, force || contactIDs.count >= Self.deletionUpdateBatchSize else { return }
+    let deletedIDs = contactIDs
+    contactIDs.removeAll()
+    await cleanupCoordinator?.flushDeletionUpdates(contactIDs: deletedIDs)
     await syncCoordinator?.notifyContactsChanged()
   }
 

@@ -303,6 +303,9 @@ final class AppState {
   /// app is still disconnected. Covers edge cases where scene-phase callbacks are missed.
   var activeRecoveryFallbackTask: Task<Void, Never>?
 
+  var staleNodeCleanupTask: Task<Void, Never>?
+  var staleNodeCleanupServiceID: ObjectIdentifier?
+
   /// Task consuming SettingsService event stream, canceled on disconnect
   var settingsEventsTask: Task<Void, Never>?
 
@@ -506,6 +509,7 @@ final class AppState {
   /// listener, which otherwise leaks across a before-first-unlock `AppState` swap.
   /// Connection teardown stays on `ConnectionManager`.
   func shutdown() {
+    cancelStaleNodeCleanup()
     flushChatDrafts()
     for editor in chatDraftEditors.values {
       editor.retire()
@@ -548,6 +552,7 @@ final class AppState {
   /// Cancels event tasks; the coordinator registry stays so an open chat
   /// keeps its timeline.
   func tearDownAppStateSessionState() {
+    cancelStaleNodeCleanup()
     settingsEventsTask?.cancel()
     settingsEventsTask = nil
     syncDataEventsTask?.cancel()
@@ -721,30 +726,60 @@ final class AppState {
 
   // MARK: - Stale Node Cleanup
 
+  private static let staleNodeCleanupCooldown: TimeInterval = 3 * 60 * 60
+
+  func cancelStaleNodeCleanup() {
+    staleNodeCleanupTask?.cancel()
+    staleNodeCleanupTask = nil
+    staleNodeCleanupServiceID = nil
+  }
+
   /// Runs automatic cleanup of stale non-favorite nodes if the threshold is configured.
-  /// - Parameter force: When `true`, skips the 6-hour cooldown (used when the user changes the setting).
+  /// - Parameter force: When `true`, skips the cooldown and replaces a running cleanup.
   func performStaleNodeCleanup(force: Bool = false) {
     let threshold = UserDefaults.standard.integer(forKey: AppStorageKey.autoDeleteStaleNodesDays.rawValue)
-    guard threshold > 0 else { return }
+    guard threshold > 0 else {
+      cancelStaleNodeCleanup()
+      return
+    }
+    guard let services = connectionManager.services else { return }
+    let serviceID = ObjectIdentifier(services)
+    guard force || staleNodeCleanupTask == nil || staleNodeCleanupServiceID != serviceID else { return }
 
     if !force {
       let lastRunTimestamp = UserDefaults.standard.double(forKey: AppStorageKey.lastStaleCleanupDate.rawValue)
       let lastRun = lastRunTimestamp > 0 ? Date(timeIntervalSinceReferenceDate: lastRunTimestamp) : Date.distantPast
-      guard Date().timeIntervalSince(lastRun) >= 3 * 3600 else {
+      guard Date().timeIntervalSince(lastRun) >= Self.staleNodeCleanupCooldown else {
         logger.debug("Stale node cleanup skipped — cooldown not expired")
         return
       }
     }
 
-    Task {
+    let previousTask = staleNodeCleanupTask
+    previousTask?.cancel()
+    staleNodeCleanupServiceID = serviceID
+    staleNodeCleanupTask = Task {
+      await previousTask?.value
+      defer {
+        // A replacement cancels this run before storing its task, so only an
+        // uncancelled finish clears the handle.
+        if !Task.isCancelled {
+          staleNodeCleanupTask = nil
+          staleNodeCleanupServiceID = nil
+        }
+      }
+      guard !Task.isCancelled, connectionManager.services === services else { return }
       do {
         let result = try await connectionManager.removeStaleNodes(olderThanDays: threshold)
+        guard !Task.isCancelled, connectionManager.services === services else { return }
         UserDefaults.standard.set(Date().timeIntervalSinceReferenceDate, forKey: AppStorageKey.lastStaleCleanupDate.rawValue)
         if result.total > 0 {
           logger.info("Stale node cleanup: removed \(result.removed) of \(result.total) nodes older than \(threshold) days")
         } else {
           logger.debug("Stale node cleanup: no stale nodes found")
         }
+      } catch is CancellationError {
+        return
       } catch {
         logger.warning("Stale node cleanup failed: \(error.localizedDescription)")
       }
