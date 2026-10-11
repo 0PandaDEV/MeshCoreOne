@@ -30,21 +30,21 @@ struct ConnectionUIStateTests {
   }
 
   @Test
-  func `Syncing takes priority over ready toast`() {
+  func `Ready toast takes priority over sync activity when usable`() {
     let appState = AppState()
+    appState.connectionManager.setTestState(connectionState: .ready)
     appState.connectionUI.showReadyToastBriefly()
     appState.connectionUI.simulateSyncStarted()
 
-    #expect(appState.statusPillState == .syncing)
+    #expect(appState.statusPillState == .ready)
   }
 
   @Test
-  func `Ready toast takes priority over disconnected`() {
+  func `Ready toast cannot show while disconnected`() {
     let appState = AppState()
     appState.connectionUI.showReadyToastBriefly()
 
-    // Even if disconnectedPillVisible were true, ready should win
-    #expect(appState.statusPillState == .ready)
+    #expect(appState.statusPillState == .hidden)
   }
 
   @Test
@@ -68,6 +68,7 @@ struct ConnectionUIStateTests {
   @Test
   func `showReadyToastBriefly sets showReadyToast to true`() {
     let appState = AppState()
+    appState.connectionManager.setTestState(connectionState: .ready)
 
     appState.connectionUI.showReadyToastBriefly()
 

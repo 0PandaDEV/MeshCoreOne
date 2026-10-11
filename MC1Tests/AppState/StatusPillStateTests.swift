@@ -23,8 +23,9 @@ struct StatusPillStateTests {
 
   @Test
   @MainActor
-  func `Ready state shows when toast is active`() {
+  func `Ready state shows when toast is active and connection is usable`() {
     let appState = AppState()
+    appState.connectionManager.setTestState(connectionState: .ready)
     appState.connectionUI.showReadyToastBriefly()
     #expect(appState.statusPillState == .ready)
   }

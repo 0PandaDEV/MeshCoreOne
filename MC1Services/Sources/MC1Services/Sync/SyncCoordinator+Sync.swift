@@ -186,14 +186,11 @@ extension SyncCoordinator {
         usePipelinedRead: channelSyncConfig.usePipelinedChannelRead
       )
 
-      // End sync activity before messages phase (pill should hide).
-      // During resync, the outer bracket (beginResyncActivity) holds syncActivityCount >= 1,
-      // so this inner succeeded=true decrement cannot reach zero and prematurely trigger
-      // the "Ready" toast. During initial sync there is no outer bracket, and reaching
-      // zero here is the correct "sync complete" signal.
+      // End the contacts/channels activity bracket before polling. Message catch-up
+      // is reported by phase; ConnectionManager owns the app's readiness transition.
       await endSyncActivityOnce(succeeded: true)
 
-      // Phase 3: Messages (no pill for this phase)
+      // Phase 3: Messages
       logger.info("[Sync] State → .syncing(.messages)")
       await setState(.syncing(progress: SyncProgress(phase: .messages, current: 0, total: 0)))
       let messageStart = ContinuousClock.now

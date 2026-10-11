@@ -64,6 +64,9 @@ public final class ConnectionManager {
       #if DEBUG
         assertStateInvariants()
       #endif
+      if connectionState == .ready, oldValue != .ready {
+        onConnectionBecameUsable?()
+      }
     }
   }
 
@@ -183,6 +186,9 @@ public final class ConnectionManager {
   /// Use this to wire up UI observation of services.
   /// Installed by `AppState` during initialization.
   public var onConnectionReady: (() async -> Void)?
+
+  /// Called synchronously on entry into `.ready` so UI readiness precedes post-sync awaits.
+  public var onConnectionBecameUsable: (@MainActor () -> Void)?
 
   /// Called when connection is lost (disconnection, BLE power off, etc).
   /// Use this to update UI state when services become unavailable.

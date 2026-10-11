@@ -279,7 +279,7 @@ final class AppState {
   // MARK: - Connection UI State
 
   /// Connection UI state (status pills, sync activity, alerts, pairing)
-  let connectionUI = ConnectionUIState()
+  let connectionUI: ConnectionUIState
 
   /// True while `confirmSystemPairingSetup` is in flight so sheet `onDismiss` does not cancel the flow.
   var isConfirmingSystemPairingSetup = false
@@ -373,17 +373,20 @@ final class AppState {
 
   // MARK: - Status Pill
 
-  /// The current status pill state, computed from all relevant conditions
-  /// Priority: failed > syncing > ready > connecting > disconnected > hidden
+  /// Setup phases stay visible until the connection is usable; live reception stays quiet.
   var statusPillState: StatusPillState {
     if connectionUI.syncFailedPillVisible {
       return .failed(message: L10n.Localizable.StatusPill.syncFailed)
     }
-    if connectionUI.syncActivityCount > 0 || connectionState == .syncing {
-      return .syncing
+    if connectionState == .connected || connectionState == .syncing,
+       connectionUI.currentSyncPhase == .messages {
+      return .syncingMessages
     }
-    if connectionUI.showReadyToast {
+    if connectionUI.showReadyToast, connectionState == .ready {
       return .ready
+    }
+    if connectionUI.syncActivityCount > 0 || connectionState == .connected || connectionState == .syncing {
+      return .syncing
     }
     if connectionState == .connecting {
       return .connecting
@@ -406,7 +409,8 @@ final class AppState {
     modelContainer: ModelContainer,
     isPlaceholder: Bool = false,
     defaults: UserDefaults = .standard,
-    injectedConnectionManager: ConnectionManager? = nil
+    injectedConnectionManager: ConnectionManager? = nil,
+    injectedConnectionUI: ConnectionUIState? = nil
   ) {
     draftStore = DraftStore(defaults: defaults)
 
@@ -417,6 +421,7 @@ final class AppState {
 
     connectionManager = injectedConnectionManager
       ?? ConnectionManager(modelContainer: modelContainer, defaults: defaults)
+    connectionUI = injectedConnectionUI ?? ConnectionUIState()
     connectionUI.hasSystemPairingRegistry = connectionManager.hasSystemPairingRegistry
 
     let bootstrapBuffer = DebugLogBuffer(dataStore: connectionManager.persistenceStore)
@@ -452,6 +457,10 @@ final class AppState {
     // Wire connection ready callback - automatically updates UI when connection completes
     connectionManager.onConnectionReady = { [weak self] in
       await self?.wireServicesIfConnected()
+    }
+
+    connectionManager.onConnectionBecameUsable = { [weak self] in
+      self?.connectionUI.showReadyToastBriefly()
     }
 
     // Wire connection lost callback - updates UI when connection is lost
@@ -622,6 +631,13 @@ final class AppState {
       return
     }
 
+    // Reset transient sync UI before wiring awaits so a replacement connection
+    // cannot inherit activity, phase, or a Ready timer.
+    if syncCoordinator !== services.syncCoordinator {
+      connectionUI.resetSyncState()
+      syncCoordinator = services.syncCoordinator
+    }
+
     // The link is up, so drop any pairing-failure alert latched while
     // backgrounded before it can present over a working connection.
     connectionUI.clearPairingFailure()
@@ -654,9 +670,6 @@ final class AppState {
       nodeSnapshotService: { services.nodeSnapshotService },
       deviceHashSize: { [weak self] in self?.connectedDevice?.hashSize }
     )
-
-    // Store syncCoordinator reference
-    syncCoordinator = services.syncCoordinator
 
     // Process-wide inline image cache learns where to persist probed dims.
     await InlineImageCache.shared.attachDimensionsStore(services.inlineImageDimensionsStore)

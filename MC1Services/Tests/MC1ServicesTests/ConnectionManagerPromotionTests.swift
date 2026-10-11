@@ -103,8 +103,10 @@ struct ConnectionManagerPromotionTests {
     let (manager, _) = try ConnectionManager.createForTesting()
     let services = try await makeTestServices()
     var onDeviceSyncedCalled = false
+    var becameUsable = false
 
     setupForPromotion(manager: manager, services: services)
+    manager.onConnectionBecameUsable = { becameUsable = true }
     manager.onDeviceSynced = { onDeviceSyncedCalled = true }
 
     let promoted = await manager.promoteToReady(
@@ -115,6 +117,7 @@ struct ConnectionManagerPromotionTests {
 
     #expect(promoted, "Should still promote to .syncing for resync loop")
     #expect(!onDeviceSyncedCalled, "onDeviceSynced should be skipped on sync failure")
+    #expect(!becameUsable)
   }
 
   // MARK: - Sync success sets .ready and fires onDeviceSynced
@@ -179,9 +182,18 @@ struct ConnectionManagerPromotionTests {
     let (manager, _) = try ConnectionManager.createForTesting()
     let services = try await makeTestServices()
     var onDeviceSyncedCalled = false
+    var becameUsableCount = 0
 
     setupForPromotion(manager: manager, services: services)
-    manager.onDeviceSynced = { onDeviceSyncedCalled = true }
+    manager.onConnectionBecameUsable = { [weak manager] in
+      #expect(manager?.connectionState == .ready)
+      #expect(!onDeviceSyncedCalled)
+      becameUsableCount += 1
+    }
+    manager.onDeviceSynced = {
+      #expect(becameUsableCount == 1)
+      onDeviceSyncedCalled = true
+    }
 
     let promoted = await manager.promoteToReady(
       syncSucceeded: true,
@@ -193,6 +205,9 @@ struct ConnectionManagerPromotionTests {
     #expect(manager.connectionState == .ready)
     #expect(manager.currentTransportType == .bluetooth)
     #expect(onDeviceSyncedCalled, "onDeviceSynced should fire on successful sync")
+    #expect(becameUsableCount == 1)
+    manager.setTestState(connectionState: .ready)
+    #expect(becameUsableCount == 1)
   }
 
   // MARK: - Suppression: user disconnected

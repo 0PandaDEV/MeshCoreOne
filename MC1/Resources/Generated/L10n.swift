@@ -2331,6 +2331,8 @@ public enum L10n {
         public static let ready = L10n.tr("Localizable", "common.status.ready", fallback: "Ready")
         /// Location: SyncingPillView.swift - Status shown when syncing data
         public static let syncing = L10n.tr("Localizable", "common.status.syncing", fallback: "Syncing")
+        /// Status shown during initial message catch-up
+        public static let syncingMessages = L10n.tr("Localizable", "common.status.syncingMessages", fallback: "Syncing Messages")
       }
     }
     public enum Error {

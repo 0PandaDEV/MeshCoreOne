@@ -194,15 +194,25 @@ final class ConnectionUIState {
       syncActivityCount += 1
     }
 
-    /// Test helper: Simulates sync activity ended callback (mirrors actual callback guard logic)
-    func simulateSyncEnded(succeeded: Bool = false) {
-      guard syncActivityCount > 0 else { return }
-      syncActivityCount -= 1
-      if syncActivityCount == 0, succeeded {
-        showReadyToastBriefly()
-      }
+    func simulateSyncEnded(succeeded: Bool = false, connectionState: DeviceConnectionState = .disconnected) {
+      endSyncActivity(succeeded: succeeded, connectionState: connectionState)
     }
   #endif
+
+  func resetSyncState() {
+    syncActivityCount = 0
+    currentSyncPhase = nil
+    hideReadyToast()
+  }
+
+  private func endSyncActivity(succeeded: Bool, connectionState: DeviceConnectionState) {
+    // Disconnect and the sync error path can both end the same activity.
+    guard syncActivityCount > 0 else { return }
+    syncActivityCount -= 1
+    if syncActivityCount == 0, succeeded, connectionState == .ready {
+      showReadyToastBriefly()
+    }
+  }
 
   // MARK: - Service Wiring
 
@@ -217,9 +227,7 @@ final class ConnectionUIState {
     nodeStorageEventsTask = nil
     nodeDeletedEventsTask?.cancel()
     nodeDeletedEventsTask = nil
-    syncActivityCount = 0
-    currentSyncPhase = nil
-    hideReadyToast()
+    resetSyncState()
     isNodeStorageFull = false
     updateDisconnectedPillState(
       connectionState: connectionState,
@@ -239,25 +247,22 @@ final class ConnectionUIState {
 
     announceConnectionState(L10n.Localizable.Accessibility.Connection.deviceReconnected)
 
-    // Sync activity callbacks for syncing pill display
-    // These are called for contacts and channels phases, NOT for messages
+    // Activity tracks contacts/channels and on-demand work; phase identifies message catch-up.
     await syncCoordinator.setSyncActivityCallbacks(
-      onStarted: { @MainActor [weak self] in
-        self?.syncActivityCount += 1
+      onStarted: { @MainActor [weak self, weak connectionManager, weak syncCoordinator] in
+        guard let self, let connectionManager, let syncCoordinator,
+              connectionManager.services?.syncCoordinator === syncCoordinator else { return }
+        syncActivityCount += 1
       },
-      onEnded: { @MainActor [weak self] succeeded in
-        guard let self else { return }
-        // Guard against double-decrement: onDisconnected and sync error path
-        // can both call this if WiFi drops or device switch during sync
-        guard syncActivityCount > 0 else { return }
-        syncActivityCount -= 1
-        // Show "Ready" toast only when all sync activity completes successfully
-        if syncActivityCount == 0, succeeded {
-          showReadyToastBriefly()
-        }
+      onEnded: { @MainActor [weak self, weak connectionManager, weak syncCoordinator] succeeded in
+        guard let self, let connectionManager, let syncCoordinator,
+              connectionManager.services?.syncCoordinator === syncCoordinator else { return }
+        endSyncActivity(succeeded: succeeded, connectionState: connectionManager.connectionState)
       },
-      onPhaseChanged: { @MainActor [weak self] phase in
-        self?.currentSyncPhase = phase
+      onPhaseChanged: { @MainActor [weak self, weak connectionManager, weak syncCoordinator] phase in
+        guard let self, let connectionManager, let syncCoordinator,
+              connectionManager.services?.syncCoordinator === syncCoordinator else { return }
+        currentSyncPhase = phase
       }
     )
 

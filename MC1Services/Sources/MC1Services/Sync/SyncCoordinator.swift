@@ -272,7 +272,7 @@ public actor SyncCoordinator {
   }
 
   /// Sets callbacks for sync activity tracking (used by UI to show syncing pill)
-  /// Only called for contacts and channels phases, NOT for messages.
+  /// Activity brackets contacts/channels; phase changes also report message catch-up.
   public func setSyncActivityCallbacks(
     onStarted: @escaping @Sendable () async -> Void,
     onEnded: @escaping @Sendable (_ succeeded: Bool) async -> Void,
@@ -318,7 +318,7 @@ public actor SyncCoordinator {
   }
 
   /// Called by ConnectionManager when a resync loop ends (success or exhausted retries).
-  /// Decrements the activity count. Only triggers "Ready" toast on success.
+  /// Decrements the activity count; app readiness is published by ConnectionManager.
   func endResyncActivity(succeeded: Bool) async {
     await onSyncActivityEnded?(succeeded)
   }
