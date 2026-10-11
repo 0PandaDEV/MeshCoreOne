@@ -20,12 +20,17 @@ struct ConversationRowActions: View {
   }
 
   var body: some View {
-    if edge != .leading {
+    switch edge {
+    case .all:
+      muteButton
+      pinButton
+      Divider()
+      deleteButton
+    case .leading:
+      pinButton
+    case .trailing:
       deleteButton
       muteButton
-    }
-    if edge != .trailing {
-      pinButton
     }
   }
 

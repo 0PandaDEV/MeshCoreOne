@@ -219,18 +219,19 @@ private struct DeviceListView: View {
           }
           .buttonStyle(.plain)
           .contextMenu {
-            Button(role: .destructive) {
-              onDelete(device)
-            } label: {
-              Label(L10n.Localizable.Common.delete, systemImage: "trash")
-            }
-
             if device.primaryConnectionMethod?.isWiFi == true {
               Button {
                 editingWiFiDevice = device
               } label: {
                 Label(L10n.Localizable.Common.edit, systemImage: "pencil")
               }
+              Divider()
+            }
+
+            Button(role: .destructive) {
+              onDelete(device)
+            } label: {
+              Label(L10n.Localizable.Common.delete, systemImage: "trash")
             }
           }
         }
