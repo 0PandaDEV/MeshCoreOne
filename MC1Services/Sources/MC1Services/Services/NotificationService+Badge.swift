@@ -1,10 +1,14 @@
-import UserNotifications
+import Foundation
 
 extension NotificationService {
   /// Writes the icon badge from local unread counts. Used when no `NotificationService` is connected.
-  public static func updateAppIconBadge(unreadCounts: (contacts: Int, channels: Int, rooms: Int)) async {
-    let count = badgeCount(unreadCounts: unreadCounts, preferences: NotificationPreferences())
-    try? await UNUserNotificationCenter.current().setBadgeCount(count)
+  public static func updateAppIconBadge(
+    unreadCounts: (contacts: Int, channels: Int, rooms: Int),
+    notificationDefaults: UserDefaults = .standard,
+    systemOperations: SystemOperations = .live
+  ) async {
+    let count = badgeCount(unreadCounts: unreadCounts, preferences: NotificationPreferences(defaults: notificationDefaults))
+    try? await systemOperations.setBadgeCount(count)
   }
 
   static func badgeCount(

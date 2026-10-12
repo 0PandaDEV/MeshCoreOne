@@ -244,17 +244,20 @@ final class AppState {
     sessionStateChangeCount += 1
   }
 
-  /// Bumps `conversationsVersion` and drives
-  /// `liveActivityManager.handleUnreadCountChanged`. Used by both the sync
-  /// coordinator's data event stream and the session-state events
-  /// (`RemoteNodeEvent.sessionStateChanged` / `RoomServerEvent.connectionRecovered`)
-  /// to keep the conversations list and unread badge in lockstep.
-  func refreshConversations() {
+  /// Bumps `conversationsVersion` and publishes unread totals to Live Activity
+  /// only while the captured radio, services, and version remain current.
+  @discardableResult
+  func refreshConversations() -> Task<Void, Never> {
     conversationsVersion += 1
-    Task { @MainActor [weak self] in
-      guard let self, let services else { return }
-      let total = await totalUnreadCount(from: services)
-      await liveActivityManager.handleUnreadCountChanged(unreadCount: total)
+    let version = conversationsVersion
+    let capturedServices = services
+    let radioID = currentRadioID
+    return Task { @MainActor [weak self] in
+      guard let self, let capturedServices, let radioID else { return }
+      let total = await conversationUnreadOperations.read(capturedServices.dataStore, radioID)
+      guard !Task.isCancelled, services === capturedServices,
+            currentRadioID == radioID, conversationsVersion == version else { return }
+      await conversationUnreadOperations.publish(liveActivityManager, total)
     }
   }
 
@@ -403,6 +406,8 @@ final class AppState {
     return connectionState == .connected && connectionUI.currentSyncPhase == .messages
   }
 
+  @ObservationIgnored let conversationUnreadOperations: ConversationUnreadOperations
+
   // MARK: - Initialization
 
   init(
@@ -410,8 +415,10 @@ final class AppState {
     isPlaceholder: Bool = false,
     defaults: UserDefaults = .standard,
     injectedConnectionManager: ConnectionManager? = nil,
-    injectedConnectionUI: ConnectionUIState? = nil
+    injectedConnectionUI: ConnectionUIState? = nil,
+    conversationUnreadOperations: ConversationUnreadOperations = .live
   ) {
+    self.conversationUnreadOperations = conversationUnreadOperations
     draftStore = DraftStore(defaults: defaults)
 
     let store = StoreService()

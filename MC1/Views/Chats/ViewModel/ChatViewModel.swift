@@ -103,6 +103,12 @@ final class ChatViewModel {
     /// Test-only fault injection fired immediately before the failed-send keys
     /// fetch so tests can exercise the keep-last-known catch path.
     @ObservationIgnored var failedSendRefreshFaultInjection: (@MainActor () throws -> Void)?
+
+    /// Test-only hook after offline unread totals are fetched, before badge publication.
+    @ObservationIgnored var readStateBadgeFetchInterleaveHook: (@MainActor () async -> Void)?
+
+    /// Test-only hook before a queued command waits for its predecessor.
+    @ObservationIgnored var readStateBeforePredecessorInterleaveHook: (@MainActor () async -> Void)?
   #endif
 
   // MARK: - Conversation Cache Storage
@@ -411,7 +417,16 @@ final class ChatViewModel {
 
   // MARK: - Initialization
 
-  init() {}
+  @ObservationIgnored let notificationDefaults: UserDefaults
+  @ObservationIgnored let notificationSystemOperations: NotificationService.SystemOperations
+
+  init(
+    notificationDefaults: UserDefaults = .standard,
+    notificationSystemOperations: NotificationService.SystemOperations = .live
+  ) {
+    self.notificationDefaults = notificationDefaults
+    self.notificationSystemOperations = notificationSystemOperations
+  }
 
   /// Forwards a map-thumbnail tap to the same navigation sink the coordinate
   /// text link uses. `onNavigateToMap` is optional; if nil, the tap is a

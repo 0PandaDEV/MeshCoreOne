@@ -185,8 +185,6 @@ extension AppState {
 
   func totalUnreadCount(from services: ServiceContainer) async -> Int {
     guard let radioID = currentRadioID else { return 0 }
-    let counts = await (try? services.dataStore.getTotalUnreadCounts(radioID: radioID))
-      ?? (contacts: 0, channels: 0, rooms: 0)
-    return counts.contacts + counts.channels + counts.rooms
+    return await conversationUnreadOperations.read(services.dataStore, radioID)
   }
 }

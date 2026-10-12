@@ -10,6 +10,8 @@ extension ChatViewModel {
   /// side effects here run only when that load succeeded.
   /// `populateMode` selects first-page replacement or an in-place window refresh; see `ChatPopulateMode`.
   func loadChannelMessages(for channel: ChannelDTO, populateMode: ChatPopulateMode) async {
+    let dataStore = dataStore
+    let capturedCoordinator = syncCoordinator
     // Track active channel for notification suppression
     notificationService?.setActiveConversation(
       channelIndex: channel.index,
@@ -34,10 +36,12 @@ extension ChatViewModel {
     } catch {
       logger.warning("loadChannelMessages: failed to clear unread counts - \(error.localizedDescription)")
     }
-    syncCoordinator?.notifyConversationsChanged()
-
-    // Update app badge
-    await notificationService?.updateBadgeCount()
+    if currentRadioIDProvider() == channel.radioID, syncCoordinator === capturedCoordinator {
+      capturedCoordinator?.notifyConversationsChanged()
+    }
+    if let dataStore {
+      await refreshReadStateBadge(dataStore: dataStore, radioID: channel.radioID)
+    }
   }
 
   /// Populates the bound coordinator for `channel` and builds its render
