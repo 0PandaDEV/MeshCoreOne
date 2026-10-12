@@ -28,9 +28,9 @@ struct ConversationRowActions: View {
       Divider()
       deleteButton
     case .leading:
-      // The first action is the full swipe, so Pin stays ahead of read state.
-      pinButton
+      // The first action is the full swipe
       readStateButton
+      pinButton
     case .trailing:
       deleteButton
       muteButton
