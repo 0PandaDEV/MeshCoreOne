@@ -382,7 +382,7 @@ final class AppState {
       return .failed(message: L10n.Localizable.StatusPill.syncFailed)
     }
     if connectionState == .connected || connectionState == .syncing,
-       connectionUI.currentSyncPhase == .messages {
+       connectionUI.currentSyncPhase == .messages, connectionUI.showMessageSyncPill {
       return .syncingMessages
     }
     if connectionUI.showReadyToast, connectionState == .ready {

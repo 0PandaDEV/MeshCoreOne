@@ -9,6 +9,7 @@ final class ConnectionUIState {
   private static let readyToastDuration: Duration = .seconds(2)
   private static let syncFailedPillDuration: Duration = .seconds(7)
   private static let disconnectedPillDelay: Duration = .seconds(1)
+  private static let messageSyncPillDelay: Duration = .milliseconds(500)
 
   private let clock: any Clock<Duration>
 
@@ -48,6 +49,9 @@ final class ConnectionUIState {
   /// Current sync phase reported by SyncCoordinator callbacks.
   /// Used to defer non-essential settings reads during connect/sync.
   var currentSyncPhase: SyncPhase?
+
+  private(set) var showMessageSyncPill = false
+  private var messageSyncPillTask: Task<Void, Never>?
 
   // MARK: - Connection Alerts & Pairing
 
@@ -114,6 +118,7 @@ final class ConnectionUIState {
 
   /// Shows "Ready" toast pill for 2 seconds
   func showReadyToastBriefly() {
+    hideMessageSyncPill()
     readyToastTask?.cancel()
     showReadyToast = true
 
@@ -135,6 +140,7 @@ final class ConnectionUIState {
 
   /// Shows "Sync Failed" pill for 7 seconds with VoiceOver announcement
   func showSyncFailedPill() {
+    hideMessageSyncPill()
     syncFailedPillTask?.cancel()
     syncFailedPillVisible = true
 
@@ -202,7 +208,38 @@ final class ConnectionUIState {
   func resetSyncState() {
     syncActivityCount = 0
     currentSyncPhase = nil
+    hideMessageSyncPill()
     hideReadyToast()
+  }
+
+  private func updateSyncPhase(
+    _ phase: SyncPhase?,
+    connectionManager: ConnectionManager,
+    syncCoordinator: SyncCoordinator
+  ) {
+    currentSyncPhase = phase
+    guard phase == .messages, !syncFailedPillVisible,
+          connectionManager.connectionState == .connected || connectionManager.connectionState == .syncing else {
+      hideMessageSyncPill()
+      return
+    }
+    // Repeated phase updates keep the original deadline so they cannot postpone the label.
+    guard messageSyncPillTask == nil, !showMessageSyncPill else { return }
+    messageSyncPillTask = Task { [weak self, weak connectionManager, weak syncCoordinator, clock] in
+      try? await clock.sleep(for: Self.messageSyncPillDelay)
+      guard !Task.isCancelled, let self, let connectionManager, let syncCoordinator,
+            connectionManager.services?.syncCoordinator === syncCoordinator,
+            currentSyncPhase == .messages, !syncFailedPillVisible,
+            connectionManager.connectionState == .connected || connectionManager.connectionState == .syncing else { return }
+      showMessageSyncPill = true
+      messageSyncPillTask = nil
+    }
+  }
+
+  private func hideMessageSyncPill() {
+    messageSyncPillTask?.cancel()
+    messageSyncPillTask = nil
+    showMessageSyncPill = false
   }
 
   private func endSyncActivity(succeeded: Bool, connectionState: DeviceConnectionState) {
@@ -262,7 +299,7 @@ final class ConnectionUIState {
       onPhaseChanged: { @MainActor [weak self, weak connectionManager, weak syncCoordinator] phase in
         guard let self, let connectionManager, let syncCoordinator,
               connectionManager.services?.syncCoordinator === syncCoordinator else { return }
-        currentSyncPhase = phase
+        updateSyncPhase(phase, connectionManager: connectionManager, syncCoordinator: syncCoordinator)
       }
     )
 

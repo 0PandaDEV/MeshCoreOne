@@ -24,12 +24,18 @@ struct ConnectionStatusLifecycleTests {
     return services
   }
 
-  @Test(arguments: [DeviceConnectionState.connected, .syncing], [false, true])
-  func `catch-up stays visible until polling returns and Ready waits for usability`(
-    connectionState: DeviceConnectionState,
-    pollingFails: Bool
+  @Test(arguments: [
+    (connectionState: DeviceConnectionState.connected, pollingFails: false, sustained: false),
+    (.connected, true, true),
+    (.syncing, false, true),
+    (.syncing, true, false)
+  ])
+  func `catch-up label waits for sustained work and Ready waits for usability`(
+    scenario: (connectionState: DeviceConnectionState, pollingFails: Bool, sustained: Bool)
   ) async throws {
-    let appState = try makeAppState()
+    let (connectionState, pollingFails, sustained) = scenario
+    let clock = TestClock()
+    let appState = try makeAppState(clock: clock)
     defer { appState.shutdown() }
     let services = try await wireConnection(appState)
     appState.connectionManager.setTestState(connectionState: connectionState)
@@ -46,8 +52,20 @@ struct ConnectionStatusLifecycleTests {
     try await waitUntil("message polling should suspend") { await poller.isWaiting }
 
     #expect(appState.connectionUI.syncActivityCount == 0)
-    #expect(appState.statusPillState == .syncingMessages)
+    #expect(appState.connectionUI.currentSyncPhase == .messages)
+    #expect(appState.statusPillState == .syncing)
     #expect(!appState.connectionUI.showReadyToast)
+    #expect(appState.canRunSettingsStartupReads == (connectionState == .connected))
+    try await waitUntil("message label timer should park") { clock.sleeperCount == 1 }
+    clock.advance(by: .milliseconds(250))
+    #expect(appState.statusPillState == .syncing)
+    if sustained {
+      services.syncCoordinator.setState(.syncing(progress: SyncProgress(phase: .messages, current: 1, total: 0)))
+      await appState.wireServicesIfConnected()
+      clock.advance(by: .milliseconds(250))
+      try await waitUntil("sustained catch-up should reveal its label") { appState.connectionUI.showMessageSyncPill }
+      #expect(appState.statusPillState == .syncingMessages)
+    }
 
     await poller.finish(failing: pollingFails)
     let result = try await sync.value
@@ -61,18 +79,27 @@ struct ConnectionStatusLifecycleTests {
     #expect(appState.statusPillState == .syncing)
     #expect(!appState.connectionUI.showReadyToast)
     #expect(!appState.connectionUI.syncFailedPillVisible)
+    try await waitUntil("completed catch-up should cancel its label timer") { clock.sleeperCount == 0 }
+    clock.advance(by: .seconds(1))
+    #expect(!appState.connectionUI.showMessageSyncPill)
 
     appState.connectionManager.setTestState(connectionState: .ready)
     #expect(appState.statusPillState == .ready)
   }
 
   @Test
-  func `duplicate Ready assignments do not restart the toast and live messages stay quiet`() async throws {
+  func `Ready clears catch-up without restarting on duplicate assignments and live messages stay quiet`() async throws {
     let clock = TestClock()
     let appState = try makeAppState(clock: clock)
     defer { appState.shutdown() }
     let services = try await wireConnection(appState)
+    services.syncCoordinator.setState(.syncing(progress: SyncProgress(phase: .messages, current: 0, total: 0)))
+    try await waitUntil("message label timer should park") { clock.sleeperCount == 1 }
+    clock.advance(by: .milliseconds(500))
+    try await waitUntil("message label should reveal") { appState.connectionUI.showMessageSyncPill }
     appState.connectionManager.setTestState(connectionState: .ready)
+    #expect(appState.statusPillState == .ready)
+    #expect(!appState.connectionUI.showMessageSyncPill)
     try await waitUntil("Ready timer should park") { clock.sleeperCount == 1 }
     clock.advance(by: .seconds(1))
     appState.connectionManager.setTestState(connectionState: .ready)
@@ -110,13 +137,18 @@ struct ConnectionStatusLifecycleTests {
 
   @Test
   func `failure wins over catch-up and unusable connections cannot display a stale Ready toast`() async throws {
-    let appState = try makeAppState()
+    let clock = TestClock()
+    let appState = try makeAppState(clock: clock)
     defer { appState.shutdown() }
     let services = try await wireConnection(appState)
     appState.connectionUI.showReadyToastBriefly()
     services.syncCoordinator.setState(.syncing(progress: SyncProgress(phase: .messages, current: 0, total: 0)))
+    try await waitUntil("Ready and message label timers should park") { clock.sleeperCount == 2 }
+    clock.advance(by: .milliseconds(500))
+    try await waitUntil("message label should reveal") { appState.connectionUI.showMessageSyncPill }
     #expect(appState.statusPillState == .syncingMessages)
     appState.connectionManager.onResyncFailed?()
+    #expect(!appState.connectionUI.showMessageSyncPill)
     #expect(appState.statusPillState == .failed(message: L10n.Localizable.StatusPill.syncFailed))
     appState.connectionUI.hideSyncFailedPill()
     appState.connectionManager.setTestState(connectionState: .connecting)
@@ -132,15 +164,16 @@ struct ConnectionStatusLifecycleTests {
     defer { appState.shutdown() }
     let oldServices = try await wireConnection(appState)
     await oldServices.syncCoordinator.beginResyncActivity()
-    oldServices.syncCoordinator.setState(.syncing(progress: SyncProgress(phase: .messages, current: 0, total: 0)))
     appState.connectionUI.showReadyToastBriefly()
-    try await waitUntil("old Ready timer should park") { clock.sleeperCount == 1 }
+    oldServices.syncCoordinator.setState(.syncing(progress: SyncProgress(phase: .messages, current: 0, total: 0)))
+    try await waitUntil("old Ready and message label timers should park") { clock.sleeperCount == 2 }
 
     let newServices = try await wireConnection(appState)
     #expect(appState.syncCoordinator === newServices.syncCoordinator)
     #expect(appState.connectionUI.syncActivityCount == 0)
     #expect(appState.connectionUI.currentSyncPhase == nil)
     #expect(!appState.connectionUI.showReadyToast)
+    try await waitUntil("replacement should cancel old presentation timers") { clock.sleeperCount == 0 }
     await newServices.syncCoordinator.beginResyncActivity()
     await oldServices.syncCoordinator.beginResyncActivity()
     await oldServices.syncCoordinator.endResyncActivity(succeeded: true)
@@ -148,7 +181,11 @@ struct ConnectionStatusLifecycleTests {
     #expect(appState.connectionUI.syncActivityCount == 1)
     #expect(appState.connectionUI.currentSyncPhase == nil)
 
+    newServices.syncCoordinator.setState(.syncing(progress: SyncProgress(phase: .messages, current: 0, total: 0)))
+    try await waitUntil("new message label timer should park") { clock.sleeperCount == 1 }
+    clock.advance(by: .milliseconds(250))
     appState.connectionManager.setTestState(connectionState: .ready)
+    #expect(!appState.connectionUI.showMessageSyncPill)
     try await waitUntil("new Ready timer should replace the old one") { clock.sleeperCount == 1 }
     clock.advance(by: .seconds(1))
     await appState.wireServicesIfConnected()
@@ -161,11 +198,13 @@ struct ConnectionStatusLifecycleTests {
 
   @Test
   func `disconnect clears catch-up and ignores late activity and phase callbacks`() async throws {
-    let appState = try makeAppState()
+    let clock = TestClock()
+    let appState = try makeAppState(clock: clock)
     defer { appState.shutdown() }
     let services = try await wireConnection(appState)
     await services.syncCoordinator.beginResyncActivity()
     services.syncCoordinator.setState(.syncing(progress: SyncProgress(phase: .messages, current: 0, total: 0)))
+    try await waitUntil("message label timer should park") { clock.sleeperCount == 1 }
     appState.connectionManager.setTestState(connectionState: .disconnected, services: .some(nil))
     await appState.wireServicesIfConnected()
     await services.syncCoordinator.endResyncActivity(succeeded: true)
@@ -174,6 +213,9 @@ struct ConnectionStatusLifecycleTests {
     #expect(appState.connectionUI.syncActivityCount == 0)
     #expect(appState.connectionUI.currentSyncPhase == nil)
     #expect(!appState.connectionUI.showReadyToast)
+    try await waitUntil("disconnect should cancel its label timer") { clock.sleeperCount == 0 }
+    clock.advance(by: .seconds(1))
+    #expect(!appState.connectionUI.showMessageSyncPill)
     #expect(appState.statusPillState != .ready)
     #expect(appState.statusPillState != .syncingMessages)
   }
