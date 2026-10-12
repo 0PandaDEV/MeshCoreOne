@@ -15,6 +15,7 @@ struct ContactsListContent: View {
   let isSearching: Bool
   let searchText: String
   let filteredContacts: [ContactDTO]
+  let timestampsByID: [UUID: UInt32]
   let hasLoadedOnce: Bool
   let viewModel: ContactsViewModel
   let onRefresh: () async -> Void
@@ -102,6 +103,7 @@ struct ContactsListContent: View {
     ForEach(Array(filteredContacts.enumerated()), id: \.element.id) { index, contact in
       ContactSelectionRow(
         contact: contact,
+        timestamp: timestampsByID[contact.id],
         viewModel: viewModel,
         isSearching: isSearching,
         userLocation: appState.bestAvailableLocation,
@@ -126,6 +128,7 @@ private enum ContactRowLayout {
 /// Renders a node's row body, shared by selection rows.
 private struct ContactListRowLabel: View {
   let contact: ContactDTO
+  let timestamp: UInt32?
   let viewModel: ContactsViewModel
   let isSearching: Bool
   let userLocation: CLLocation?
@@ -133,6 +136,7 @@ private struct ContactListRowLabel: View {
   var body: some View {
     ContactRowView(
       contact: contact,
+      timestamp: timestamp,
       showTypeLabel: isSearching,
       userLocation: userLocation,
       isTogglingFavorite: viewModel.togglingFavoriteID == contact.id,
@@ -147,6 +151,7 @@ private struct ContactListRowLabel: View {
 
 private struct ContactSelectionRow: View {
   let contact: ContactDTO
+  let timestamp: UInt32?
   let viewModel: ContactsViewModel
   let isSearching: Bool
   let userLocation: CLLocation?
@@ -159,7 +164,13 @@ private struct ContactSelectionRow: View {
 
   var body: some View {
     Button(action: onSelect) {
-      ContactListRowLabel(contact: contact, viewModel: viewModel, isSearching: isSearching, userLocation: userLocation)
+      ContactListRowLabel(
+        contact: contact,
+        timestamp: timestamp,
+        viewModel: viewModel,
+        isSearching: isSearching,
+        userLocation: userLocation
+      )
     }
     .buttonStyle(.plain)
     .selectedRowHighlight(isSelected: isSelected)

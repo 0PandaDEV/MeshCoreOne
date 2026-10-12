@@ -9,19 +9,28 @@ struct ContactListActions {
   let appState: AppState
   let syncSuccessTrigger: Binding<Bool>
 
-  /// Filters and sorts contacts, falling back to lastHeard sort when distance is selected but no
-  /// location is available.
-  func filteredContacts(searchText: String, segment: NodeSegment, sortOrder: NodeSortOrder) -> [ContactDTO] {
+  /// Keeps row dates with their ordered contacts so lazy rendering cannot change the selected date.
+  func filteredContacts(
+    searchText: String,
+    segment: NodeSegment,
+    sortOrder: NodeSortOrder,
+    referenceDate: Date = Date()
+  ) -> (contacts: [ContactDTO], timestampsByID: [UUID: UInt32]) {
     let effectiveSortOrder = (sortOrder == .distance && appState.bestAvailableLocation == nil)
       ? .lastHeard
       : sortOrder
 
-    return viewModel.filteredContacts(
+    let contacts = viewModel.filteredContacts(
       searchText: searchText,
       segment: segment,
       sortOrder: effectiveSortOrder,
-      userLocation: appState.bestAvailableLocation
+      userLocation: appState.bestAvailableLocation,
+      referenceDate: referenceDate
     )
+    let timestampsByID = contacts.reduce(into: [UUID: UInt32]()) { timestamps, contact in
+      timestamps[contact.id] = contact.nodeListTimestamp(relativeTo: referenceDate)
+    }
+    return (contacts, timestampsByID)
   }
 
   var searchPrompt: String {

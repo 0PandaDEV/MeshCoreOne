@@ -14,6 +14,7 @@ struct ContactsSidebarContent: View {
 
   @Bindable var viewModel: ContactsViewModel
   let filteredContacts: [ContactDTO]
+  let timestampsByID: [UUID: UInt32]
   let isSearching: Bool
   let searchPrompt: String
 
@@ -40,6 +41,7 @@ struct ContactsSidebarContent: View {
       isSearching: isSearching,
       searchText: searchText,
       filteredContacts: filteredContacts,
+      timestampsByID: timestampsByID,
       hasLoadedOnce: viewModel.hasLoadedOnce,
       viewModel: viewModel,
       onRefresh: refreshNodes
@@ -64,13 +66,14 @@ struct ContactsSidebarContent: View {
       ToolbarItem(placement: .automatic) {
         Menu {
           ForEach(NodeSortOrder.allCases, id: \.self) { order in
+            let title = order == .lastHeard ? L10n.Contacts.Contacts.Detail.lastAdvert : order.localizedTitle
             Button {
               sortOrder = order
             } label: {
               if sortOrder == order {
-                Label(order.localizedTitle, systemImage: "checkmark")
+                Label(title, systemImage: "checkmark")
               } else {
-                Text(order.localizedTitle)
+                Text(title)
               }
             }
           }

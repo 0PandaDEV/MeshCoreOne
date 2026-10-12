@@ -50,7 +50,7 @@ struct BlockedContactsView: View {
           Button {
             appState.navigation.navigateToContactDetail(contact)
           } label: {
-            ContactRowView(contact: contact)
+            ContactRowView(contact: contact, timestamp: contact.recencyTimestamp)
               .padding(.horizontal, Self.rowHorizontalPadding)
               .padding(.vertical, Self.rowVerticalPadding)
               .frame(maxWidth: .infinity, alignment: .leading)

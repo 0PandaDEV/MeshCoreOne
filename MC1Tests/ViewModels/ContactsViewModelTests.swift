@@ -287,13 +287,13 @@ struct ContactsViewModelTests {
   }
 
   @Test
-  func `filteredContacts sorted by lastHeard returns most recent first`() {
+  func `filteredContacts sorted by lastAdvert returns most recent first`() {
     let viewModel = ContactsViewModel()
     let deviceID = UUID()
     viewModel.contacts = [
-      createContact(radioID: deviceID, name: "Old", type: .chat, lastModified: 100),
-      createContact(radioID: deviceID, name: "Recent", type: .chat, lastModified: 300),
-      createContact(radioID: deviceID, name: "Middle", type: .chat, lastModified: 200)
+      createContact(radioID: deviceID, name: "Old", type: .chat, lastAdvertTimestamp: 1_700_000_100),
+      createContact(radioID: deviceID, name: "Recent", type: .chat, lastAdvertTimestamp: 1_700_000_300),
+      createContact(radioID: deviceID, name: "Middle", type: .chat, lastAdvertTimestamp: 1_700_000_200)
     ]
 
     let result = viewModel.filteredContacts(

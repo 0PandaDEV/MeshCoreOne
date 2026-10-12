@@ -22,9 +22,11 @@ struct ContactsContentColumn: View {
   }
 
   var body: some View {
+    let list = actions.filteredContacts(searchText: searchText, segment: selectedSegment, sortOrder: sortOrder)
     ContactsSidebarContent(
       viewModel: viewModel,
-      filteredContacts: actions.filteredContacts(searchText: searchText, segment: selectedSegment, sortOrder: sortOrder),
+      filteredContacts: list.contacts,
+      timestampsByID: list.timestampsByID,
       isSearching: !searchText.isEmpty,
       searchPrompt: actions.searchPrompt,
       selectedSegment: $selectedSegment,

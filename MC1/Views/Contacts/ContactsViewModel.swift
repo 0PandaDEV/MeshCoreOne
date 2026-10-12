@@ -399,7 +399,8 @@ final class ContactsViewModel {
     searchText: String,
     segment: NodeSegment,
     sortOrder: NodeSortOrder,
-    userLocation: CLLocation?
+    userLocation: CLLocation?,
+    referenceDate: Date = Date()
   ) -> [ContactDTO] {
     var result = contacts.filter { !pendingRemovalIDs.contains($0.id) }
 
@@ -425,7 +426,7 @@ final class ContactsViewModel {
     }
 
     // Sort
-    result = sorted(result, by: sortOrder, userLocation: userLocation)
+    result = sorted(result, by: sortOrder, userLocation: userLocation, referenceDate: referenceDate)
 
     return result
   }
@@ -434,11 +435,16 @@ final class ContactsViewModel {
   private func sorted(
     _ contacts: [ContactDTO],
     by order: NodeSortOrder,
-    userLocation: CLLocation?
+    userLocation: CLLocation?,
+    referenceDate: Date
   ) -> [ContactDTO] {
     switch order {
     case .lastHeard:
-      contacts.sorted { $0.recencyTimestamp > $1.recencyTimestamp }
+      contacts.sorted { lhs, rhs in
+        guard let lhsTimestamp = lhs.nodeListTimestamp(relativeTo: referenceDate) else { return false }
+        guard let rhsTimestamp = rhs.nodeListTimestamp(relativeTo: referenceDate) else { return true }
+        return lhsTimestamp > rhsTimestamp
+      }
     case .name:
       contacts.sorted {
         $0.displayName.localizedCompare($1.displayName) == .orderedAscending
