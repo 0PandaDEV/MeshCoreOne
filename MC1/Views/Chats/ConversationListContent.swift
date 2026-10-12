@@ -202,8 +202,6 @@ struct ConversationListContent: View {
 private enum ConversationRowLayout {
   static let horizontalPadding: CGFloat = 16
   static let verticalPadding: CGFloat = 6
-  /// Keeps the row actions menu tappable when text size increases.
-  static let actionsMenuMinimumSide: CGFloat = 44
 }
 
 private struct ConversationRowLabel: View {
@@ -244,44 +242,14 @@ private struct ConversationSelectionRow: View {
   }
 
   var body: some View {
-    HStack(spacing: 0) {
-      Button(action: onSelect) {
-        ConversationRowLabel(conversation: conversation, viewModel: viewModel, referenceDate: referenceDate)
-      }
-      .buttonStyle(.plain)
-      .accessibilityAddTraits(isSelected ? .isSelected : [])
-      .conversationContextMenu(conversation: conversation, viewModel: viewModel, onDelete: onDelete)
-
-      actionsMenu
+    Button(action: onSelect) {
+      ConversationRowLabel(conversation: conversation, viewModel: viewModel, referenceDate: referenceDate)
     }
+    .buttonStyle(.plain)
+    .accessibilityAddTraits(isSelected ? .isSelected : [])
+    .conversationContextMenu(conversation: conversation, viewModel: viewModel, onDelete: onDelete)
     .selectedRowHighlight(isSelected: isSelected)
     .deletingRowOverlay(isDeleting: isDeleting)
     .conversationSwipeActions(conversation: conversation, viewModel: viewModel, onDelete: onDelete)
-  }
-
-  /// iOS 27 uses the leading swipe. Earlier versions have no swipe container, so the same actions stay in a visible menu.
-  @ViewBuilder
-  private var actionsMenu: some View {
-    if #unavailable(iOS 27) {
-      Menu {
-        ConversationRowActions(
-          conversation: conversation,
-          viewModel: viewModel,
-          onDelete: onDelete,
-          edge: .all
-        )
-      } label: {
-        Label(L10n.Chats.Chats.Row.ActionsMenu.accessibilityLabel, systemImage: "ellipsis.circle")
-          .labelStyle(.iconOnly)
-          .font(.body)
-          .frame(
-            minWidth: ConversationRowLayout.actionsMenuMinimumSide,
-            minHeight: ConversationRowLayout.actionsMenuMinimumSide
-          )
-          .contentShape(.rect)
-      }
-      .buttonStyle(.plain)
-      .padding(.trailing, ConversationRowLayout.horizontalPadding)
-    }
   }
 }
