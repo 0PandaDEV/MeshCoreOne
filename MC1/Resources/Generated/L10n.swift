@@ -2777,7 +2777,7 @@ public enum L10n {
     }
     public enum StatusPill {
       /// Status pill message when sync has failed
-      public static let syncFailed = L10n.tr("Localizable", "statusPill.syncFailed", fallback: "Sync Failed")
+      public static let syncFailed = L10n.tr("Localizable", "statusPill.syncFailed", fallback: "Sync failed")
     }
     public enum Tabs {
       /// Tab bar title for the messaging/conversations screen

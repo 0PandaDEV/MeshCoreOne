@@ -201,7 +201,7 @@
 // MARK: - Status Pill
 
 /* Status pill message when sync has failed */
-"statusPill.syncFailed" = "Sync Failed";
+"statusPill.syncFailed" = "Sync failed";
 
 // MARK: - Error Messages
 

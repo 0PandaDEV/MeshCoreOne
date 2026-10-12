@@ -82,7 +82,7 @@ struct SyncingPillView: View {
       SyncingPillView(state: .syncingMessages)
       SyncingPillView(state: .ready)
       SyncingPillView(state: .disconnected)
-      SyncingPillView(state: .failed(message: "Sync Failed"))
+      SyncingPillView(state: .failed(message: "Sync failed"))
       Spacer()
     }
     .padding(.top, 60)

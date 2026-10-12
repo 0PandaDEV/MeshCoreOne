@@ -9,7 +9,7 @@ struct StatusPillStateTests {
   func `Failed state takes highest priority`() {
     let appState = AppState()
     appState.connectionUI.showSyncFailedPill()
-    #expect(appState.statusPillState == .failed(message: "Sync Failed"))
+    #expect(appState.statusPillState == .failed(message: "Sync failed"))
   }
 
   @Test

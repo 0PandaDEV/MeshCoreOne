@@ -26,7 +26,7 @@ struct ConnectionUIStateTests {
     appState.connectionUI.simulateSyncStarted()
     appState.connectionUI.showSyncFailedPill()
 
-    #expect(appState.statusPillState == .failed(message: "Sync Failed"))
+    #expect(appState.statusPillState == .failed(message: "Sync failed"))
   }
 
   @Test
@@ -134,7 +134,7 @@ struct ConnectionUIStateTests {
     appState.connectionUI.showSyncFailedPill()
 
     #expect(appState.connectionUI.syncFailedPillVisible == true)
-    #expect(appState.statusPillState == .failed(message: "Sync Failed"))
+    #expect(appState.statusPillState == .failed(message: "Sync failed"))
   }
 
   @Test

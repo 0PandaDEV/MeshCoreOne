@@ -58,7 +58,7 @@ struct SyncingPillViewTests {
 
   @Test
   func `Failed state shows red text and failure icon with custom message`() {
-    let message = "Sync Failed"
+    let message = "Sync failed"
     let state = StatusPillState.failed(message: message)
     #expect(state.displayText == message)
     #expect(state.systemImageName == "exclamationmark.triangle.fill")
