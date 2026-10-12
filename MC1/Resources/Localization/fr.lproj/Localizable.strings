@@ -51,8 +51,8 @@
 /* Location: SyncingPillView.swift - Status shown when syncing data */
 "common.status.syncing" = "Synchronisation";
 
-/* TODO: translate - Status shown during initial message catch-up */
-"common.status.syncingMessages" = "Syncing Messages";
+/* Status shown during initial message catch-up */
+"common.status.syncingMessages" = "Synchronisation des messages";
 
 /* Location: SyncingPillView.swift - Status shown when connecting to device */
 "common.status.connecting" = "Connexion";

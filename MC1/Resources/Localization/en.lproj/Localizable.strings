@@ -56,7 +56,7 @@
 "common.status.syncing" = "Syncing";
 
 /* Status shown during initial message catch-up */
-"common.status.syncingMessages" = "Syncing Messages";
+"common.status.syncingMessages" = "Syncing messages";
 
 /* Location: SyncingPillView.swift - Status shown when connecting to device */
 "common.status.connecting" = "Connecting";
