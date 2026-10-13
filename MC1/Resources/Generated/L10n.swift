@@ -5503,6 +5503,32 @@ public enum L10n {
         public static let auVic = L10n.tr("Settings", "region.subdivision.AU-VIC", fallback: "Victoria")
         /// Location: RegionalAreas.subdivisionDisplayName - Western Australia (AU-WA) state name
         public static let auWa = L10n.tr("Settings", "region.subdivision.AU-WA", fallback: "Western Australia")
+        /// Location: RegionalAreas.subdivisionDisplayName - Alberta (CA-AB) province name
+        public static let caAb = L10n.tr("Settings", "region.subdivision.CA-AB", fallback: "Alberta")
+        /// Location: RegionalAreas.subdivisionDisplayName - British Columbia (CA-BC) province name
+        public static let caBc = L10n.tr("Settings", "region.subdivision.CA-BC", fallback: "British Columbia")
+        /// Location: RegionalAreas.subdivisionDisplayName - Manitoba (CA-MB) province name
+        public static let caMb = L10n.tr("Settings", "region.subdivision.CA-MB", fallback: "Manitoba")
+        /// Location: RegionalAreas.subdivisionDisplayName - New Brunswick (CA-NB) province name
+        public static let caNb = L10n.tr("Settings", "region.subdivision.CA-NB", fallback: "New Brunswick")
+        /// Location: RegionalAreas.subdivisionDisplayName - Newfoundland and Labrador (CA-NL) province name
+        public static let caNl = L10n.tr("Settings", "region.subdivision.CA-NL", fallback: "Newfoundland and Labrador")
+        /// Location: RegionalAreas.subdivisionDisplayName - Nova Scotia (CA-NS) province name
+        public static let caNs = L10n.tr("Settings", "region.subdivision.CA-NS", fallback: "Nova Scotia")
+        /// Location: RegionalAreas.subdivisionDisplayName - Northwest Territories (CA-NT) province name
+        public static let caNt = L10n.tr("Settings", "region.subdivision.CA-NT", fallback: "Northwest Territories")
+        /// Location: RegionalAreas.subdivisionDisplayName - Nunavut (CA-NU) province name
+        public static let caNu = L10n.tr("Settings", "region.subdivision.CA-NU", fallback: "Nunavut")
+        /// Location: RegionalAreas.subdivisionDisplayName - Ontario (CA-ON) province name
+        public static let caOn = L10n.tr("Settings", "region.subdivision.CA-ON", fallback: "Ontario")
+        /// Location: RegionalAreas.subdivisionDisplayName - Prince Edward Island (CA-PE) province name
+        public static let caPe = L10n.tr("Settings", "region.subdivision.CA-PE", fallback: "Prince Edward Island")
+        /// Location: RegionalAreas.subdivisionDisplayName - Quebec (CA-QC) province name
+        public static let caQc = L10n.tr("Settings", "region.subdivision.CA-QC", fallback: "Quebec")
+        /// Location: RegionalAreas.subdivisionDisplayName - Saskatchewan (CA-SK) province name
+        public static let caSk = L10n.tr("Settings", "region.subdivision.CA-SK", fallback: "Saskatchewan")
+        /// Location: RegionalAreas.subdivisionDisplayName - Yukon (CA-YT) province name
+        public static let caYt = L10n.tr("Settings", "region.subdivision.CA-YT", fallback: "Yukon")
         /// Location: RegionalAreas.subdivisionDisplayName - Alaska (US-AK) state name
         public static let usAk = L10n.tr("Settings", "region.subdivision.US-AK", fallback: "Alaska")
         /// Location: RegionalAreas.subdivisionDisplayName - Alabama (US-AL) state name
