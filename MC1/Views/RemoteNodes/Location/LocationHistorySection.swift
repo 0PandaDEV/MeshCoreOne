@@ -33,6 +33,8 @@ struct LocationHistorySection: View {
   /// The snapshot id to auto-select on the pushed map: set to a report's id on a
   /// row tap, cleared on the expand button so it opens with nothing selected.
   @Binding var pendingMapSelection: UUID?
+  var openMap: (([NodeStatusSnapshotDTO], UUID?) -> Void)?
+  var onVisiblePosition: ((TelemetryHistoryOverviewState.ScrollID) -> Void)?
 
   // Built once per coordinate set so re-renders (theme, connectivity, a telemetry
   // refresh behind the screen) can't re-mint MapPoint identities and churn the
@@ -74,8 +76,10 @@ struct LocationHistorySection: View {
           ))
           .font(.subheadline)
           .foregroundStyle(.secondary)
+          .modifier(position(.location))
         } else {
           mapPreview
+            .modifier(position(.location))
         }
       } header: {
         Text(L10n.RemoteNodes.RemoteNodes.History.locationSection)
@@ -102,15 +106,19 @@ struct LocationHistorySection: View {
             snapshot: report,
             isLatest: report.id == reports.first?.id
           ) {
-            pendingMapSelection = report.id
-            showsMap = true
+            openLocationMap(reportID: report.id)
           }
+          .modifier(position(.report(report.id)))
         }
       } header: {
         Text(L10n.RemoteNodes.RemoteNodes.History.locationReportsHeader)
       }
       .themedRowBackground(theme)
     }
+  }
+
+  private func position(_ id: TelemetryHistoryOverviewState.ScrollID) -> LocationPositionModifier {
+    LocationPositionModifier(id: id, onVisible: onVisiblePosition)
   }
 
   private var mapPreview: some View {
@@ -135,8 +143,7 @@ struct LocationHistorySection: View {
       // MapLibre's attribution button works; only the expand button pushes the map.
 
       Button {
-        pendingMapSelection = nil
-        showsMap = true
+        openLocationMap(reportID: nil)
       } label: {
         Image(systemName: "arrow.up.left.and.arrow.down.right")
           .font(.caption.weight(.semibold))
@@ -154,6 +161,15 @@ struct LocationHistorySection: View {
     .listRowBackground(Color.clear)
     .padding(.bottom, 8)
     .listRowSeparator(.hidden)
+  }
+
+  private func openLocationMap(reportID: UUID?) {
+    pendingMapSelection = reportID
+    if let openMap {
+      openMap(snapshots, reportID)
+    } else {
+      showsMap = true
+    }
   }
 
   private func rebuild() {
@@ -202,6 +218,22 @@ struct LocationHistorySection: View {
     let latitude: Double
     let longitude: Double
   }
+
+  private struct LocationPositionModifier: ViewModifier {
+    let id: TelemetryHistoryOverviewState.ScrollID
+    let onVisible: ((TelemetryHistoryOverviewState.ScrollID) -> Void)?
+
+    func body(content: Content) -> some View {
+      content
+        .id(id)
+        .onGeometryChange(for: Bool.self) { proxy in
+          let frame = proxy.frame(in: .named(TelemetryHistoryOverviewState.scrollCoordinateSpace))
+          return frame.minY <= 0 && frame.maxY > 0
+        } action: { isTopRow in
+          if isTopRow { onVisible?(id) }
+        }
+    }
+  }
 }
 
 extension View {
@@ -213,14 +245,8 @@ extension View {
     initialSelection: UUID?
   ) -> some View {
     navigationDestination(isPresented: isPresented) {
-      // The full-screen map keeps every report as a tappable pin (no decimation),
-      // unlike the inline preview where dense sprites would be noise.
-      let built = LocationPathMapBuilder.build(from: snapshots, decimatePins: false)
       NodeLocationMapView(
-        points: built.points,
-        lines: built.lines,
-        reports: built.reports,
-        title: L10n.RemoteNodes.RemoteNodes.Status.locationMapTitle,
+        snapshots: snapshots,
         initialSelectionID: initialSelection
       )
     }

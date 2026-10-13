@@ -10,9 +10,16 @@ struct AdaptiveNavigationTests {
   private enum Layout {
     static let regularSize = CGSize(width: 1024, height: 768)
     static let compactSize = CGSize(width: 390, height: 844)
+    static let compactLandscapeSize = CGSize(width: 844, height: 390)
     static let waitTimeout: TimeInterval = 6
     static let runLoopSlice: TimeInterval = 0.05
     static let settle: TimeInterval = 0.35
+    static let savedHistoryIndexPath = IndexPath(item: 2, section: 1)
+    static let nicknameIndexPath = IndexPath(item: 0, section: 2)
+    static let contactSectionCounts = [1, 6, 2, 5, 3, 3]
+    static let nicknameSelectionLength = 6
+    static let nicknameCaretOffset = 2
+    static let nicknameIntentionalCaretOffset = 4
   }
 
   // MARK: - Presentation recipe
@@ -276,6 +283,366 @@ struct AdaptiveNavigationTests {
   // MARK: - Hosted Nodes
 
   @Test
+  func `production contact editor and live sheet survive navigation container replacement`() async throws {
+    let appState = AppState()
+    let contact = makeContact()
+    appState.navigation.navigateToContactDetail(contact)
+    let state = ContactDetailState(contact: contact)
+    state.nickname = "Unsent nickname"
+    state.isEditingNickname = true
+    state.nicknameFocused = true
+    state.scrollSection = .info
+    let routes = NodesNavigationState(presentation: .compact)
+    let host = try mount(
+      ContactContinuityGateHost(appState: appState, state: state, routes: routes),
+      size: Layout.compactSize, regularWidth: false
+    )
+    defer { dismount(host); state.end() }
+
+    try #require(await waitFor { nicknameField(in: host.window)?.isFirstResponder == true })
+    let selectionEnd = state.nickname.index(state.nickname.startIndex, offsetBy: Layout.nicknameSelectionLength)
+    state.nicknameSelection = TextSelection(range: state.nickname.startIndex..<selectionEnd)
+    try #require(await waitFor { nicknameSelectionIsRetained(in: host.window) })
+    resize(host, to: Layout.regularSize, regularWidth: true)
+    try #require(await waitFor { nicknameField(in: host.window)?.isFirstResponder == true },
+                 "\(describeEditor(host, state: state))")
+    #expect(nicknameField(in: host.window)?.text == "Unsent nickname")
+    try #require(await waitFor { nicknameSelectionIsRetained(in: host.window) }, "\(describeEditor(host, state: state))")
+    resize(host, to: Layout.compactSize, regularWidth: false)
+    try #require(await waitFor { nicknameField(in: host.window)?.isFirstResponder == true })
+    try #require(await waitFor { nicknameSelectionIsRetained(in: host.window) }, "\(describeEditor(host, state: state))")
+    #expect(state.isEditingNickname)
+    #expect(state.nickname == "Unsent nickname")
+
+    let field = try #require(nicknameField(in: host.window))
+    let caret = try #require(field.position(from: field.beginningOfDocument, offset: Layout.nicknameCaretOffset))
+    field.selectedTextRange = field.textRange(from: caret, to: caret)
+    field.delegate?.textFieldDidChangeSelection?(field)
+    let caretIndex = state.nickname.index(state.nickname.startIndex, offsetBy: Layout.nicknameCaretOffset)
+    try #require(await waitFor {
+      if case let .selection(range) = state.nicknameSelection?.indices {
+        return range == caretIndex..<caretIndex
+      }
+      return false
+    })
+
+    state.nicknameFocused = false
+    state.showQRShareSheet = true
+    try #require(await waitFor { host.controller.presentedViewController != nil })
+    let sheet = try #require(host.controller.presentedViewController)
+    resize(host, to: Layout.regularSize, regularWidth: true)
+    #expect(host.controller.presentedViewController === sheet)
+    #expect(state.showQRShareSheet)
+    resize(host, to: Layout.compactSize, regularWidth: false)
+    #expect(host.controller.presentedViewController === sheet)
+    #expect(state.showQRShareSheet)
+
+    state.showQRShareSheet = false
+    try #require(await waitFor { host.controller.presentedViewController == nil })
+    let unfocusedField = try #require(nicknameField(in: host.window))
+    #expect(!unfocusedField.isFirstResponder)
+    let intendedCaret = try #require(unfocusedField.position(
+      from: unfocusedField.beginningOfDocument, offset: Layout.nicknameIntentionalCaretOffset
+    ))
+    unfocusedField.selectedTextRange = unfocusedField.textRange(from: intendedCaret, to: intendedCaret)
+    unfocusedField.delegate?.textFieldDidChangeSelection?(unfocusedField)
+    try #require(unfocusedField.becomeFirstResponder())
+    try #require(await waitFor { state.nicknameFocused })
+    let nativeSelection = try #require(unfocusedField.selectedTextRange)
+    let nativeStart = unfocusedField.offset(from: unfocusedField.beginningOfDocument, to: nativeSelection.start)
+    let nativeEnd = unfocusedField.offset(from: unfocusedField.beginningOfDocument, to: nativeSelection.end)
+    #expect(nativeStart != Layout.nicknameCaretOffset)
+    let nativeRange = String.Index(utf16Offset: nativeStart, in: state.nickname)..<String.Index(
+      utf16Offset: nativeEnd, in: state.nickname
+    )
+    try #require(await waitFor {
+      if case let .selection(range) = state.nicknameSelection?.indices { return range == nativeRange }
+      return false
+    })
+    unfocusedField.selectedTextRange = unfocusedField.textRange(from: intendedCaret, to: intendedCaret)
+    unfocusedField.delegate?.textFieldDidChangeSelection?(unfocusedField)
+    let intendedIndex = state.nickname.index(state.nickname.startIndex, offsetBy: Layout.nicknameIntentionalCaretOffset)
+    try #require(await waitFor {
+      if case let .selection(range) = state.nicknameSelection?.indices {
+        return range == intendedIndex..<intendedIndex
+      }
+      return false
+    }, "\(describeEditor(host, state: state))")
+  }
+
+  @Test
+  func `naturally scrolled contact info survives resizing without focus`() async throws {
+    let appState = AppState()
+    let contact = makeContact()
+    appState.navigation.navigateToContactDetail(contact)
+    let state = ContactDetailState(contact: contact)
+    state.nickname = "Unsent nickname"
+    let routes = NodesNavigationState(presentation: .compact)
+    let host = try mount(
+      ContactContinuityGateHost(appState: appState, state: state, routes: routes),
+      size: Layout.compactSize, regularWidth: false
+    )
+    defer { dismount(host); state.end() }
+
+    let list = try #require(descendantViews(in: host.window, of: UICollectionView.self).first)
+    #expect((0..<list.numberOfSections).map { list.numberOfItems(inSection: $0) } == Layout.contactSectionCounts)
+    list.scrollToItem(at: Layout.nicknameIndexPath, at: .top, animated: false)
+    settle(host.window)
+    try #require(await waitFor { state.scrollSection == .info }, "\(describeEditor(host, state: state))")
+    state.isEditingNickname = true
+    try #require(await waitFor { nicknameField(in: host.window) != nil })
+    #expect(!state.nicknameFocused)
+    #expect(firstVisibleContactRow(in: host.window) == Layout.nicknameIndexPath)
+
+    resize(host, to: Layout.regularSize, regularWidth: true)
+    try #require(await waitFor { firstVisibleContactRow(in: host.window) == Layout.nicknameIndexPath },
+                 "\(describeEditor(host, state: state))")
+    #expect(state.scrollSection == .info)
+    #expect(state.isEditingNickname)
+    #expect(state.nickname == "Unsent nickname")
+    resize(host, to: Layout.compactSize, regularWidth: false)
+    try #require(await waitFor { firstVisibleContactRow(in: host.window) == Layout.nicknameIndexPath },
+                 "\(describeEditor(host, state: state))")
+    #expect(state.scrollSection == .info)
+  }
+
+  @Test
+  func `saved contact actions restore without focus`() async throws {
+    let appState = AppState()
+    let contact = makeContact()
+    appState.navigation.navigateToContactDetail(contact)
+    let state = ContactDetailState(contact: contact)
+    state.scrollSection = .actions
+    let routes = NodesNavigationState(presentation: .compact)
+    let host = try mount(
+      ContactContinuityGateHost(appState: appState, state: state, routes: routes),
+      size: Layout.compactSize, regularWidth: false
+    )
+    defer { dismount(host); state.end() }
+
+    let actionsRow = IndexPath(item: 0, section: Layout.savedHistoryIndexPath.section)
+    try #require(await waitFor { firstVisibleContactRow(in: host.window) == actionsRow })
+    #expect(state.scrollSection == .actions)
+    resize(host, to: Layout.regularSize, regularWidth: true)
+    try #require(await waitFor { firstVisibleContactRow(in: host.window) == actionsRow })
+    #expect(state.scrollSection == .actions)
+    resize(host, to: Layout.compactSize, regularWidth: false)
+    try #require(await waitFor { firstVisibleContactRow(in: host.window) == actionsRow })
+    #expect(state.scrollSection == .actions)
+  }
+
+  private func firstVisibleContactRow(in window: UIWindow) -> IndexPath? {
+    guard let list = descendantViews(in: window, of: UICollectionView.self)
+      .first(where: { viewIsVisible($0, in: window) }) else { return nil }
+    let viewport = list.bounds.inset(by: list.adjustedContentInset)
+    return list.indexPathsForVisibleItems.filter { index in
+      index.item == 0 && list.layoutAttributesForItem(at: index)?.frame.intersects(viewport) == true
+    }.min()
+  }
+
+  private func nicknameField(in window: UIWindow) -> UITextField? {
+    descendantViews(in: window, of: UITextField.self).first {
+      $0.text == "Unsent nickname" && viewIsVisible($0, in: window)
+    }
+  }
+
+  private func nicknameSelectionIsRetained(in window: UIWindow) -> Bool {
+    guard let field = nicknameField(in: window), let selected = field.selectedTextRange else { return false }
+    return field.offset(from: field.beginningOfDocument, to: selected.start) == 0
+      && field.offset(from: selected.start, to: selected.end) == Layout.nicknameSelectionLength
+  }
+
+  private func describeEditor(_ host: Host, state: ContactDetailState) -> String {
+    let fields = descendantViews(in: host.window, of: UITextField.self).map { field in
+      let range = field.selectedTextRange.map { range in
+        [field.offset(from: field.beginningOfDocument, to: range.start), field.offset(from: range.start, to: range.end)]
+      }
+      return (field.text, field.isFirstResponder, field.frame, range)
+    }
+    return "focus=\(state.nicknameFocused) editor=\(state.isEditingNickname) "
+      + "renderer=\(String(describing: state.rendererID)) section=\(String(describing: state.scrollSection)) "
+      + "fields=\(fields) selection=\(String(describing: state.nicknameSelection?.indices))"
+  }
+
+  @Test
+  func `compact nodes keeps tabs visible on discovery`() throws {
+    let appState = AppState()
+    appState.navigation.selectedTab = AppTab.nodes.rawValue
+    let host = try mountTabs(appState: appState, size: Layout.compactSize, regularWidth: false)
+    defer { dismount(host) }
+
+    try #require(waitUntil { visibleTabItemCount(in: host.window) == 5 })
+    appState.navigation.navigateToDiscovery()
+    settle(host.window)
+    #expect(visibleTabItemCount(in: host.window) == 5, "\(describe(host, appState: appState))")
+  }
+
+  @Test
+  func `compact height and same class resizing preserve history and native tabs`() async throws {
+    let appState = AppState()
+    let contact = makeContact()
+    appState.navigation.selectedTab = AppTab.nodes.rawValue
+    let host = try mountTabs(appState: appState, size: Layout.compactSize, regularWidth: false)
+    defer { dismount(host) }
+    appState.navigation.navigateToContactDetail(contact)
+    try #require(await waitFor { contactDetailIsVisible(in: host, contact: contact) }, "\(describe(host, appState: appState))")
+    try #require(activateSavedHistory(in: host.window))
+    try #require(await waitFor { visibleHistoryNavigationController(in: host.window) != nil })
+
+    for compactHeight in [true, false] {
+      resize(
+        host, to: compactHeight ? Layout.compactLandscapeSize : Layout.compactSize,
+        regularWidth: false, compactHeight: compactHeight
+      )
+      try #require(await waitFor { visibleHistoryNavigationController(in: host.window) != nil })
+      #expect(visibleTabItemCount(in: host.window) == 5)
+      #expect(appState.navigation.selectedContact?.id == contact.id)
+    }
+    try #require(performNativeBack(in: host.window))
+    #expect(appState.navigation.selectedContact?.id == contact.id)
+    try #require(await waitFor { visibleHistoryNavigationController(in: host.window) == nil },
+                 "\(describe(host, appState: appState))")
+    try #require(await waitFor { contactDetailIsVisible(in: host, contact: contact) },
+                 "\(describe(host, appState: appState))")
+  }
+
+  @Test
+  func `compact nodes saved history back retains contact before returning to list`() throws {
+    let appState = AppState()
+    let contact = makeContact()
+    appState.navigation.selectedTab = AppTab.nodes.rawValue
+    let host = try mountTabs(appState: appState, size: Layout.compactSize, regularWidth: false)
+    defer { dismount(host) }
+
+    appState.navigation.navigateToContactDetail(contact)
+    settle(host.window)
+    #expect(visibleTabItemCount(in: host.window) == 5)
+    try #require(
+      activateSavedHistory(in: host.window),
+      "\(describe(host, appState: appState))"
+    )
+    try #require(waitUntil { visibleHistoryNavigationController(in: host.window) != nil })
+    #expect(visibleTabItemCount(in: host.window) == 5)
+    let initialHistoryNavigation = try #require(visibleHistoryNavigationController(in: host.window))
+    #expect(!initialHistoryNavigation.isNavigationBarHidden)
+    #expect(!initialHistoryNavigation.navigationBar.prefersLargeTitles
+      || initialHistoryNavigation.topViewController?.navigationItem.largeTitleDisplayMode == .never)
+    #expect(visibleHistoryNavigationController(in: host.window)?
+      .viewControllers.dropLast().last?.navigationItem.title == contact.displayName)
+
+    appState.navigation.selectedTab = AppTab.map.rawValue
+    settle(host.window)
+    appState.navigation.selectedTab = AppTab.nodes.rawValue
+    settle(host.window)
+    try #require(visibleHistoryNavigationController(in: host.window) != nil)
+
+    resize(host, to: Layout.regularSize, regularWidth: true)
+    try #require(visibleHistoryNavigationController(in: host.window) != nil)
+    resize(host, to: Layout.compactSize, regularWidth: false)
+    try #require(visibleHistoryNavigationController(in: host.window) != nil)
+
+    let historyNavigation = try #require(visibleHistoryNavigationController(in: host.window))
+    #expect(!historyNavigation.isNavigationBarHidden)
+    #expect(!historyNavigation.navigationBar.prefersLargeTitles
+      || historyNavigation.topViewController?.navigationItem.largeTitleDisplayMode == .never)
+    historyNavigation.popViewController(animated: false)
+    settle(host.window)
+    #expect(appState.navigation.selectedContact?.id == contact.id, "\(describe(host, appState: appState))")
+    #expect(visibleHistoryNavigationController(in: host.window) == nil)
+    #expect(contactDetailIsVisible(in: host, contact: contact))
+    #expect(visibleTabItemCount(in: host.window) == 5)
+
+    let beforeBack = describe(host, appState: appState)
+    try #require(performNativeBack(in: host.window))
+    try #require(waitUntil { appState.navigation.selectedContact == nil },
+                 "Before: \(beforeBack) After: \(describe(host, appState: appState))")
+    #expect(visibleTabItemCount(in: host.window) == 5)
+  }
+
+  @Test(arguments: [false, true])
+  func `compact nodes replaces or invalidates a contact with history open`(invalidate: Bool) throws {
+    let appState = AppState()
+    appState.navigation.selectedTab = AppTab.nodes.rawValue
+    let host = try mountTabs(appState: appState, size: Layout.compactSize, regularWidth: false)
+    defer { dismount(host) }
+
+    appState.navigation.navigateToContactDetail(makeContact())
+    settle(host.window)
+    try #require(activateSavedHistory(in: host.window))
+    try #require(waitUntil { visibleHistoryNavigationController(in: host.window) != nil })
+
+    let replacement = makeContact(name: "Sam")
+    if invalidate {
+      appState.navigation.clearPerRadioSelection()
+    } else {
+      appState.navigation.navigateToContactDetail(replacement)
+    }
+    settle(host.window)
+    #expect(visibleHistoryNavigationController(in: host.window) == nil)
+    #expect(appState.navigation.selectedContact?.id == (invalidate ? nil : replacement.id))
+    #expect(visibleTabItemCount(in: host.window) == 5)
+    if !invalidate { #expect(contactDetailIsVisible(in: host, contact: replacement)) }
+  }
+
+  private func visibleHistoryNavigationController(in window: UIWindow) -> UINavigationController? {
+    navigationControllers(from: window.rootViewController).first { navigation in
+      navigation.topViewController?.navigationItem.title == L10n.RemoteNodes.RemoteNodes.History.overviewTitle
+        && viewIsVisible(navigation.view, in: window)
+    }
+  }
+
+  private func activateSavedHistory(in window: UIWindow) -> Bool {
+    // This unblocked chat fixture lists Send Message, Telemetry, then Saved History.
+    guard let navigation = navigationControllers(from: window.rootViewController)
+      .first(where: { viewIsVisible($0.view, in: window) }),
+      let root = navigation.topViewController?.view,
+      let list = descendantViews(in: root, of: UICollectionView.self).first,
+      list.numberOfSections > Layout.savedHistoryIndexPath.section,
+      list.numberOfItems(inSection: Layout.savedHistoryIndexPath.section) > Layout.savedHistoryIndexPath.item,
+      let delegate = list.delegate,
+      delegate.responds(to: #selector(UICollectionViewDelegate.collectionView(_:performPrimaryActionForItemAt:)))
+    else { return false }
+    list.scrollToItem(at: Layout.savedHistoryIndexPath, at: .centeredVertically, animated: false)
+    window.layoutIfNeeded()
+    list.selectItem(at: Layout.savedHistoryIndexPath, animated: false, scrollPosition: [])
+    delegate.collectionView?(list, didSelectItemAt: Layout.savedHistoryIndexPath)
+    if delegate.collectionView?(list, canPerformPrimaryActionForItemAt: Layout.savedHistoryIndexPath) == true {
+      delegate.collectionView?(list, performPrimaryActionForItemAt: Layout.savedHistoryIndexPath)
+    }
+    return true
+  }
+
+  private func contactDetailIsVisible(in host: Host, contact: ContactDTO) -> Bool {
+    guard host.renderedContact.id == contact.id,
+          let navigation = navigationControllers(from: host.window.rootViewController)
+          .first(where: { viewIsVisible($0.view, in: host.window) }),
+          let root = navigation.topViewController?.view,
+          let list = descendantViews(in: root, of: UICollectionView.self).first else { return false }
+    return viewIsVisible(list, in: host.window)
+  }
+
+  private func descendantViews<T: UIView>(in view: UIView, of type: T.Type) -> [T] {
+    ((view as? T).map { [$0] } ?? [])
+      + view.subviews.flatMap { descendantViews(in: $0, of: type) }
+  }
+
+  private func visibleTabItemCount(in window: UIWindow) -> Int {
+    tabBars(from: window).filter { viewIsVisible($0, in: window) }
+      .compactMap(\.items).map(\.count).max() ?? 0
+  }
+
+  private func viewIsVisible(_ view: UIView, in window: UIWindow) -> Bool {
+    guard view.window === window, !view.bounds.isEmpty,
+          view.convert(view.bounds, to: window).intersects(window.bounds) else { return false }
+    var ancestor: UIView? = view
+    while let current = ancestor {
+      if current.isHidden || current.alpha == 0 { return false }
+      ancestor = current.superview
+    }
+    return true
+  }
+
+  @Test
   func `hosted nodes split back from collapsed contact clears the selection`() throws {
     let appState = AppState()
     let contact = makeContact()
@@ -345,34 +712,6 @@ struct AdaptiveNavigationTests {
 
     resize(host, to: Layout.regularSize, regularWidth: true)
     #expect(appState.navigation.selectedContact == nil)
-  }
-
-  @Test
-  func `hosted nodes nested back keeps the selected contact`() throws {
-    let appState = AppState()
-    let contact = makeContact()
-    appState.navigation.selectedContact = contact
-    appState.navigation.selectedTab = AppTab.nodes.rawValue
-
-    let host = try mountNodes(appState: appState, size: Layout.regularSize, regularWidth: true)
-    defer { dismount(host) }
-
-    try #require(
-      waitUntil { appState.navigation.selectedContact?.id == contact.id },
-      "\(describe(host, appState: appState))"
-    )
-    try #require(
-      pushNestedPage(in: host.window),
-      "\(describe(host, appState: appState))"
-    )
-
-    let didBack = performNativeBack(in: host.window)
-    #expect(didBack, "\(describe(host, appState: appState))")
-    try #require(
-      waitUntil { appState.navigation.selectedContact?.id == contact.id },
-      "\(describe(host, appState: appState))"
-    )
-    #expect(appState.navigation.selectedContact?.id == contact.id)
   }
 
   @Test
@@ -667,7 +1006,13 @@ struct AdaptiveNavigationTests {
 
   // MARK: - Hosting
 
+  @MainActor
+  private final class RenderedContactIdentity {
+    var id: UUID?
+  }
+
   private struct Host {
+    let renderedContact: RenderedContactIdentity
     let window: UIWindow
     let controller: UIViewController
   }
@@ -741,6 +1086,50 @@ struct AdaptiveNavigationTests {
     var body: some View {
       MainTabView()
         .environment(\.appState, appState)
+    }
+  }
+
+  private struct ContactContinuityGateHost: View {
+    let appState: AppState
+    let state: ContactDetailState
+    let routes: NodesNavigationState
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @State private var columnVisibility = NavigationSplitViewVisibility.all
+
+    var body: some View {
+      containers
+        .modifier(ContactDetailPresenter(state: state))
+        .environment(\.appState, appState)
+        .onChange(of: sizeClass, initial: true) { _, value in
+          routes.changePresentation(to: value == .regular ? .regular : .compact) { revision in
+            state.prepareRenderer(revision: revision)
+          }
+        }
+        .onAppear {
+          state.configure(appState: appState, onClose: {})
+          state.setActive(true, appState: appState)
+        }
+    }
+
+    @ViewBuilder
+    private var containers: some View {
+      if routes.presentation == .compact {
+        NavigationStack(path: routes.compactBinding(in: appState.navigation)) {
+          Text("Nodes")
+            .navigationDestination(for: NodesRoute.self) { _ in
+              ContactDetailContent(state: state, rendererRevision: routes.layoutRevision).id(routes.layoutRevision)
+            }
+        }
+      } else {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+          Text("Nodes")
+        } detail: {
+          NavigationStack {
+            ContactDetailContent(state: state, rendererRevision: routes.layoutRevision).id(routes.layoutRevision)
+          }
+        }
+        .navigationSplitViewStyle(.balanced)
+      }
     }
   }
 
@@ -823,7 +1212,10 @@ struct AdaptiveNavigationTests {
     regularWidth: Bool,
     attachesToScene: Bool = true
   ) throws -> Host {
-    let controller = UIHostingController(rootView: rootView)
+    let renderedContact = RenderedContactIdentity()
+    let controller = UIHostingController(rootView: rootView.onPreferenceChange(ContactDetailIdentityPreference.self) {
+      renderedContact.id = $0
+    })
     let window = attachesToScene
       ? makeWindow(size: size)
       : UIWindow(frame: CGRect(origin: .zero, size: size))
@@ -838,7 +1230,7 @@ struct AdaptiveNavigationTests {
     }
     window.layoutIfNeeded()
     settle(window)
-    return Host(window: window, controller: controller)
+    return Host(renderedContact: renderedContact, window: window, controller: controller)
   }
 
   private func makeWindow(size: CGSize) -> UIWindow {
@@ -853,14 +1245,14 @@ struct AdaptiveNavigationTests {
     return UIWindow(frame: frame)
   }
 
-  private func applySizeClass(_ controller: UIViewController, regularWidth: Bool) {
+  private func applySizeClass(_ controller: UIViewController, regularWidth: Bool, compactHeight: Bool = false) {
     controller.traitOverrides.horizontalSizeClass = regularWidth ? .regular : .compact
-    controller.traitOverrides.verticalSizeClass = .regular
+    controller.traitOverrides.verticalSizeClass = compactHeight ? .compact : .regular
   }
 
-  private func resize(_ host: Host, to size: CGSize, regularWidth: Bool) {
+  private func resize(_ host: Host, to size: CGSize, regularWidth: Bool, compactHeight: Bool = false) {
     host.window.frame = CGRect(origin: .zero, size: size)
-    applySizeClass(host.controller, regularWidth: regularWidth)
+    applySizeClass(host.controller, regularWidth: regularWidth, compactHeight: compactHeight)
     host.window.layoutIfNeeded()
     settle(host.window)
   }
@@ -893,6 +1285,15 @@ struct AdaptiveNavigationTests {
     return condition()
   }
 
+  private func waitFor(_ condition: () -> Bool) async -> Bool {
+    let deadline = Date(timeIntervalSinceNow: Layout.waitTimeout)
+    while Date() < deadline, !Task.isCancelled {
+      if condition() { return true }
+      try? await Task.sleep(for: .seconds(Layout.runLoopSlice))
+    }
+    return condition()
+  }
+
   private func pushNestedPage(in window: UIWindow) -> Bool {
     let navs = navigationControllers(from: window.rootViewController)
     // Regular split: the detail column sits further trailing than the list.
@@ -910,20 +1311,22 @@ struct AdaptiveNavigationTests {
 
   private func performNativeBack(in window: UIWindow) -> Bool {
     let navs = navigationControllers(from: window.rootViewController)
+      .filter { $0.viewIfLoaded.map { viewIsVisible($0, in: window) } == true }
     if let nav = navs.filter({ $0.viewControllers.count > 1 })
-      .max(by: { $0.viewControllers.count < $1.viewControllers.count }) {
-      nav.popViewController(animated: false)
+      .max(by: { $0.viewControllers.count < $1.viewControllers.count }),
+      nav.popViewController(animated: false) != nil {
       window.layoutIfNeeded()
       return true
     }
-    if let nav = navs.first(where: { $0.navigationBar.backItem != nil }) {
-      nav.popViewController(animated: false)
+    if let nav = navs.first(where: { $0.navigationBar.backItem != nil }),
+       nav.popViewController(animated: false) != nil {
       window.layoutIfNeeded()
       return true
     }
     // iOS 18 compact NavigationSplitView often has no extra stack item; Back
     // is the split showing its primary column.
-    if let split = splitViewControllers(from: window.rootViewController).last {
+    if let split = splitViewControllers(from: window.rootViewController)
+      .last(where: { $0.viewIfLoaded.map { viewIsVisible($0, in: window) } == true }) {
       split.show(.primary)
       window.layoutIfNeeded()
       return true
@@ -969,7 +1372,7 @@ struct AdaptiveNavigationTests {
     discovery=\(appState.navigation.nodesShowingDiscovery) \
     setting=\(String(describing: appState.navigation.selectedSetting)) \
     tab=\(appState.navigation.selectedTab) \
-    navs=\(titles) window=\(host.window.bounds)
+    navs=\(titles) renderedContact=\(String(describing: host.renderedContact.id)) window=\(host.window.bounds)
     """
   }
 

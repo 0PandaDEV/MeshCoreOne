@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// Stable app tab host after onboarding. Chats, Nodes, and Settings own
-/// native splits; Tools owns a stack bound to `selectedTool`.
+/// Keeps tab state alive while Nodes replaces navigation containers during resizing.
 struct MainTabView: View {
   @Environment(\.appState) private var appState
   @Environment(\.appTheme) private var theme

@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Compact Back, expand-to-regular tiling, and tab-bar rules for a section
-/// `NavigationSplitView`. Chats, Nodes, and Settings use the same recipe.
+/// `NavigationSplitView`. Chats and Settings use the same recipe.
 enum SectionSplitPresentation {
   enum PreferredColumnAction: Equatable {
     case none
@@ -81,8 +81,8 @@ extension View {
     )
   }
 
-  /// Compact collapsed detail hides the tab bar. iOS 26+ ignores the top container inset so the split extends under it; earlier OS keeps the inset so the timeline stays below the header.
-  /// Ignoring safe area on `NavigationSplitView` crashes layout.
+  /// Applies tab visibility and extends the iOS 26+ container under the header.
+  /// Apply the inset change to the container because ignoring safe area on NavigationSplitView crashes layout.
   @ViewBuilder
   func sectionSplitChrome(tabBarVisibility: Visibility) -> some View {
     if #available(iOS 26, *) {

@@ -18,6 +18,7 @@ struct ContactsListContent: View {
   let timestampsByID: [UUID: UInt32]
   let hasLoadedOnce: Bool
   let viewModel: ContactsViewModel
+  @Binding var scrollPositionID: UUID?
   let onRefresh: () async -> Void
 
   /// Leading inset for the inter-row divider, aligning it under the row text past the avatar.
@@ -41,6 +42,7 @@ struct ContactsListContent: View {
       LazyVStack(spacing: 0) {
         Section {} header: { segmentHeader }
       }
+      .scrollTargetLayout()
     }
     .overlay { ProgressView() }
   }
@@ -58,6 +60,7 @@ struct ContactsListContent: View {
           segmentHeader
         }
       }
+      .scrollTargetLayout()
     }
   }
 
@@ -70,6 +73,7 @@ struct ContactsListContent: View {
           .id(Self.topScrollAnchor)
         scrollContent
       }
+      .scrollPosition(id: $scrollPositionID, anchor: .top)
       .swipeActionsContainerIfAvailable()
       .refreshable {
         await onRefresh()
@@ -77,6 +81,11 @@ struct ContactsListContent: View {
         // https://stackoverflow.com/questions/75718110
         Task { @MainActor in
           proxy.scrollTo(Self.topScrollAnchor, anchor: .top)
+        }
+      }
+      .onChange(of: filteredContacts.map(\.id)) { _, ids in
+        if let scrollPositionID, !ids.contains(scrollPositionID) {
+          self.scrollPositionID = ids.first
         }
       }
     }
@@ -101,19 +110,22 @@ struct ContactsListContent: View {
 
   private var rows: some View {
     ForEach(Array(filteredContacts.enumerated()), id: \.element.id) { index, contact in
-      ContactSelectionRow(
-        contact: contact,
-        timestamp: timestampsByID[contact.id],
-        viewModel: viewModel,
-        isSearching: isSearching,
-        userLocation: appState.bestAvailableLocation,
-        isSelected: selectedContact?.id == contact.id,
-        onSelect: { onSelect(contact) }
-      )
-      .transition(.opacity)
-      if index < filteredContacts.count - 1 {
-        Divider().padding(.leading, Self.rowSeparatorLeadingInset)
+      VStack(spacing: 0) {
+        ContactSelectionRow(
+          contact: contact,
+          timestamp: timestampsByID[contact.id],
+          viewModel: viewModel,
+          isSearching: isSearching,
+          userLocation: appState.bestAvailableLocation,
+          isSelected: selectedContact?.id == contact.id,
+          onSelect: { onSelect(contact) }
+        )
+        if index < filteredContacts.count - 1 {
+          Divider().padding(.leading, Self.rowSeparatorLeadingInset)
+        }
       }
+      .id(contact.id)
+      .transition(.opacity)
     }
   }
 }

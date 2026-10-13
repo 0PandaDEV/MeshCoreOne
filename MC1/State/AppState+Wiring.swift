@@ -9,14 +9,26 @@ extension AppState {
   /// Message events are ignored here; `MessageEventDispatcher` owns them.
   /// Re-subscribes per connection because `ServiceContainer` is rebuilt.
   func wireSyncDataEvents(services: ServiceContainer) {
+    let store = connectionManager.persistenceStore
+    wireSyncDataEvents(services: services, nodesContactExists: { id in
+      try await store.fetchContact(id: id) != nil
+    })
+  }
+
+  func wireSyncDataEvents(
+    services: ServiceContainer,
+    nodesContactExists: @escaping @MainActor (UUID) async throws -> Bool
+  ) {
     syncDataEventsTask?.cancel()
     let events = services.syncCoordinator.dataEvents()
+    let serviceID = ObjectIdentifier(services)
     syncDataEventsTask = Task { [weak self] in
       for await event in events {
         guard let self else { return }
         switch event {
         case .contactsChanged:
           contactsVersion += 1
+          await invalidateMissingNodesContact(from: serviceID, contactExists: nodesContactExists)
         case .conversationsChanged:
           refreshConversations()
         case .directMessageReceived, .channelMessageReceived, .roomMessageReceived, .reactionReceived:
@@ -98,6 +110,9 @@ extension AppState {
         case .conversationsChanged:
           refreshConversations()
         case let .contactDeletedCleanup(contactIDs):
+          if let selected = navigation.selectedContact, contactIDs.contains(selected.id) {
+            navigation.clearSelectedContact(matching: selected.id)
+          }
           await notificationService.removeDeliveredNotifications(
             forContactIDs: Set(contactIDs)
           )

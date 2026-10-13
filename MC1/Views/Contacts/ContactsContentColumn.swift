@@ -1,57 +1,66 @@
 import MC1Services
 import SwiftUI
 
-/// Nodes list column. Search, filter, and sheet state live here so they survive
-/// column collapse. Selection is `selectedContact` / `nodesShowingDiscovery`.
+/// Renders the Nodes list from the sidebar state retained by ContactsListView.
 struct ContactsContentColumn: View {
   @Environment(\.appState) private var appState
+  @State private var ownedState: ContactsSidebarState
+  private let suppliedState: ContactsSidebarState?
+  private let blockedContactsRoute: NodesRoute?
+  private let rendererRevision: Int
 
-  let viewModel: ContactsViewModel
-
-  @State private var searchText = ""
-  @State private var selectedSegment: NodeSegment = .contacts
   @AppStorage(AppStorageKey.nodesSortOrder.rawValue) private var sortOrder: NodeSortOrder = .lastHeard
-  @State private var syncSuccessTrigger = false
-  @State private var showShareMyContact = false
-  @State private var showAddContact = false
-  @State private var showLocationDeniedAlert = false
-  @State private var showOfflineRefreshAlert = false
+
+  init(viewModel: ContactsViewModel) {
+    _ownedState = State(initialValue: ContactsSidebarState(viewModel: viewModel))
+    suppliedState = nil
+    blockedContactsRoute = nil
+    rendererRevision = 0
+  }
+
+  init(state: ContactsSidebarState, blockedContactsRoute: NodesRoute?, rendererRevision: Int) {
+    _ownedState = State(initialValue: state)
+    suppliedState = state
+    self.blockedContactsRoute = blockedContactsRoute
+    self.rendererRevision = rendererRevision
+  }
+
+  private var state: ContactsSidebarState {
+    suppliedState ?? ownedState
+  }
 
   private var actions: ContactListActions {
-    ContactListActions(viewModel: viewModel, appState: appState, syncSuccessTrigger: $syncSuccessTrigger)
+    ContactListActions(
+      viewModel: state.viewModel,
+      appState: appState,
+      syncSuccessTrigger: Binding(
+        get: { state.syncSuccessTrigger },
+        set: { state.syncSuccessTrigger = $0 }
+      )
+    )
   }
 
   var body: some View {
-    let list = actions.filteredContacts(searchText: searchText, segment: selectedSegment, sortOrder: sortOrder)
-    ContactsSidebarContent(
-      viewModel: viewModel,
+    let list = actions.filteredContacts(
+      searchText: state.searchText,
+      segment: state.selectedSegment,
+      sortOrder: sortOrder
+    )
+    let content = ContactsSidebarContent(
+      state: state,
       filteredContacts: list.contacts,
       timestampsByID: list.timestampsByID,
-      isSearching: !searchText.isEmpty,
       searchPrompt: actions.searchPrompt,
-      selectedSegment: $selectedSegment,
       selectedContact: appState.navigation.selectedContact,
-      searchText: $searchText,
       sortOrder: $sortOrder,
-      syncSuccessTrigger: $syncSuccessTrigger,
-      showShareMyContact: $showShareMyContact,
-      showAddContact: $showAddContact,
-      showLocationDeniedAlert: $showLocationDeniedAlert,
-      showOfflineRefreshAlert: $showOfflineRefreshAlert,
-      onSelect: selectContact,
-      onLoadContacts: actions.loadContacts,
-      onSyncContacts: actions.syncContacts,
-      onAnnounceOfflineStateIfNeeded: actions.announceOfflineStateIfNeeded
+      blockedContactsRoute: blockedContactsRoute,
+      rendererRevision: rendererRevision,
+      onSelect: selectContact
     )
-    .onChange(of: appState.navigation.selectedContact) { _, newContact in
-      if newContact != nil {
-        appState.navigation.nodesShowingDiscovery = false
-      }
-    }
-    .onChange(of: viewModel.pendingRemovalIDs) { _, ids in
-      if let selected = appState.navigation.selectedContact, ids.contains(selected.id) {
-        appState.navigation.clearSelectedContact(matching: selected.id)
-      }
+    if suppliedState == nil {
+      content.modifier(ContactsSidebarPresenter(state: state))
+    } else {
+      content
     }
   }
 

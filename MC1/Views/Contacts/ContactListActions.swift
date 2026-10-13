@@ -1,8 +1,7 @@
 import MC1Services
 import SwiftUI
 
-/// Nodes-list derived state and actions used by `ContactsContentColumn`. Built
-/// fresh per body evaluation; `syncSuccessTrigger` points at the column's `@State`.
+/// Computes actions from live Nodes list state so sync feedback reaches the retained sidebar.
 @MainActor
 struct ContactListActions {
   let viewModel: ContactsViewModel

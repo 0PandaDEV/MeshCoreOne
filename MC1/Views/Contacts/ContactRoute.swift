@@ -1,7 +1,6 @@
 import Foundation
 
-/// Nodes list-stack destinations. Contact detail is the split selection,
-/// not a push on this stack.
+/// Standalone contact destinations. Nodes uses `NodesRoute` for its adaptive stacks.
 enum ContactRoute: Hashable {
   case blockedContacts
 

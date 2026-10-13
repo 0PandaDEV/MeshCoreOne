@@ -23,11 +23,26 @@ final class NavigationCoordinator {
   /// The currently selected contact in the Nodes split view detail pane. Kept in memory
   /// only and never persisted: it carries a public key and `radioID` (identity-bearing
   /// data) that must not be written outside the encrypted backup envelope.
-  var selectedContact: ContactDTO?
+  var selectedContact: ContactDTO? {
+    didSet {
+      if selectedContact?.id != oldValue?.id {
+        nodesPresentationRevision += 1
+      }
+    }
+  }
 
   /// Whether the Nodes split view detail pane is showing Discovery rather than a contact.
   /// Shared so the iPad content and detail columns agree on which detail to render.
-  var nodesShowingDiscovery = false
+  var nodesShowingDiscovery = false {
+    didSet {
+      if nodesShowingDiscovery != oldValue {
+        nodesPresentationRevision += 1
+      }
+    }
+  }
+
+  /// Identifies a Nodes root lifetime, including a clear and reopen in one update.
+  private(set) var nodesPresentationRevision = 0
 
   /// Tools stack path, kept across tab switches. Selections with `requiresRadio` clear on disconnect.
   var selectedTool: ToolSelection?
@@ -195,6 +210,12 @@ final class NavigationCoordinator {
     if selectedContact?.id == id {
       selectedContact = nil
     }
+  }
+
+  func clearNodesRoot(matchingPresentation revision: Int) {
+    guard nodesPresentationRevision == revision else { return }
+    selectedContact = nil
+    nodesShowingDiscovery = false
   }
 
   func clearPendingMapFocus() {
