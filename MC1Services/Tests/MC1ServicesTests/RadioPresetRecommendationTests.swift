@@ -175,6 +175,7 @@ struct RadioPresetRecommendationTests {
     }
     #expect(try size("hu") == 2)
     #expect(try size("sk") == 2)
+    #expect(try size("cz-narrow") == 2)
     #expect(try size("nz-lr") == 1)
     #expect(try size("nz-narrow") == 2)
     #expect(try size("phillymesh") == 2)
