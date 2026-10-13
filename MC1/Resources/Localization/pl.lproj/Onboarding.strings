@@ -193,6 +193,12 @@
 "noDevice.sheet.cancel" = "Anuluj";
 
 
+// MARK: - Region and Preset
+
+/* Location: RegionStepView.swift and PresetStepView.swift - Finishes onboarding without saving a place or writing the radio */
+"skipForNow" = "Pomiń na razie";
+
+
 // MARK: - Preset Step View
 
 /* Location: PresetStepView.swift - Title */

@@ -3069,6 +3069,8 @@ public enum L10n {
     }
   }
   public enum Onboarding {
+    /// Location: RegionStepView.swift and PresetStepView.swift - Finishes onboarding without saving a place or writing the radio
+    public static let skipForNow = L10n.tr("Onboarding", "skipForNow", fallback: "Skip for now")
     public enum DeviceScan {
       /// Location: DeviceScanView.swift - Button to add a new device
       public static let addDevice = L10n.tr("Onboarding", "deviceScan.addDevice", fallback: "Add Device")

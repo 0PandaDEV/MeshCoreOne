@@ -195,6 +195,12 @@
 "noDevice.sheet.cancel" = "Annulla";
 
 
+// MARK: - Region and Preset
+
+/* Location: RegionStepView.swift and PresetStepView.swift - Finishes onboarding without saving a place or writing the radio */
+"skipForNow" = "Salta per ora";
+
+
 // MARK: - Preset Step View
 
 /* Location: PresetStepView.swift - Title */
