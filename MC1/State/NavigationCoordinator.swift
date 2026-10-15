@@ -55,7 +55,16 @@ final class NavigationCoordinator {
 
   /// The selected settings page. Settings list and detail bind this at every
   /// width. My Device pages clear on disconnect (`requiresDevice`).
-  var selectedSetting: SettingsDetail?
+  var selectedSetting: SettingsDetail? {
+    didSet {
+      if selectedSetting != oldValue {
+        settingsPresentationRevision += 1
+      }
+    }
+  }
+
+  /// Identifies a Settings root lifetime, including a clear and reopen in one update.
+  private(set) var settingsPresentationRevision = 0
 
   /// Reaction/deeplink scroll intent bound to one conversation and a per-tap request id.
   var pendingScrollTarget: PendingScrollTarget?

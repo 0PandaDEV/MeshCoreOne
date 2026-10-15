@@ -3,13 +3,16 @@ import SwiftUI
 /// Renders the destination for a `SettingsDetail`. Used as the split detail
 /// root by `SettingsView`.
 struct SettingsDetailView: View {
-  @Environment(\.appState) private var appState
   let detail: SettingsDetail
+  let descendantPath: [SettingsSubpage]
+  let requestNameEdit: SettingsEditorPresentation.NameRequest
+  let requestRegionAdd: SettingsEditorPresentation.RegionRequest
+  let backupPresentation: SettingsBackupPresentation?
 
   var body: some View {
     switch detail {
     case .deviceInfo:
-      DeviceInfoView()
+      DeviceInfoView(requestNameEdit: requestNameEdit)
     case .radio:
       RadioSettingsView()
     case .location:
@@ -17,7 +20,7 @@ struct SettingsDetailView: View {
     case .connection:
       ConnectionSettingsView()
     case .advanced:
-      AdvancedSettingsView()
+      AdvancedSettingsView(descendantPath: descendantPath, requestRegionAdd: requestRegionAdd)
     case .notifications:
       NotificationSettingsView()
     case .chats:
@@ -29,13 +32,9 @@ struct SettingsDetailView: View {
     case .language:
       LanguageSettingsView()
     case .backup:
-      BackupRestoreView(
-        connectionManager: appState.connectionManager,
-        onImportRestoredData: { [appState] in appState.notifyDataRestored() },
-        onChannelDraftSlotsAffected: { [appState] slotsByRadio in
-          appState.resetChannelDrafts(slotsByRadio: slotsByRadio)
-        }
-      )
+      if let backupPresentation {
+        BackupRestoreView(presentation: backupPresentation)
+      }
     case .support:
       SupportDevelopmentView()
     case .feedback:
