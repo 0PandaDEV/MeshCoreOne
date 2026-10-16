@@ -296,7 +296,8 @@
 "remoteCLI.manage" = "Разрешённые контакты";
 
 /* Footer explaining remote CLI permission */
-"remoteCLI.footer" = "Эти контакты могут отправлять команды CLI этому радио через сеть mesh.";
+/* TODO: translate */
+"remoteCLI.footer" = "These contacts can run any CLI command on this radio over the mesh, including changing radio settings and the Bluetooth PIN, reading the WiFi password, and rebooting or powering off the radio. The app is not told when a command runs.";
 
 /* Navigation title for remote CLI contacts picker */
 "remoteCLIContacts.title" = "Удалённый CLI";

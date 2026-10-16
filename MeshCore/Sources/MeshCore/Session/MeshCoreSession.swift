@@ -457,6 +457,9 @@ public actor MeshCoreSession: MeshCoreSessionProtocol {
 
     if case let .parseFailure(_, reason) = event {
       logger.warning("Failed to parse packet: \(data.hexString) - \(reason)")
+    } else if case .cliReply = event {
+      // Log the event name only. The reply can carry a WiFi password or a BLE PIN.
+      logger.debug("Received event: cliReply")
     } else {
       logger.debug("Received event: \(String(describing: event))")
     }

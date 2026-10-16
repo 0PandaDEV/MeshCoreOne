@@ -134,6 +134,34 @@ struct V118SessionMethodsTests {
   }
 
   @Test
+  func `runCliCommand sends a max-length command`() async throws {
+    let transport = MockTransport()
+    let session = MeshCoreSession(
+      transport: transport,
+      configuration: SessionConfiguration(defaultTimeout: 10, clientIdentifier: "MCTst")
+    )
+    try await startSession(session, transport: transport)
+    let command = String(repeating: "a", count: PacketBuilder.runCliCommandMaxUTF8Bytes)
+
+    let task = Task {
+      try await session.runCliCommand(command)
+    }
+    try await waitUntil("command should be sent") {
+      await transport.sentData.count == 2
+    }
+    let sent = await transport.sentData[1]
+    #expect(sent.count == PacketBuilder.maxFrameSize)
+    #expect(sent[0] == 0x42)
+    #expect(Data(sent.dropFirst()) == Data(command.utf8))
+
+    var reply = Data([0x1D])
+    reply.append(contentsOf: "OK".utf8)
+    await transport.simulateReceive(reply)
+    _ = try await task.value
+    await session.stop()
+  }
+
+  @Test
   func `runCliCommand sends the trimmed line`() async throws {
     let transport = MockTransport()
     let session = MeshCoreSession(

@@ -5635,7 +5635,7 @@ public enum L10n {
     }
     public enum RemoteCLI {
       /// Footer explaining remote CLI permission
-      public static let footer = L10n.tr("Settings", "remoteCLI.footer", fallback: "These contacts may send CLI commands to this radio over the mesh.")
+      public static let footer = L10n.tr("Settings", "remoteCLI.footer", fallback: "These contacts can run any CLI command on this radio over the mesh, including changing radio settings and the Bluetooth PIN, reading the WiFi password, and rebooting or powering off the radio. The app is not told when a command runs.")
       /// Section header for remote CLI permission
       public static let header = L10n.tr("Settings", "remoteCLI.header", fallback: "Remote CLI")
       /// Navigation row to manage contacts allowed to send remote CLI

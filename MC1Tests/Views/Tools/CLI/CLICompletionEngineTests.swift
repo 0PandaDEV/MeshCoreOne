@@ -863,10 +863,18 @@ struct CLICompletionEngineTests {
     let getKeys = engine.completions(for: "get ", isLocal: true)
     #expect(getKeys.contains("cad"))
     #expect(getKeys.contains("wifi.ssid"))
-    #expect(!getKeys.contains("wifi.pwd"))
+    #expect(getKeys.contains("wifi.pwd"))
+    #expect(getKeys.contains("wifi.status"))
+    #expect(!getKeys.contains("wifi.clear"))
+    #expect(!getKeys.contains("pin"))
 
     let setKeys = engine.completions(for: "set ", isLocal: true)
     #expect(setKeys.contains("cad"))
     #expect(setKeys.contains("wifi.pwd"))
+    #expect(setKeys.contains("wifi.clear"))
+    #expect(setKeys.contains("pin"))
+    #expect(setKeys.contains("fan.lo"))
+    #expect(!setKeys.contains("wifi.status"))
+    #expect(engine.completions(for: "set radio.fem.txgain ", isLocal: true) == ["off", "on"])
   }
 }

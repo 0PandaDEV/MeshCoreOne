@@ -170,6 +170,7 @@ final class CLICompletionEngine {
           var typed = Self.localGetKeys + [Self.customVarDumpKey]
           if radioCLIEnabled {
             typed.append(contentsOf: RadioCLIPassthrough.getSetKeys)
+            typed.append(contentsOf: RadioCLIPassthrough.getOnlyKeys)
           }
           return localKeyCompletions(typed: typed, parts: parts)
         }
@@ -282,7 +283,7 @@ final class CLICompletionEngine {
     case "loop.detect":
       Self.loopDetectValues.filter { $0.hasPrefix(prefix) }.sorted()
     case "repeat", "allow.read.only", "bridge.enabled",
-         "radio.rxgain", "radio.fem.rxgain", "cad":
+         "radio.rxgain", "radio.fem.rxgain", "radio.fem.txgain", "cad":
       Self.onOffValues.filter { $0.hasPrefix(prefix) }.sorted()
     case "multi.acks":
       Self.multiAcksValues.filter { $0.hasPrefix(prefix) }.sorted()

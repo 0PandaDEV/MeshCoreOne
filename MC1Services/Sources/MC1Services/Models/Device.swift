@@ -465,8 +465,7 @@ public struct DeviceDTO: Sendable, Equatable, Identifiable, Codable {
     firmwareVersion >= 13 || firmwareVersionString.isAtLeast(major: 1, minor: 16)
   }
 
-  /// Whether the paired radio accepts `CMD_RUN_CLI_COMMAND`.
-  /// Gate on `firmwareVersion` 14 only; `firmwareVersionString` can still be `v1.17.1`.
+  /// Whether the paired radio accepts `CMD_RUN_CLI_COMMAND` (66). Firmware v14+ (v1.18.0).
   public var supportsRadioCLI: Bool {
     firmwareVersion >= 14
   }
