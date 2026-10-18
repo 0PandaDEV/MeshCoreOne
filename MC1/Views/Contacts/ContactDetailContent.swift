@@ -42,6 +42,7 @@ struct ContactDetailContent: View {
           pingResult: state.pingResult,
           onJoinRoom: { state.showRoomJoinSheet = true },
           onShowTelemetry: { state.showTelemetry() },
+          onShowRemoteCLI: { state.showRemoteCLI() },
           onShowAdminAccess: { state.showAdminAccess() },
           onPingRepeater: { state.perform(.ping) },
           onShareQR: { state.showQRShareSheet = true },

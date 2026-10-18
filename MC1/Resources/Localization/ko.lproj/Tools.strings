@@ -728,6 +728,9 @@
 /* Location: CLIToolViewModel.swift - Reboot command confirmation */
 "tools.cli.rebootSent" = "재시동 명령을 보냄";
 
+/* Location: CLIToolViewModel+Sessions.swift - Power off command confirmation */
+"tools.cli.powerOffSent" = "전원 끄기 명령을 보냄";
+
 /* Accessibility label for completion suggestions container */
 /* Accessibility value for completion suggestions - %lld is count, %@ is selected */
 /* Location: CLIToolViewModel.swift - Confirmation prompt for a dangerous local command; %@ is the command name */

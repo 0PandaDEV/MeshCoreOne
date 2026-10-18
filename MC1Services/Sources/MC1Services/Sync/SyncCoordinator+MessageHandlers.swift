@@ -622,7 +622,7 @@ extension SyncCoordinator {
 
       if contact.type == .room {
         await dependencies.roomAdminService.invokeCLIHandler(routed, fromContact: contact)
-      } else {
+      } else if contact.type == .repeater {
         await dependencies.repeaterAdminService.invokeCLIHandler(routed, fromContact: contact)
       }
     } else {

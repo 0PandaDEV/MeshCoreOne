@@ -728,6 +728,9 @@
 /* Location: CLIToolViewModel.swift - Reboot command confirmation */
 "tools.cli.rebootSent" = "Comando de reinício enviado";
 
+/* Location: CLIToolViewModel+Sessions.swift - Power off command confirmation */
+"tools.cli.powerOffSent" = "Comando de desligar enviado";
+
 /* Accessibility label for completion suggestions container */
 /* Accessibility value for completion suggestions - %lld is count, %@ is selected */
 /* Location: CLIToolViewModel.swift - Confirmation prompt for a dangerous local command; %@ is the command name */

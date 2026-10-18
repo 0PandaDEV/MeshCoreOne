@@ -231,6 +231,9 @@
 /* Location: ContactDetailView.swift - Purpose: Send message button */
 "contacts.detail.sendMessage" = "Invia messaggio";
 
+/* Location: ContactDetailView.swift - Purpose: Remote CLI button */
+"contacts.detail.remoteCLI" = "CLI remota";
+
 /* Location: ContactDetailView.swift - Purpose: Add to favorites button */
 "contacts.detail.addToFavorites" = "Aggiungi ai preferiti";
 

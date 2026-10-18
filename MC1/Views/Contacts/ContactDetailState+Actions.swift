@@ -27,6 +27,11 @@ extension ContactDetailState {
     activeSheet = currentContact.type == .chat ? .nodeTelemetry(currentContact) : .nodeAuth
   }
 
+  func showRemoteCLI() {
+    guard hasPresentationOwnership else { return }
+    activeSheet = .remoteCLI(currentContact)
+  }
+
   func showAdminAccess() {
     guard hasPresentationOwnership else { return }
     adminSession = nil

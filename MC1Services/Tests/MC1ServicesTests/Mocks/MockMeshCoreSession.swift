@@ -172,6 +172,10 @@ public actor MockMeshCoreSession: MeshCoreSessionProtocol, AdvertisingSessionOps
     MessageSentInfo(route: 0, expectedAck: Data(), suggestedTimeoutMs: 100)
   )
 
+  public func setSendCommandResult(_ result: Result<MessageSentInfo, Error>) {
+    stubbedSendCommandResult = result
+  }
+
   /// Result to return from `requestStatus` when the FIFO list is empty.
   public var stubbedRequestStatusResult: Result<StatusResponse, Error> =
     .failure(NotStubbed.method("requestStatus"))
@@ -221,6 +225,7 @@ public actor MockMeshCoreSession: MeshCoreSessionProtocol, AdvertisingSessionOps
   public struct SendCommandInvocation: Sendable, Equatable {
     public let destination: Data
     public let command: String
+    public let textType: TextType
   }
 
   public struct SetChannelInvocation: Sendable, Equatable {
@@ -621,8 +626,15 @@ extension MockMeshCoreSession: RemoteAccessSessionOps {
 
   public func sendLogout(to destination: Data) async throws {}
 
-  public func sendCommand(to destination: Data, command: String, timestamp: Date) async throws -> MessageSentInfo {
-    sendCommandInvocations.append(SendCommandInvocation(destination: destination, command: command))
+  public func sendCommand(
+    to destination: Data,
+    command: String,
+    textType: TextType,
+    timestamp: Date
+  ) async throws -> MessageSentInfo {
+    sendCommandInvocations.append(
+      SendCommandInvocation(destination: destination, command: command, textType: textType)
+    )
     switch stubbedSendCommandResult {
     case let .success(info): return info
     case let .failure(error): throw error

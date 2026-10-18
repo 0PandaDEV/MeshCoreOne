@@ -53,6 +53,19 @@ extension ContactDetailPresenter {
         RoomStatusView(session: session)
       case let .nodeTelemetry(contact):
         NodeTelemetryView(contact: contact)
+      case let .remoteCLI(contact):
+        NavigationStack {
+          RemoteCLISheet(contact: contact)
+            .toolbar {
+              ToolbarItem(placement: .confirmationAction) {
+                Button(L10n.RemoteNodes.RemoteNodes.done) {
+                  guard state.hasPresentationOwnership else { return }
+                  state.activeSheet = nil
+                }
+              }
+            }
+        }
+        .presentationSizing(.page)
       case let .adminSettings(session):
         NavigationStack {
           Group {

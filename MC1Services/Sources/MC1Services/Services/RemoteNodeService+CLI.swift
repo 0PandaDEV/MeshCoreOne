@@ -70,7 +70,11 @@ extension RemoteNodeService {
     let command = RemoteCLICommandRewriter.rewrite(command)
 
     // Log CLI command (with password redaction)
-    await auditLogger.logCLICommand(publicKey: remoteSession.publicKey, command: command)
+    await auditLogger.logCLICommand(
+      publicKey: remoteSession.publicKey,
+      command: command,
+      target: .repeater
+    )
 
     let destinationPrefix = Data(remoteSession.publicKey.prefix(6))
     let requestID = UUID()
@@ -78,15 +82,16 @@ extension RemoteNodeService {
     try await acquireCLISlot(for: destinationPrefix, waiterID: requestID)
     defer { releaseCLISlot(for: destinationPrefix) }
 
-    // Reboot has no reply; path-reset+resend would fire a second reboot.
-    if Self.isFireAndForgetCLI(command) {
+    // A no-reply command is sent once. Path reset and resend would repeat it.
+    if RemoteCLINoReplyCommand(command) != nil {
       return try await performCLIExchange(
         publicKey: remoteSession.publicKey,
         destinationPrefix: destinationPrefix,
         command: command,
         acceptsAnyResponse: acceptsAnyResponse,
         timeout: timeout,
-        requestID: requestID
+        requestID: requestID,
+        textType: .cliData
       )
     }
 
@@ -101,15 +106,35 @@ extension RemoteNodeService {
         command: command,
         acceptsAnyResponse: acceptsAnyResponse,
         timeout: timeout,
-        requestID: requestID
+        requestID: requestID,
+        textType: .cliData
       )
     }
   }
 
-  /// Commands that intentionally get no reply (or treat timeout as success).
-  private static func isFireAndForgetCLI(_ command: String) -> Bool {
-    let lower = command.lowercased().trimmingCharacters(in: .whitespaces)
-    return lower == "reboot" || lower.hasPrefix("reboot ")
+  /// Sends a Radio CLI command to a chat contact. The contact runs it only after granting this radio Remote CLI.
+  /// A missing reply is a timeout, not a reason to reset the contact's direct path.
+  public func sendRadioCLICommand(
+    to publicKey: Data,
+    command: String,
+    timeout: Duration
+  ) async throws -> String {
+    let destinationPrefix = Data(publicKey.prefix(6))
+    let requestID = UUID()
+    await auditLogger.logCLICommand(publicKey: publicKey, command: command, target: .contact)
+
+    try await acquireCLISlot(for: destinationPrefix, waiterID: requestID)
+    defer { releaseCLISlot(for: destinationPrefix) }
+
+    return try await performCLIExchange(
+      publicKey: publicKey,
+      destinationPrefix: destinationPrefix,
+      command: command,
+      acceptsAnyResponse: false,
+      timeout: timeout,
+      requestID: requestID,
+      textType: .cliCommand
+    )
   }
 
   /// Register the pending request, send the command, and poll the device for
@@ -120,7 +145,8 @@ extension RemoteNodeService {
     command: String,
     acceptsAnyResponse: Bool,
     timeout: Duration,
-    requestID: UUID
+    requestID: UUID,
+    textType: MeshCore.TextType
   ) async throws -> String {
     let wirePrefix = makeCLIWirePrefix()
     return try await withTaskCancellationHandler {
@@ -136,7 +162,11 @@ extension RemoteNodeService {
         Task { [self] in
           let sentInfo: MessageSentInfo
           do {
-            sentInfo = try await session.sendCommand(to: publicKey, command: wirePrefix + command)
+            sentInfo = try await session.sendCommand(
+              to: publicKey,
+              command: wirePrefix + command,
+              textType: textType
+            )
           } catch is CancellationError {
             if let failed = takePendingCLIRequest(for: destinationPrefix, requestID: requestID) {
               failed.continuation.resume(throwing: CancellationError())

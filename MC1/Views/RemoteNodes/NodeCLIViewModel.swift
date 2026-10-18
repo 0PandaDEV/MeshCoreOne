@@ -67,7 +67,10 @@ final class NodeCLIViewModel {
     self.sendRawCommand = sendRawCommand
     guard !hasConfigured else { return }
     hasConfigured = true
-    appendOutput(L10n.RemoteNodes.RemoteNodes.NodeCli.bannerConnected(sessionName), type: .response)
+    let banner = remoteTarget == .radio
+      ? L10n.RemoteNodes.RemoteNodes.NodeCli.radioBanner(sessionName)
+      : L10n.RemoteNodes.RemoteNodes.NodeCli.bannerConnected(sessionName)
+    appendOutput(banner, type: .response)
     appendOutput(L10n.RemoteNodes.RemoteNodes.NodeCli.bannerHint, type: .response)
     appendOutput("", type: .response)
   }
@@ -116,18 +119,21 @@ final class NodeCLIViewModel {
     guard let sendRawCommand else { return }
     let ticket = commandEpoch.ticket()
 
-    // Reboot does not reply; treat both success and timeout as success.
-    let normalized = command.lowercased()
-    if normalized == "reboot" || normalized == "reboot now" {
+    // These verbs often get no reply. A real reply is still shown.
+    if let sentLine = noReplySentLine(for: command) {
       isWaitingForResponse = true
       defer { isWaitingForResponse = false }
       do {
-        _ = try await sendRawCommand(command, Self.rebootTimeout)
+        let response = try await sendRawCommand(command, Self.rebootTimeout)
         guard ticket.isCurrent(in: commandEpoch) else { return }
-        appendOutput(L10n.RemoteNodes.RemoteNodes.NodeCli.rebootSent, type: .success)
+        if response.isEmpty {
+          appendOutput(sentLine, type: .success)
+        } else {
+          appendOutput(response, type: .response)
+        }
       } catch RemoteNodeError.timeout {
         guard ticket.isCurrent(in: commandEpoch) else { return }
-        appendOutput(L10n.RemoteNodes.RemoteNodes.NodeCli.rebootSent, type: .success)
+        appendOutput(sentLine, type: .success)
       } catch is CancellationError {
       } catch {
         guard ticket.isCurrent(in: commandEpoch) else { return }
@@ -143,9 +149,39 @@ final class NodeCLIViewModel {
       guard ticket.isCurrent(in: commandEpoch), !Task.isCancelled else { return }
       appendOutput(response, type: .response)
     } catch is CancellationError {
+    } catch RemoteNodeError.timeout where remoteTarget == .radio {
+      guard ticket.isCurrent(in: commandEpoch) else { return }
+      appendOutput(L10n.RemoteNodes.RemoteNodes.NodeCli.radioNoReply(sessionName), type: .error)
     } catch {
       guard ticket.isCurrent(in: commandEpoch) else { return }
       appendOutput(error.localizedDescription, type: .error)
+    }
+  }
+
+  /// Repeater and room commands with no reply share `RemoteCLINoReplyCommand`.
+  /// A radio matches the whole command, including case.
+  private func noReplySentLine(for command: String) -> String? {
+    switch remoteTarget {
+    case .repeater, .room:
+      switch RemoteCLINoReplyCommand(command) {
+      case .reboot:
+        L10n.RemoteNodes.RemoteNodes.NodeCli.rebootSent
+      case .powerOff:
+        L10n.RemoteNodes.RemoteNodes.NodeCli.powerOffSent
+      case nil:
+        nil
+      }
+    case .radio:
+      switch command {
+      case "reboot":
+        L10n.RemoteNodes.RemoteNodes.NodeCli.rebootSent
+      case "poweroff", "shutdown":
+        L10n.RemoteNodes.RemoteNodes.NodeCli.powerOffSent
+      default:
+        nil
+      }
+    case nil:
+      nil
     }
   }
 

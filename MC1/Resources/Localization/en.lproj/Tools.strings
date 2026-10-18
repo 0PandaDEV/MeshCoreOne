@@ -728,6 +728,9 @@
 /* Location: CLIToolViewModel.swift - Reboot command confirmation */
 "tools.cli.rebootSent" = "Reboot command sent";
 
+/* Location: CLIToolViewModel+Sessions.swift - Power off command confirmation */
+"tools.cli.powerOffSent" = "Power off command sent";
+
 /* Accessibility label for completion suggestions container */
 /* Accessibility value for completion suggestions - %lld is count, %@ is selected */
 /* Location: CLIToolViewModel.swift - Confirmation prompt for a dangerous local command; %@ is the command name */

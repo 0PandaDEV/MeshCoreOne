@@ -19,11 +19,21 @@ final class CLICompletionEngine {
     "login", "nodes", "channels"
   ]
 
-  /// Local-session radio commands interpreted app-side. `availableCommands`
-  /// offers these only on local sessions and the repeater set only on remote
-  /// sessions, so neither vocabulary leaks into the other session type.
+  /// Local-session radio commands interpreted app-side. Remote repeater and
+  /// room sessions use `repeaterCommands`. A chat contact's radio uses `radioCommands`.
   private static let localRadioCommands = [
     "advert", "advert.zerohop", "board", "clock", "floodadv", "get", "reboot", "set", "ver"
+  ]
+
+  /// Verbs a chat contact's radio accepts over Remote CLI.
+  private static let radioCommands = [
+    "get", "set", "reboot", "poweroff", "shutdown", "board", "ver"
+  ]
+
+  /// Keys that are opcode-mapped on the paired radio and CLI on a remote radio.
+  /// `freq` is get-only and is added at the call site.
+  private static let remoteRadioKeys: Set<String> = [
+    "name", "radio", "tx", "path.hash.mode", "multi.acks"
   ]
 
   private static let localGetKeys = CLILocalKey.allCases.map(\.rawValue)
@@ -195,6 +205,9 @@ final class CLICompletionEngine {
           }
           return localKeyCompletions(typed: typed, parts: parts)
         }
+        if remoteTarget == .radio {
+          return radioCLIKeys(isGet: true, prefix: prefix)
+        }
         return remoteGetSetKeys(excluding: Self.serialOnlyGetParams, remoteTarget: remoteTarget, prefix: prefix)
       }
       return []
@@ -208,6 +221,9 @@ final class CLICompletionEngine {
             typed.append(contentsOf: RadioCLIPassthrough.setOnlyKeys)
           }
           return localKeyCompletions(typed: typed, parts: parts)
+        }
+        if remoteTarget == .radio {
+          return radioCLIKeys(isGet: false, prefix: prefix)
         }
         return remoteGetSetKeys(excluding: Self.serialOnlySetParams, remoteTarget: remoteTarget, prefix: prefix)
       }
@@ -269,6 +285,8 @@ final class CLICompletionEngine {
     if isLocal {
       commands.append(contentsOf: Self.localOnlyCommands)
       commands.append(contentsOf: Self.localRadioCommands)
+    } else if remoteTarget == .radio {
+      commands.append(contentsOf: Self.radioCommands)
     } else {
       var remote = Self.repeaterCommands
       if remoteTarget == .repeater {
@@ -278,6 +296,18 @@ final class CLICompletionEngine {
     }
 
     return commands
+  }
+
+  /// Remote get/set keys for a chat contact's radio. `freq` is get-only.
+  private func radioCLIKeys(isGet: Bool, prefix: String) -> [String] {
+    var keys = RadioCLIPassthrough.getSetKeys.union(Self.remoteRadioKeys)
+    if isGet {
+      keys.formUnion(RadioCLIPassthrough.getOnlyKeys)
+      keys.insert("freq")
+    } else {
+      keys.formUnion(RadioCLIPassthrough.setOnlyKeys)
+    }
+    return keys.filter { $0.hasPrefix(prefix) }.sorted()
   }
 
   /// Remote get/set keys. A room never offers `repeat`. `nil` keeps the union.

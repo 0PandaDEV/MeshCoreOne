@@ -1357,6 +1357,8 @@ public enum L10n {
         }
         /// Location: ContactDetailView.swift - Purpose: Public key label
         public static let publicKey = L10n.tr("Contacts", "contacts.detail.publicKey", fallback: "Public Key")
+        /// Location: ContactDetailView.swift - Purpose: Remote CLI button
+        public static let remoteCLI = L10n.tr("Contacts", "contacts.detail.remoteCLI", fallback: "Remote CLI")
         /// Location: ContactDetailView.swift - Purpose: Remove from favorites button
         public static let removeFromFavorites = L10n.tr("Contacts", "contacts.detail.removeFromFavorites", fallback: "Remove from Favorites")
         /// Location: ContactDetailView.swift - Purpose: Reset path button
@@ -3517,6 +3519,16 @@ public enum L10n {
         public static let helpPassthrough = L10n.tr("RemoteNodes", "remoteNodes.nodeCli.helpPassthrough", fallback: "Any other input is sent to the node.")
         /// Location: NodeCliViewModel.swift - Help entry for 'reboot' command
         public static let helpReboot = L10n.tr("RemoteNodes", "remoteNodes.nodeCli.helpReboot", fallback: "  reboot\n    Restart this node")
+        /// Location: NodeCliViewModel.swift - Toast after poweroff or shutdown is treated as sent
+        public static let powerOffSent = L10n.tr("RemoteNodes", "remoteNodes.nodeCli.powerOffSent", fallback: "Power off command sent")
+        /// Location: NodeCliViewModel.swift - Banner for commands sent to a contact's radio - %@ is the contact name
+        public static func radioBanner(_ p1: Any) -> String {
+          return L10n.tr("RemoteNodes", "remoteNodes.nodeCli.radioBanner", String(describing: p1), fallback: "Commands go to %@'s radio. Without Remote CLI access you get no reply, and they receive each command as a message.")
+        }
+        /// Location: NodeCliViewModel.swift - Shown when a contact's radio does not reply - %@ is the contact name
+        public static func radioNoReply(_ p1: Any) -> String {
+          return L10n.tr("RemoteNodes", "remoteNodes.nodeCli.radioNoReply", String(describing: p1), fallback: "No reply from %@. They may not have allowed you Remote CLI access, or their node was unreachable.")
+        }
         /// Location: NodeCliViewModel.swift - Toast after reboot command succeeds
         public static let rebootSent = L10n.tr("RemoteNodes", "remoteNodes.nodeCli.rebootSent", fallback: "Reboot command sent")
       }
@@ -6279,6 +6291,8 @@ public enum L10n {
         public static let passwordRequired = L10n.tr("Tools", "tools.cli.passwordRequired", fallback: "Password required")
         /// Location: CLIInputAccessoryView.swift - Paste button
         public static let paste = L10n.tr("Tools", "tools.cli.paste", fallback: "Paste")
+        /// Location: CLIToolViewModel+Sessions.swift - Power off command confirmation
+        public static let powerOffSent = L10n.tr("Tools", "tools.cli.powerOffSent", fallback: "Power off command sent")
         /// Location: CLIToolView.swift - Prompt suffix
         public static let promptSuffix = L10n.tr("Tools", "tools.cli.promptSuffix", fallback: ">")
         /// Location: CLIToolViewModel.swift - Reboot command confirmation

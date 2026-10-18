@@ -4,6 +4,8 @@ import MC1Services
 enum CLIRemoteTarget: Hashable, Sendable {
   case repeater
   case room
+  /// A chat contact's radio. Callers set this directly. `init?(contactType:)` stays nil for chat.
+  case radio
 
   init(role: RemoteNodeRole) {
     switch role {

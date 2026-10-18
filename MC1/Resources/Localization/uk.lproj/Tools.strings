@@ -728,6 +728,9 @@
 /* Location: CLIToolViewModel.swift - Reboot command confirmation */
 "tools.cli.rebootSent" = "Команду перезавантаження надіслано";
 
+/* Location: CLIToolViewModel+Sessions.swift - Power off command confirmation */
+"tools.cli.powerOffSent" = "Команду вимкнення надіслано";
+
 /* Accessibility label for completion suggestions container */
 /* Accessibility value for completion suggestions - %lld is count, %@ is selected */
 /* Confirmation prompt for a dangerous local command */

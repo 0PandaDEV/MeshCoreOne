@@ -8,6 +8,7 @@ extension ContactDetailState {
     case repeaterStatus(RemoteNodeSessionDTO)
     case roomStatus(RemoteNodeSessionDTO)
     case nodeTelemetry(ContactDTO)
+    case remoteCLI(ContactDTO)
     case adminSettings(RemoteNodeSessionDTO)
 
     var id: String {
@@ -16,6 +17,7 @@ extension ContactDetailState {
       case let .repeaterStatus(session): "status-\(session.id)"
       case let .roomStatus(session): "room-status-\(session.id)"
       case let .nodeTelemetry(contact): "telemetry-\(contact.id)"
+      case let .remoteCLI(contact): "remote-cli-\(contact.id)"
       case let .adminSettings(session): "admin-settings-\(session.id)"
       }
     }

@@ -11,6 +11,7 @@ struct ContactActionsSection: View {
   let pingResult: PingResult?
   let onJoinRoom: () -> Void
   let onShowTelemetry: () -> Void
+  let onShowRemoteCLI: () -> Void
   let onShowAdminAccess: () -> Void
   let onPingRepeater: () -> Void
   let onShareQR: () -> Void
@@ -76,6 +77,13 @@ struct ContactActionsSection: View {
         }
         .radioDisabled(for: appState.connectionState)
         .modifier(ContactDetailRowPosition(section: .actions, onPosition: showsSendMessage ? nil : onRowPosition))
+
+        if currentContact.showsRemoteCLI(localRadioSupportsCLI: appState.connectedDevice?.supportsRadioCLI == true) {
+          Button(action: onShowRemoteCLI) {
+            Label(L10n.Contacts.Contacts.Detail.remoteCLI, systemImage: "terminal")
+          }
+          .radioDisabled(for: appState.connectionState)
+        }
 
         ContactSavedHistoryLink(
           route: ContactRoute.TelemetryHistory(

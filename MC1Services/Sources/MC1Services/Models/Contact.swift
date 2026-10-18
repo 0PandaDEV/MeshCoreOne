@@ -478,6 +478,14 @@ public struct ContactDTO: Sendable, Equatable, Identifiable, Hashable, Codable, 
     ContactType(rawValue: typeRawValue) ?? .chat
   }
 
+  /// True when this contact can be offered Remote CLI. A sensor stored as raw
+  /// type 4 is coerced to chat by `type` and must stay hidden.
+  public func showsRemoteCLI(localRadioSupportsCLI: Bool) -> Bool {
+    localRadioSupportsCLI
+      && typeRawValue == ContactType.chat.rawValue
+      && !isBlocked
+  }
+
   public var displayName: String {
     nickname ?? name
   }

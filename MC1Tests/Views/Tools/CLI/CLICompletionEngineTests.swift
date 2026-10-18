@@ -902,6 +902,45 @@ struct CLICompletionEngineTests {
   }
 
   @Test
+  func `radio target get offers wifi status and name but not room post`() {
+    let engine = createEngine()
+    let commands = engine.completions(
+      for: "",
+      isLocal: false,
+      remoteTarget: .radio,
+      includeSessionCommands: false
+    )
+    #expect(commands.contains("get"))
+    #expect(commands.contains("poweroff"))
+    #expect(commands.contains("shutdown"))
+    #expect(!commands.contains("room.post"))
+    #expect(!commands.contains("neighbors"))
+
+    let keys = engine.completions(for: "get ", isLocal: false, remoteTarget: .radio)
+    #expect(keys.contains("wifi.status"))
+    #expect(keys.contains("name"))
+    #expect(keys.contains("freq"))
+    #expect(!keys.contains("room.post"))
+  }
+
+  @Test
+  func `radio target set offers pin and radio but not freq`() {
+    let engine = createEngine()
+    let keys = engine.completions(for: "set ", isLocal: false, remoteTarget: .radio)
+    #expect(keys.contains("pin"))
+    #expect(keys.contains("radio"))
+    #expect(!keys.contains("freq"))
+  }
+
+  @Test
+  func `local session does not offer radio power verbs`() {
+    let engine = createEngine()
+    let commands = engine.completions(for: "", isLocal: true)
+    #expect(!commands.contains("poweroff"))
+    #expect(!commands.contains("shutdown"))
+  }
+
+  @Test
   func `power is a remote command`() {
     let engine = createEngine()
     #expect(engine.completions(for: "pow", isLocal: false).contains("power"))

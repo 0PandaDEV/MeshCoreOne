@@ -406,11 +406,8 @@ public enum PacketBuilder: Sendable {
   ///   - attempt: Retry attempt number (for duplicate detection).
   /// - Returns: The command packet data.
   ///
-  /// The message type byte is fixed to `0x00` (PLAIN). For a direct message
-  /// the firmware accepts only PLAIN or CLI_DATA: SIGNED_PLAIN is rejected,
-  /// and CLI_DATA sets `expected_ack = 0`, which would defeat the end-to-end
-  /// ACK correlation this send path depends on. PLAIN is the only type that
-  /// preserves the ACK design, so it is not exposed as a parameter.
+  /// The message type byte is fixed to PLAIN. CLI_DATA clears the end-to-end ACK this path needs, and SIGNED_PLAIN is rejected.
+  /// Firmware v14 also accepts TXT_TYPE_CLI_COMMAND, which this direct-message path does not send.
   ///
   /// ### Binary Format
   /// - Offset 0 (1 byte): Command code `0x02` (sendMessage)
@@ -438,12 +435,13 @@ public enum PacketBuilder: Sendable {
   /// - Parameters:
   ///   - destination: Destination public key prefix (6 bytes).
   ///   - command: Command string to execute.
+  ///   - textType: `.cliData` for a repeater or room, or `.cliCommand` for a contact's radio.
   ///   - timestamp: Command timestamp.
   /// - Returns: The command packet data.
   ///
   /// ### Binary Format
   /// - Offset 0 (1 byte): Command code `0x02` (sendMessage)
-  /// - Offset 1 (1 byte): Message type `0x01` (structured command)
+  /// - Offset 1 (1 byte): Message type (`textType`)
   /// - Offset 2 (1 byte): Reserved `0x00`
   /// - Offset 3 (4 bytes): Unix timestamp, Little-endian UInt32
   /// - Offset 7 (6 bytes): Destination prefix
@@ -451,9 +449,10 @@ public enum PacketBuilder: Sendable {
   public static func sendCommand(
     to destination: Data,
     command: String,
+    textType: TextType,
     timestamp: Date = Date()
   ) -> Data {
-    var data = Data([CommandCode.sendMessage.rawValue, 0x01, 0x00])
+    var data = Data([CommandCode.sendMessage.rawValue, textType.rawValue, 0x00])
     let ts = epochSeconds32(timestamp)
     data.append(contentsOf: withUnsafeBytes(of: ts.littleEndian) { Array($0) })
     data.append(destination.prefix(6))

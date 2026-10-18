@@ -233,17 +233,24 @@ extension CLIToolViewModel {
       return
     }
 
-    // Reboot won't return a response - treat timeout as success
-    if command.lowercased().hasPrefix("reboot") {
+    if let kind = RemoteCLINoReplyCommand(command) {
+      let sentLine = switch kind {
+      case .reboot: L10n.Tools.Tools.Cli.rebootSent
+      case .powerOff: L10n.Tools.Tools.Cli.powerOffSent
+      }
       do {
-        _ = try await service.sendRawCommand(
+        let response = try await service.sendRawCommand(
           sessionID: session.id,
           command: command,
           timeout: RemoteOperationTimeoutPolicy.fireAndForgetCLI
         )
-        appendOutput(L10n.Tools.Tools.Cli.rebootSent, type: .success)
+        if response.isEmpty {
+          appendOutput(sentLine, type: .success)
+        } else {
+          appendOutput(response, type: .response)
+        }
       } catch RemoteNodeError.timeout {
-        appendOutput(L10n.Tools.Tools.Cli.rebootSent, type: .success)
+        appendOutput(sentLine, type: .success)
       } catch {
         appendOutput(error.localizedDescription, type: .error)
       }

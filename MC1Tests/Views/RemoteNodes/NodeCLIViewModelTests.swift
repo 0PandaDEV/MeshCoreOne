@@ -23,9 +23,13 @@ struct NodeCLIViewModelTests {
     }
   }
 
-  private func makeViewModel(spy: SendSpy) -> NodeCLIViewModel {
+  private func makeViewModel(
+    spy: SendSpy,
+    sessionName: String = "TestNode",
+    remoteTarget: CLIRemoteTarget = .repeater
+  ) -> NodeCLIViewModel {
     let viewModel = NodeCLIViewModel()
-    viewModel.configure(sessionName: "TestNode", remoteTarget: .repeater, sendRawCommand: spy.closure())
+    viewModel.configure(sessionName: sessionName, remoteTarget: remoteTarget, sendRawCommand: spy.closure())
     return viewModel
   }
 
@@ -181,6 +185,81 @@ struct NodeCLIViewModelTests {
       viewModel.historyUp()
     }
     #expect(viewModel.currentInput == "command50")
+  }
+
+  @Test
+  func `poweroff timeout prints the power off sent line`() async throws {
+    let spy = SendSpy()
+    spy.error = RemoteNodeError.timeout
+    let viewModel = makeViewModel(spy: spy)
+    viewModel.executeCommand("poweroff")
+    let sent = L10n.RemoteNodes.RemoteNodes.NodeCli.powerOffSent
+    try await waitUntil("poweroff acknowledged as success") {
+      viewModel.outputLines.contains { $0.text == sent && $0.type == .success }
+    }
+    let call = try #require(spy.calls.first { $0.command == "poweroff" })
+    #expect(call.timeout == .seconds(2))
+  }
+
+  @Test
+  func `an empty poweroff reply prints the sent line`() async throws {
+    let spy = SendSpy()
+    spy.result = ""
+    let viewModel = makeViewModel(spy: spy)
+    viewModel.executeCommand("poweroff")
+    let sent = L10n.RemoteNodes.RemoteNodes.NodeCli.powerOffSent
+    try await waitUntil("empty poweroff reply reads as sent") {
+      viewModel.outputLines.contains { $0.text == sent && $0.type == .success }
+    }
+  }
+
+  @Test
+  func `a repeater reboot with a body prints the body`() async throws {
+    let spy = SendSpy()
+    spy.result = "busy"
+    let viewModel = makeViewModel(spy: spy)
+    viewModel.executeCommand("reboot")
+    try await waitUntil("reboot body printed") {
+      viewModel.outputLines.contains { $0.text == "busy" && $0.type == .response }
+    }
+    #expect(!viewModel.outputLines.contains { $0.text == L10n.RemoteNodes.RemoteNodes.NodeCli.rebootSent })
+  }
+
+  @Test
+  func `radio reboot now prints the reply on the normal timeout`() async throws {
+    let spy = SendSpy()
+    spy.result = "Unknown command"
+    let viewModel = makeViewModel(spy: spy, remoteTarget: .radio)
+    viewModel.executeCommand("reboot now")
+    try await waitUntil("unknown command printed") {
+      viewModel.outputLines.contains { $0.text == "Unknown command" && $0.type == .response }
+    }
+    let call = try #require(spy.calls.first { $0.command == "reboot now" })
+    #expect(call.timeout == .seconds(10))
+    #expect(!viewModel.outputLines.contains { $0.type == .success })
+  }
+
+  @Test
+  func `radio configure shows the radio banner`() {
+    let viewModel = makeViewModel(spy: SendSpy(), remoteTarget: .radio)
+    let banner = L10n.RemoteNodes.RemoteNodes.NodeCli.radioBanner("TestNode")
+    #expect(viewModel.outputLines.contains { $0.text == banner })
+    #expect(viewModel.outputLines.contains { $0.text == L10n.RemoteNodes.RemoteNodes.NodeCli.bannerHint })
+    #expect(!viewModel.outputLines.contains {
+      $0.text == L10n.RemoteNodes.RemoteNodes.NodeCli.bannerConnected("TestNode")
+    })
+  }
+
+  @Test
+  func `radio command timeout prints the no reply line`() async throws {
+    let spy = SendSpy()
+    spy.error = RemoteNodeError.timeout
+    let viewModel = makeViewModel(spy: spy, remoteTarget: .radio)
+    viewModel.executeCommand("get name")
+    let line = L10n.RemoteNodes.RemoteNodes.NodeCli.radioNoReply("TestNode")
+    try await waitUntil("no reply line printed") {
+      viewModel.outputLines.contains { $0.text == line && $0.type == .error }
+    }
   }
 
   @Test

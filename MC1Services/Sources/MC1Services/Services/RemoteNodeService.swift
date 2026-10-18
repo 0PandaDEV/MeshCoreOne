@@ -209,7 +209,7 @@ public actor RemoteNodeService {
     let prefix = Data(message.senderPublicKeyPrefix.prefix(6))
 
     guard let pending = pendingCLIRequests[prefix] else {
-      logger.debug("Unmatched CLI response (no pending request): \(message.text.prefix(50))")
+      logger.debug("Unmatched CLI response (no pending request), length \(message.text.count)")
       return
     }
 
@@ -227,7 +227,7 @@ public actor RemoteNodeService {
       guard pending.acceptsAnyResponse
         || CLIResponse.isPlausibleResponse(message.text, forQuery: pending.command) else {
         logger.warning(
-          "Dropping CLI response that doesn't match pending '\(pending.command)': \(message.text.prefix(50))"
+          "Dropping CLI response that doesn't match pending command, length \(message.text.count)"
         )
         return
       }

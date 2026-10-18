@@ -245,16 +245,23 @@ public extension MeshCoreSession {
   /// - Parameters:
   ///   - destination: The destination public key (6+ bytes, uses first 6 as prefix).
   ///   - command: The command string to send.
+  ///   - textType: `.cliData` for a repeater or room, or `.cliCommand` for a contact's radio.
   ///   - timestamp: Message timestamp. Defaults to current time.
   /// - Returns: Information about the sent message, including the expected ACK code.
   /// - Throws: ``MeshCoreError/timeout`` if the device doesn't respond.
   func sendCommand(
     to destination: Data,
     command: String,
+    textType: TextType,
     timestamp: Date = Date()
   ) async throws -> MessageSentInfo {
     try await sendAndWaitWithError(
-      PacketBuilder.sendCommand(to: destination, command: command, timestamp: timestamp),
+      PacketBuilder.sendCommand(
+        to: destination,
+        command: command,
+        textType: textType,
+        timestamp: timestamp
+      ),
       matching: { event in
         if case let .messageSent(info) = event { return info }
         return nil
@@ -288,7 +295,7 @@ public extension MeshCoreSession {
   ///   - channelIndex: Channel slot index.
   ///   - dataType: Application data-type namespace. `0x0000` is reserved and rejected by
   ///     firmware; `0xFFFF` is the developer namespace.
-  ///   - payload: Binary payload (clamped to 163 bytes by ``PacketBuilder/sendChannelData(channelIndex:dataType:payload:pathLength:pathBytes:)``).
+  ///   - payload: Binary payload (clamped to 165 bytes by ``PacketBuilder/sendChannelData(channelIndex:dataType:payload:pathLength:pathBytes:)``).
   ///   - pathLength: Encoded `path_len` byte. Defaults to ``PacketBuilder/floodPathSentinel``
   ///     (`0xFF` = flood). Non-flood values must satisfy firmware's `Packet::isValidPathLen`;
   ///     callers working from a ``MeshContact`` can pass `contact.outPathLength` directly.
