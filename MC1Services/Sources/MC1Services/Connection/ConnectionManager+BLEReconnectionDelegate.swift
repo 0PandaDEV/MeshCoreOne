@@ -61,8 +61,13 @@ extension ConnectionManager: BLEReconnectionDelegate {
   /// Session rebuild (transport + session.start) should complete within this window.
   /// Full sync is deferred until performInitialSync returns to foreground via onConnectionEstablished.
   func rebuildSession(deviceID: UUID) async throws {
-    logger.info("[BLE] Rebuilding session for auto-reconnect: \(deviceID.uuidString.prefix(8))")
+    try Task.checkCancellation()
+    guard connectionTeardownCount == 0,
+          connectionIntent.wantsConnection,
+          !powerOffBlocksReconnect,
+          currentTransportType != .wifi else { throw CancellationError() }
     let expectedGeneration = reconnectionCoordinator.reconnectGeneration
+    logger.info("[BLE] Rebuilding session for auto-reconnect: \(deviceID.uuidString.prefix(8))")
     // Nested claim: health-check rebuild may already hold sessionRebuildDeviceID;
     // only clear on exit when this call installed the claim.
     let claimedHere = sessionRebuildDeviceID == nil

@@ -187,8 +187,7 @@ public extension MeshCoreSession {
       }
 
       let data = PacketBuilder.getMessage()
-      guard await sessionIsRunning else { throw CancellationError() }
-      try await transport.send(data)
+      try await sendSessionData(data)
 
       return try await withThrowingTaskGroup(of: MessageResult.self) { group in
         group.addTask {

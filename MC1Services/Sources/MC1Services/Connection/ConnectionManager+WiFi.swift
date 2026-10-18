@@ -76,8 +76,10 @@ extension ConnectionManager {
   func handleWiFiDisconnection(
     error: Error?,
     remoteLossAt: CFAbsoluteTime?,
-    isHeartbeat: Bool = false
+    isHeartbeat: Bool = false,
+    source: WiFiTransport? = nil
   ) async {
+    if let source, wifiTransport !== source { return }
     if let remoteLossAt {
       notePowerOffRemoteLoss(deviceID: connectedDevice?.id, eventTime: remoteLossAt)
     }
@@ -102,6 +104,8 @@ extension ConnectionManager {
     }
     isHandlingWiFiDisconnection = true
     defer { isHandlingWiFiDisconnection = false }
+    beginConnectionTeardown()
+    defer { endConnectionTeardown() }
 
     logger.warning("WiFi connection lost: \(error?.localizedDescription ?? "unknown")")
 
@@ -111,12 +115,17 @@ extension ConnectionManager {
     cancelResyncLoop()
     cancelChannelRetry()
 
-    // Capture and clear synchronously, mirroring teardownSessionForReconnect:
-    // a reconnect can install a new container during the awaits below, and
-    // re-reading self.services would tear that new container down.
+    // Enter .connecting and clear the old stack before the await.
+    // A power-off that settles mid-teardown must see recovery already pending.
     let oldServices = services
     services = nil
     session = nil
+    logger.info("[WiFi] State → .connecting (WiFi disconnection, starting reconnection)")
+    connectionState = .connecting
+
+    #if DEBUG
+      await testConnectionTeardownHandler?()
+    #endif
 
     if let oldServices {
       // Mark room sessions disconnected before tearing down services
@@ -126,10 +135,6 @@ extension ConnectionManager {
       await oldServices.tearDown()
     }
 
-    // Show connecting state (pulsing indicator)
-    logger.info("[WiFi] State → .connecting (WiFi disconnection, starting reconnection)")
-    connectionState = .connecting
-
     // Start reconnection attempts
     startWiFiReconnection()
   }
@@ -137,7 +142,7 @@ extension ConnectionManager {
   // MARK: - WiFi Reconnection
 
   /// Starts the WiFi reconnection retry loop
-  private func startWiFiReconnection() {
+  func startWiFiReconnection() {
     guard !powerOffBlocksReconnect else {
       logger.info("[WiFi] Reconnect suppressed during power-off")
       return
@@ -215,37 +220,45 @@ extension ConnectionManager {
 
   /// Attempts to reconnect to the WiFi device using stored connection info
   private func reconnectWiFi() async throws {
+    try await waitForConnectionTeardown()
     guard let wifiTransport,
           let (host, port) = await wifiTransport.connectionInfo else {
       throw ConnectionError.connectionFailed("No WiFi connection info")
     }
+    try Task.checkCancellation()
 
     // Stop any existing session to prevent receive loops racing for transport data
     await session?.stop()
+    try Task.checkCancellation()
     session = nil
 
     // Disconnect old transport cleanly
     await wifiTransport.disconnect()
+    try Task.checkCancellation()
 
     // Create fresh transport with same connection info
     let newTransport = WiFiTransport()
     await newTransport.setConnectionInfo(host: host, port: port)
+    try Task.checkCancellation()
     self.wifiTransport = newTransport
 
     // Connect
     try await newTransport.connect()
+    try Task.checkCancellation()
     connectionState = .connected
 
     // Re-establish session
     let newSession = MeshCoreSession(transport: newTransport)
     session = newSession
     try await newSession.start()
+    try Task.checkCancellation()
 
     guard let selfInfo = await newSession.currentSelfInfo else {
       throw ConnectionError.initializationFailed("No self info")
     }
 
     let deviceID = await wifiDeviceID(publicKey: selfInfo.publicKey)
+    try Task.checkCancellation()
     try await completeWiFiReconnection(
       session: newSession,
       transport: newTransport,
@@ -274,9 +287,10 @@ extension ConnectionManager {
     persistConnection(deviceID: deviceID, radioID: radioID, deviceName: selfInfo.name)
 
     // Wire disconnection handler on new transport
-    await transport.setDisconnectionHandler { [weak self] error, eventTime in
+    await transport.setDisconnectionHandler { [weak self, weak transport] error, eventTime in
+      guard let transport else { return }
       Task { @MainActor in
-        await self?.handleWiFiDisconnection(error: error, remoteLossAt: eventTime)
+        await self?.handleWiFiDisconnection(error: error, remoteLossAt: eventTime, source: transport)
       }
     }
 
@@ -361,6 +375,10 @@ extension ConnectionManager {
       throw WiFiTransportError.invalidHost
     }
 
+    try Task.checkCancellation()
+    invalidatePowerOffForConnectionChange()
+    try await waitForConnectionTeardown()
+
     logger.info("Connecting via WiFi to \(host):\(port)")
 
     #if DEBUG
@@ -416,9 +434,10 @@ extension ConnectionManager {
       let syncSucceeded = await performInitialSync(radioID: radioID, services: newServices, transportType: .wifi, forceFullSync: forceFullSync)
 
       // Wire disconnection handler before promotion — needed even if promotion fails
-      await newWiFiTransport.setDisconnectionHandler { [weak self] error, eventTime in
+      await newWiFiTransport.setDisconnectionHandler { [weak self, weak newWiFiTransport] error, eventTime in
+        guard let newWiFiTransport else { return }
         Task { @MainActor in
-          await self?.handleWiFiDisconnection(error: error, remoteLossAt: eventTime)
+          await self?.handleWiFiDisconnection(error: error, remoteLossAt: eventTime, source: newWiFiTransport)
         }
       }
 
@@ -439,6 +458,8 @@ extension ConnectionManager {
   /// Drops the WiFi socket and the transport marker, then tears the session down.
   /// `disconnect()` closes `wifiTransport` when it is set, so a give-up has to clear it.
   private func abandonWiFiConnection() async {
+    beginConnectionTeardown()
+    defer { endConnectionTeardown() }
     if let wifiTransport {
       await wifiTransport.disconnect()
       self.wifiTransport = nil

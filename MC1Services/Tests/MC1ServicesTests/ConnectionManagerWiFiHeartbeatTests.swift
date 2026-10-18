@@ -7,6 +7,130 @@ import Testing
 @MainActor
 struct ConnectionManagerWiFiHeartbeatTests {
   @Test
+  func `admitting a connection cancels an old unsubmitted power-off frame`() async throws {
+    try await Harness.make().run { harness in
+      await harness.gate.armIsConnected()
+      let powerOff = Task { try await harness.manager.powerOffCurrentLink() }
+      try await waitUntil("power-off should park before submission") { await harness.gate.isConnectedIsWaiting }
+      harness.manager.testBluetoothConnectHandler = { _ in }
+      try await harness.manager.connectViaBluetooth(peripheralID: UUID())
+      await harness.gate.releaseIsConnected()
+      await #expect(throws: PowerOffSuperseded.self) { try await powerOff.value }
+      #expect(await harness.powerOffFrameCount() == 0)
+      #expect(harness.manager.session === harness.session)
+    }
+  }
+
+  @Test
+  func `a stale socket callback leaves the replacement session and power-off evidence alone`() async throws {
+    try await Harness.make().run { harness in
+      let oldSocket = WiFiTransport()
+      let currentSocket = WiFiTransport()
+      harness.manager.wifiTransport = currentSocket
+      await harness.inner.holdNextSend()
+      let powerOff = Task { try await harness.manager.powerOffCurrentLink() }
+      try await waitUntil("power-off send should park") { await harness.inner.sendIsWaiting }
+      let currentServices = harness.manager.services
+      await harness.manager.handleWiFiDisconnection(
+        error: WiFiTransportError.notConnected,
+        remoteLossAt: CFAbsoluteTimeGetCurrent(),
+        source: oldSocket
+      )
+      #expect(harness.manager.services === currentServices)
+      #expect(harness.manager.session === harness.session)
+      #expect(harness.manager.connectionState == .ready)
+      #expect(harness.manager.powerOffOperation?.remoteLossAfterSubmission == false)
+      #expect(harness.manager.wifiReconnectTask == nil)
+
+      await harness.inner.simulateReceive(Data([ResponseCode.cliReply.rawValue]))
+      await harness.inner.releaseHeldSend()
+      await #expect(throws: SettingsServiceError.self) { try await powerOff.value }
+    }
+  }
+
+  @Test
+  func `power-off settling during socket teardown leaves recovery to the handler`() async throws {
+    try await Harness.make().run { harness in
+      let teardown = SocketLossTeardownGate()
+      defer {
+        harness.manager.testConnectionTeardownHandler = nil
+        teardown.release()
+      }
+      try await harness.parkHeartbeat()
+      try await harness.fireProbe()
+      await harness.gate.armIsConnected()
+      let powerOff = Task { try await harness.manager.powerOffCurrentLink() }
+      harness.requestClock.advance(by: harness.requestTimeout)
+      try await waitUntil("power-off should park before submission") {
+        await harness.gate.isConnectedIsWaiting
+      }
+
+      harness.manager.testConnectionTeardownHandler = { await teardown.wait() }
+      await harness.inner.disconnect()
+      let loss = Task {
+        await harness.manager.handleWiFiDisconnection(
+          error: WiFiTransportError.notConnected,
+          remoteLossAt: CFAbsoluteTimeGetCurrent()
+        )
+      }
+      try await waitUntil("socket loss should park in teardown") { teardown.isWaiting }
+      #expect(harness.manager.connectionState == .connecting)
+      await harness.gate.releaseIsConnected()
+      await #expect(throws: Error.self) { try await powerOff.value }
+      #expect(harness.manager.powerOffBlocksReconnect == false)
+      #expect(harness.manager.wifiReconnectTask == nil)
+
+      teardown.release()
+      await loss.value
+      try await waitUntil("handler should resume released WiFi recovery") {
+        harness.manager.connectionState == .disconnected
+          && harness.manager.currentTransportType == nil
+      }
+      #expect(await harness.powerOffFrameCount() == 0)
+      #expect(harness.manager.connectionTeardownCount == 0)
+    }
+  }
+
+  @Test
+  func `socket loss before power-off submission resumes recovery`() async throws {
+    try await Harness.make().run { harness in
+      harness.manager.testWiFiMaxReconnectDuration = .seconds(30)
+      try await harness.parkHeartbeat()
+      try await harness.fireProbe()
+      await harness.gate.armIsConnected()
+      let powerOff = Task { try await harness.manager.powerOffCurrentLink() }
+      harness.requestClock.advance(by: harness.requestTimeout)
+      try await waitUntil("power-off should park before submission") {
+        await harness.gate.isConnectedIsWaiting
+      }
+
+      await harness.inner.disconnect()
+      await harness.manager.handleWiFiDisconnection(
+        error: WiFiTransportError.notConnected,
+        remoteLossAt: CFAbsoluteTimeGetCurrent()
+      )
+      #expect(harness.manager.connectionState == .connecting)
+      #expect(harness.manager.wifiReconnectTask == nil)
+      await harness.gate.releaseIsConnected()
+      await #expect(throws: Error.self) { try await powerOff.value }
+
+      try await waitUntil("released recovery should enter the real WiFi retry loop") {
+        harness.manager.wifiReconnectAttempt > 0
+      }
+      #expect(harness.manager.connectionIntent.wantsConnection)
+      #expect(harness.manager.connectionState == .connecting)
+      #expect(harness.manager.wifiReconnectTask != nil)
+      harness.manager.testWiFiMaxReconnectDuration = .seconds(-1)
+
+      try await waitUntil("failed power-off should release deferred WiFi recovery") {
+        harness.manager.connectionState == .disconnected
+          && harness.manager.currentTransportType == nil
+      }
+      #expect(await harness.powerOffFrameCount() == 0)
+    }
+  }
+
+  @Test
   func `an inconclusive probe during power-off keeps the heartbeat loop`() async throws {
     try await Harness.make().run { harness in
       try await harness.parkHeartbeat()
@@ -192,6 +316,26 @@ struct ConnectionManagerWiFiHeartbeatTests {
 
       try await harness.fireProbe()
       #expect(await harness.getTimeCount() == baseline + 1)
+    }
+  }
+}
+
+extension ConnectionManagerWiFiHeartbeatTests {
+  @MainActor
+  private final class SocketLossTeardownGate {
+    private var continuation: CheckedContinuation<Void, Never>?
+    private(set) var isWaiting = false
+
+    func wait() async {
+      isWaiting = true
+      await withCheckedContinuation { continuation = $0 }
+      isWaiting = false
+    }
+
+    func release() {
+      let pending = continuation
+      continuation = nil
+      pending?.resume()
     }
   }
 }

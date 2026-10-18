@@ -85,14 +85,16 @@ extension ConnectionManager {
     guard let operation = powerOffOperation, !operation.settled else { return }
     guard ObjectIdentifier(newSession) != operation.sessionID else { return }
     operation.invalidated = true
+    _ = operation.gate.cancelIfUnsubmitted()
   }
 
-  /// Explicit disconnect drops cleanup even after the worker has settled.
+  /// An admitted connection change drops cleanup even after the worker has settled.
   /// The owned power-off disconnect does not call this.
-  func invalidatePowerOffForExplicitDisconnect() {
+  func invalidatePowerOffForConnectionChange() {
     powerOffCleanupToken = nil
     guard let operation = powerOffOperation, !operation.settled else { return }
     operation.invalidated = true
+    _ = operation.gate.cancelIfUnsubmitted()
   }
 
   private func finishPowerOff(
@@ -139,7 +141,14 @@ extension ConnectionManager {
     }
     powerOffCancelGeneration &+= 1
     guard resumeReconnect, !operation.invalidated else { return }
-    guard connectionIntent.wantsConnection, connectionState == .disconnected else { return }
+    guard connectionIntent.wantsConnection else { return }
+    if currentTransportType == .wifi, connectionState == .connecting {
+      if !isHandlingWiFiDisconnection {
+        startWiFiReconnection()
+      }
+      return
+    }
+    guard connectionState == .disconnected else { return }
     startReconnectionWatchdog()
   }
 

@@ -183,8 +183,7 @@ public extension MeshCoreSession {
     // Subscribe before sending to avoid the race where the response arrives
     // before the consumer is listening.
     let events = await dispatcher.subscribe()
-    guard sessionIsRunning else { throw CancellationError() }
-    try await transport.send(request)
+    try await sendSessionData(request)
 
     return try await withThrowingTaskGroup(of: BinaryExchangeSignal<Response>.self) { group in
       group.addTask { [self, logger] in
@@ -260,7 +259,7 @@ public extension MeshCoreSession {
       }
 
       if retransmitFloor != nil {
-        group.addTask { [self, logger, clock = self.clock, transport] in
+        group.addTask { [self, logger, clock = self.clock] in
           var attempt = 1
           while !Task.isCancelled {
             let delay = await cadence.waitForInterval()
@@ -277,7 +276,7 @@ public extension MeshCoreSession {
               "\(operation) request to \(prefixHex): retransmit #\(attempt) (interval=\(String(format: "%.1f", interval))s)"
             )
             do {
-              try await transport.send(request)
+              try await self.sendSessionData(request)
             } catch is CancellationError {
               return .idle
             } catch {

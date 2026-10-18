@@ -101,6 +101,7 @@ extension ConnectionManager {
     transportType: TransportType = .bluetooth,
     forceFullSync: Bool = false
   ) {
+    guard self.services === services else { return }
     resyncTask?.cancel()
     resyncAttemptCount = 0
 
@@ -221,6 +222,7 @@ extension ConnectionManager {
     services: ServiceContainer,
     indices: [UInt8]
   ) {
+    guard self.services === services else { return }
     let initialIndices = Array(Set(indices)).sorted()
     guard !initialIndices.isEmpty else { return }
 

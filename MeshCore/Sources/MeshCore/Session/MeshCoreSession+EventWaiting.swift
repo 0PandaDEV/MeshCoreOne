@@ -179,10 +179,7 @@ extension MeshCoreSession {
     let (subscriptionID, events) = await dispatcher.subscribeTracked()
 
     do {
-      // A stopped session must not put another frame on the transport.
-      guard sessionIsRunning else { throw CancellationError() }
-      try beforeSend()
-      try await transport.send(data)
+      try await sendSessionData(data, beforeSend: beforeSend)
 
       return try await withThrowingTaskGroup(of: T?.self) { group in
         group.addTask {

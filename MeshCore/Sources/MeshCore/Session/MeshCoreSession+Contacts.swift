@@ -128,7 +128,7 @@ public extension MeshCoreSession {
       let (subscriptionID, events) = await dispatcher.subscribeTracked()
 
       do {
-        try await transport.send(data)
+        try await sendSessionData(data)
 
         // Manual timeout pattern (not withTimeout) because:
         // 1. Uses injected clock for testability

@@ -105,7 +105,14 @@ public final class ConnectionManager {
 
   /// The device being actively connected via connect(to:).
   /// Nil during auto-reconnect (tracked by reconnectionCoordinator.reconnectingDeviceID instead).
-  var connectingDeviceID: UUID?
+  var connectingDeviceID: UUID? {
+    didSet {
+      if connectingDeviceID == nil { connectingAttemptID = nil }
+    }
+  }
+
+  /// Distinguishes successive manual attempts to the same radio.
+  var connectingAttemptID: UUID?
 
   /// The device whose MeshCore session is currently being rebuilt after a BLE auto-reconnect.
   /// Used to suppress duplicate reconnect attempts while session startup is still in flight.
@@ -302,6 +309,8 @@ public final class ConnectionManager {
   var powerOffOperation: PowerOffOperation?
   var powerOffCancelGeneration = 0
   var powerOffCleanupToken: UUID?
+  var connectionTeardownCount = 0
+  var connectionTeardownWaiters: [CheckedContinuation<Void, Never>] = []
   /// Device discovery + system pairing-registry seam. Resolves to AccessorySetupKit on
   /// iOS, or an in-app CoreBluetooth scan picker on macOS "Designed for iPad".
   let pairing: any DevicePairingService
@@ -532,6 +541,9 @@ public final class ConnectionManager {
 
     /// When set, the WiFi heartbeat loop sleeps on this clock instead of the wall clock.
     var testWiFiHeartbeatClock: (any Clock<Duration>)?
+
+    var testConnectionTeardownHandler: (@MainActor () async -> Void)?
+    var testConnectionTeardownWaiterCount = 0
 
     /// How many times the Bluetooth powered-on handler has run.
     var testBluetoothPoweredOnHandlerRuns = 0
@@ -933,7 +945,8 @@ public final class ConnectionManager {
     session: MeshCoreSession,
     selfInfo: SelfInfo,
     capabilities: DeviceCapabilities,
-    connectionMethods: [ConnectionMethod] = []
+    connectionMethods: [ConnectionMethod] = [],
+    connectionAttemptID: UUID? = nil
   ) async throws -> (services: ServiceContainer, radioID: UUID) {
     // Kick off `getAutoAddConfig` up-front so the BLE roundtrip overlaps
     // with the local DB fetches and container wiring below.
@@ -1006,6 +1019,12 @@ public final class ConnectionManager {
     // view-model `configure` calls see a hydrated service from the
     // first read.
     await newServices.chatSendQueueService.hydrate()
+
+    if let connectionAttemptID,
+       !ownsConnectionAttempt(deviceID: deviceID, attemptID: connectionAttemptID) {
+      await newServices.tearDown()
+      throw CancellationError()
+    }
 
     // Restore `self.session` together with `self.services`: an interleaved
     // `handleConnectionLoss` nils both atomically, and `promoteToReady`'s
@@ -1360,12 +1379,15 @@ public final class ConnectionManager {
 
   /// Cleans up session and services without changing connection state (used during retries)
   func cleanupResources() async {
-    // stop() at its default disconnects the transport — the explicit-disconnect
-    // and device-switch paths rely on this call to sever the link.
-    await session?.stop()
-    await services?.tearDown()
+    // Default stop() closes the shared transport, so teardown stays held until that close finishes.
+    beginConnectionTeardown()
+    defer { endConnectionTeardown() }
+    let oldSession = session
+    let oldServices = services
     session = nil
     services = nil
+    await oldSession?.stop()
+    await oldServices?.tearDown()
   }
 
   /// Full cleanup including state reset (used on explicit disconnect)

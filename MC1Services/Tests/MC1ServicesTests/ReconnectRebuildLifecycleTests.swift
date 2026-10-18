@@ -148,10 +148,8 @@ struct ReconnectRebuildLifecycleTests {
   /// or its appStart handshake iterates a dead stream and times out. Pins the
   /// `refreshDataStream` call in `rebuildSession`.
   ///
-  /// Intent is `.none` so rebuild returns after handshake (no query/sync). On that
-  /// path abandon clears the session, so success is a non-throwing rebuild plus
-  /// transport evidence that refresh and a post-refresh handshake occurred — not
-  /// residual `manager.session` state.
+  /// Intent is revoked during the handshake, so rebuild returns before query and sync.
+  /// Abandon then clears the session; success is the refreshed handshake, not `manager.session`.
   @Test
   func `rebuild after a stopped predecessor completes its handshake over a refreshed stream`() async throws {
     let container = try PersistenceStore.createContainer(inMemory: true)
@@ -174,15 +172,15 @@ struct ReconnectRebuildLifecycleTests {
     #expect(await transport.appStartReplyCount == 1)
     #expect(await transport.refreshCount == 0)
 
-    // Intent does not want a connection (.none, not .userDisconnected, whose
-    // invariant requires .disconnected state), so the rebuild returns right
-    // after its handshake instead of driving device query and sync.
     manager.setTestState(
       connectionState: .connected,
       session: predecessor,
       currentTransportType: .bluetooth,
-      connectionIntent: ConnectionIntent.none
+      connectionIntent: .wantsConnection()
     )
+    await transport.setBeforeNextAppStartReply { [weak manager] in
+      manager?.setTestState(connectionIntent: ConnectionIntent.none)
+    }
 
     // Non-throwing return means session.start completed (dead stream would time out).
     try await manager.rebuildSession(deviceID: UUID())
@@ -334,6 +332,11 @@ private actor RevendingHandshakeTransport: iOSMeshTransport {
   private var connected = false
   private(set) var refreshCount = 0
   private(set) var appStartReplyCount = 0
+  private var beforeNextAppStartReply: (@MainActor @Sendable () -> Void)?
+
+  func setBeforeNextAppStartReply(_ handler: @escaping @MainActor @Sendable () -> Void) {
+    beforeNextAppStartReply = handler
+  }
 
   var receivedData: AsyncStream<Data> {
     slot ?? AsyncStream { $0.finish() }
@@ -362,6 +365,9 @@ private actor RevendingHandshakeTransport: iOSMeshTransport {
     // and an unanswered later command surfaces as its own timeout.
     if data.first == CommandCode.appStart.rawValue {
       appStartReplyCount += 1
+      let beforeReply = beforeNextAppStartReply
+      beforeNextAppStartReply = nil
+      await beforeReply?()
       slotContinuation?.yield(Self.selfInfoPacket())
     }
   }

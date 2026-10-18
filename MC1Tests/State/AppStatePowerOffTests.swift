@@ -141,24 +141,28 @@ struct AppStatePowerOffTests {
   @Test
   func `a same-session installation during teardown revokes cleanup before the guard`() async throws {
     let transport = MockTransport()
-    let gate = DisconnectGateTransport(inner: transport)
     let session = MeshCoreSession(
-      transport: gate,
+      transport: transport,
       configuration: SessionConfiguration(defaultTimeout: 10, clientIdentifier: "MCTst")
     )
     let appState = try await makeAppState(session: session)
+    let teardownGate = Gate()
     defer {
       appState.shutdown()
       Task {
-        await gate.release()
+        await teardownGate.open()
         await session.stop()
       }
     }
     try await startSession(session, transport: transport)
-    await gate.arm()
     let device = try #require(appState.connectedDevice)
 
     let probe = CleanupProbe()
+    var teardownStarted = false
+    appState.connectionManager.testConnectionTeardownHandler = {
+      teardownStarted = true
+      await teardownGate.wait()
+    }
     appState.powerOffEndActivityOverride = {
       probe.endActivityStarted = true
       await probe.gate.wait()
@@ -172,7 +176,7 @@ struct AppStatePowerOffTests {
       }
     }
 
-    try await waitUntil("owned disconnect should park") { await gate.disconnectIsWaiting }
+    try await waitUntil("owned disconnect should park") { teardownStarted }
     let services = try await ServiceContainer.forTesting(session: session, radioID: device.radioID)
     let eventTask = makeOpenEventTask()
     let node = makeRemoteSession(radioID: device.radioID)
@@ -190,7 +194,7 @@ struct AppStatePowerOffTests {
       Task { await services.tearDown() }
     }
 
-    await gate.release()
+    await teardownGate.open()
     try await waitUntil("cleanup should pass the guard or reach activity teardown") {
       probe.endActivityStarted || probe.outcome != nil
     }
@@ -399,54 +403,5 @@ private actor Gate {
     isOpen = true
     waiter?.resume()
     waiter = nil
-  }
-}
-
-private actor DisconnectGateTransport: MeshTransport {
-  private let inner: MockTransport
-  private var armDisconnect = false
-  private var continuation: CheckedContinuation<Void, Never>?
-  private(set) var disconnectIsWaiting = false
-
-  init(inner: MockTransport) {
-    self.inner = inner
-  }
-
-  func arm() {
-    armDisconnect = true
-  }
-
-  func release() {
-    armDisconnect = false
-    disconnectIsWaiting = false
-    let continuation = self.continuation
-    self.continuation = nil
-    continuation?.resume()
-  }
-
-  func connect() async throws {
-    try await inner.connect()
-  }
-
-  func disconnect() async {
-    if armDisconnect {
-      await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-        self.continuation = continuation
-        self.disconnectIsWaiting = true
-      }
-    }
-    await inner.disconnect()
-  }
-
-  func send(_ data: Data) async throws {
-    try await inner.send(data)
-  }
-
-  var isConnected: Bool {
-    get async { await inner.isConnected }
-  }
-
-  var receivedData: AsyncStream<Data> {
-    get async { await inner.receivedData }
   }
 }

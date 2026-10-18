@@ -4,6 +4,60 @@ import Testing
 
 @Suite("MeshCoreSession command correlation")
 struct MeshCoreSessionCommandCorrelationTests {
+  @Test(arguments: [false, true])
+  func `stopped session cannot reboot or pipeline channels over a surviving shared transport`(pipeline: Bool) async throws {
+    let transport = MockTransport()
+    await transport.setSupportsWriteWithoutResponse(true)
+    let session = MeshCoreSession(
+      transport: transport,
+      configuration: SessionConfiguration(
+        defaultTimeout: 10,
+        clientIdentifier: "MCTst",
+        channelPipelineIdleTimeout: 0.05,
+        channelPipelineHardTimeout: 0.1,
+        channelPipelinePostDrainGrace: 0
+      )
+    )
+    try await startSession(session, transport: transport)
+    await session.stop(disconnectTransport: false)
+    let sentBefore = await transport.sentData
+
+    await #expect(throws: CancellationError.self) {
+      if pipeline {
+        _ = try await session.getChannels(indices: [0, 1])
+      } else {
+        try await session.reboot()
+      }
+    }
+    #expect(await transport.sentData == sentBefore)
+    #expect(await transport.isConnected)
+    await transport.disconnect()
+  }
+
+  @Test
+  func `stopped session cannot fetch contacts over a surviving shared transport`() async throws {
+    let transport = MockTransport()
+    let session = MeshCoreSession(
+      transport: transport,
+      configuration: SessionConfiguration(
+        defaultTimeout: 10,
+        clientIdentifier: "MCTst",
+        contactStreamInactivityTimeout: 0.05,
+        contactStreamHardTimeout: 0.1
+      )
+    )
+    try await startSession(session, transport: transport)
+    await session.stop(disconnectTransport: false)
+    let sentBefore = await transport.sentData
+
+    await #expect(throws: CancellationError.self) {
+      _ = try await session.getContacts()
+    }
+    #expect(await transport.sentData == sentBefore)
+    #expect(await transport.isConnected)
+    await transport.disconnect()
+  }
+
   @Test
   func `simple commands serialize concurrent OK/ERROR waits`() async throws {
     let transport = MockTransport()

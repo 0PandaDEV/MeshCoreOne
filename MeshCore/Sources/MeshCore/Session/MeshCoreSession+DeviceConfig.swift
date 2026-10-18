@@ -303,7 +303,7 @@ public extension MeshCoreSession {
   ///
   /// - Throws: ``MeshTransportError`` if the command cannot be sent.
   func reboot() async throws {
-    try await transport.send(PacketBuilder.reboot())
+    try await sendSessionData(PacketBuilder.reboot())
   }
 
   /// Retrieves telemetry data from the device.

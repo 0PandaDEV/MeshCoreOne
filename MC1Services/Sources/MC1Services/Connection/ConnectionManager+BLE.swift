@@ -11,6 +11,9 @@ extension ConnectionManager {
 
   /// Drops a live WiFi session first. The prep reason keeps the intent to connect.
   public func connectViaBluetooth(peripheralID: UUID) async throws {
+    try Task.checkCancellation()
+    invalidatePowerOffForConnectionChange()
+    try await waitForConnectionTeardown()
     #if DEBUG
       testBluetoothConnectAttempts.append(peripheralID)
       if let testBluetoothConnectHandler {
@@ -462,6 +465,13 @@ extension ConnectionManager {
   }
 
   private func rebuildConnectedBLEAppStack(deviceID: UUID) async {
+    guard connectionTeardownCount == 0,
+          connectionIntent.wantsConnection,
+          !powerOffBlocksReconnect,
+          currentTransportType != .wifi,
+          wifiTransport == nil,
+          connectingDeviceID == nil,
+          connectionState != .connecting else { return }
     // Claim before any further await so concurrent health Tasks (watchdog +
     // foreground after preserve) cannot both observe connected and enter rebuild.
     // Same structural single-flight the coordinator retry gap requires.
@@ -525,14 +535,15 @@ extension ConnectionManager {
   // MARK: - BLE Connection
 
   /// Connects with retry logic for reconnection scenarios
-  func connectWithRetry(deviceID: UUID, maxAttempts: Int) async throws {
+  func connectWithRetry(deviceID: UUID, attemptID: UUID, maxAttempts: Int) async throws {
     var lastError: Error = ConnectionError.connectionFailed("Unknown error")
 
     for attempt in 1...maxAttempts {
-      guard connectingDeviceID == deviceID else { throw CancellationError() }
+      guard ownsConnectionAttempt(deviceID: deviceID, attemptID: attemptID) else { throw CancellationError() }
 
       do {
-        try await performConnection(deviceID: deviceID)
+        try await performConnection(deviceID: deviceID, attemptID: attemptID)
+        guard ownsConnectionAttempt(deviceID: deviceID, attemptID: attemptID) else { throw CancellationError() }
 
         recordConnectionSuccess()
         if attempt > 1 {
@@ -542,7 +553,7 @@ extension ConnectionManager {
 
       } catch {
         lastError = error
-        guard connectingDeviceID == deviceID else { throw error }
+        guard ownsConnectionAttempt(deviceID: deviceID, attemptID: attemptID) else { throw error }
 
         // BLE precondition failures won't resolve between retries.
         // Exit without retrying or tripping the circuit breaker so that
@@ -557,8 +568,13 @@ extension ConnectionManager {
             // The peripheral connected before auth failed, leaving the
             // BLE state machine in a non-idle phase. Tear down before
             // bypassing retries so subsequent connects start fresh.
-            await cleanupResources()
-            await transport.disconnect()
+            do {
+              beginConnectionTeardown()
+              defer { endConnectionTeardown() }
+              await cleanupResources()
+              guard ownsConnectionAttempt(deviceID: deviceID, attemptID: attemptID) else { throw error }
+              await transport.disconnect()
+            }
             throw error
           default:
             break
@@ -571,6 +587,7 @@ extension ConnectionManager {
 
         // Diagnostic: Log BLE state on each failed attempt
         let diagnostics = await stateMachine.linkDiagnostics
+        guard ownsConnectionAttempt(deviceID: deviceID, attemptID: attemptID) else { throw error }
         let blePhase = diagnostics.phase
         let blePeripheralState = diagnostics.peripheralState ?? "none"
         let backoffDelay = attempt < maxAttempts ? 0.3 * pow(2.0, Double(attempt - 1)) : 0.0
@@ -580,8 +597,13 @@ extension ConnectionManager {
         )
 
         // Clean up resources but keep state as .connecting
-        await cleanupResources()
-        await transport.disconnect()
+        do {
+          beginConnectionTeardown()
+          defer { endConnectionTeardown() }
+          await cleanupResources()
+          guard ownsConnectionAttempt(deviceID: deviceID, attemptID: attemptID) else { throw error }
+          await transport.disconnect()
+        }
 
         if attempt < maxAttempts {
           // Backoff delay - state remains .connecting
@@ -592,6 +614,7 @@ extension ConnectionManager {
       }
     }
 
+    guard ownsConnectionAttempt(deviceID: deviceID, attemptID: attemptID) else { throw CancellationError() }
     // All retries exhausted - trip circuit breaker, then throw
     recordConnectionFailure()
 
@@ -607,16 +630,19 @@ extension ConnectionManager {
   }
 
   /// Performs the actual connection to a device
-  func performConnection(deviceID: UUID) async throws {
+  func performConnection(deviceID: UUID, attemptID: UUID) async throws {
     // Note: connectionState is already .connecting (set by caller)
 
     // Stop any existing session to prevent multiple receive loops racing for transport data
     await session?.stop()
+    guard ownsConnectionAttempt(deviceID: deviceID, attemptID: attemptID) else { throw CancellationError() }
     session = nil
 
     // Set device ID and connect
     await transport.setDeviceID(deviceID)
+    guard ownsConnectionAttempt(deviceID: deviceID, attemptID: attemptID) else { throw CancellationError() }
     try await transport.connect()
+    guard ownsConnectionAttempt(deviceID: deviceID, attemptID: attemptID) else { throw CancellationError() }
 
     logger.info("[BLE] State → .connected (transport connected for device: \(deviceID.uuidString.prefix(8)))")
     connectionState = .connected
@@ -626,21 +652,26 @@ extension ConnectionManager {
     session = newSession
 
     let (meshCoreSelfInfo, deviceCapabilities) = try await initializeSession(newSession)
+    guard ownsConnectionAttempt(deviceID: deviceID, attemptID: attemptID) else { throw CancellationError() }
 
     // Session traffic flowed over the encrypted UART link, so the bond is
     // proven healthy as of now. Also marks the app session live for RSSI refresh.
     await recordBondVerification(deviceID: deviceID)
+    guard ownsConnectionAttempt(deviceID: deviceID, attemptID: attemptID) else { throw CancellationError() }
 
     // Configure BLE write pacing based on device platform
     await configureBLEPacing(for: deviceCapabilities)
+    guard ownsConnectionAttempt(deviceID: deviceID, attemptID: attemptID) else { throw CancellationError() }
 
     let (newServices, radioID) = try await buildServicesAndSaveDevice(
       deviceID: deviceID,
       session: newSession,
       selfInfo: meshCoreSelfInfo,
       capabilities: deviceCapabilities,
-      connectionMethods: Self.bleConnectionMethods(for: deviceID)
+      connectionMethods: Self.bleConnectionMethods(for: deviceID),
+      connectionAttemptID: attemptID
     )
+    guard ownsConnectionAttempt(deviceID: deviceID, attemptID: attemptID) else { throw CancellationError() }
 
     // Persist connection for auto-reconnect
     persistConnection(deviceID: deviceID, radioID: radioID, deviceName: meshCoreSelfInfo.name)
@@ -648,6 +679,7 @@ extension ConnectionManager {
     // Notify observers before sync starts so they can wire callbacks
     // (e.g., AppState needs to set sync activity callbacks for the syncing pill)
     await onConnectionReady?()
+    guard ownsConnectionAttempt(deviceID: deviceID, attemptID: attemptID) else { throw CancellationError() }
     let shouldForceFullSync: Bool
     if case let .wantsConnection(force) = connectionIntent {
       shouldForceFullSync = force
@@ -657,10 +689,16 @@ extension ConnectionManager {
     }
     let syncSucceeded = await performInitialSync(radioID: radioID, services: newServices, forceFullSync: shouldForceFullSync)
 
-    guard await promoteToReady(syncSucceeded: syncSucceeded, expectedServices: newServices, transportType: .bluetooth) else {
-      await newSession.stop()
+    guard await promoteToReady(
+      syncSucceeded: syncSucceeded,
+      expectedServices: newServices,
+      transportType: .bluetooth,
+      additionalGuard: { self.ownsConnectionAttempt(deviceID: deviceID, attemptID: attemptID) }
+    ) else {
+      await newSession.stop(disconnectTransport: false)
       return
     }
+    guard ownsConnectionAttempt(deviceID: deviceID, attemptID: attemptID) else { throw CancellationError() }
 
     stopReconnectionWatchdog()
     logger.info("Connection complete - device ready")

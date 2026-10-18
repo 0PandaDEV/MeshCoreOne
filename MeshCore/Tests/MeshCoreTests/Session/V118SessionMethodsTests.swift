@@ -5,6 +5,29 @@ import Testing
 @Suite("v1.18 session methods")
 struct V118SessionMethodsTests {
   @Test
+  func `stopping during power-off connection check prevents submission`() async throws {
+    let transport = ConnectedReadGateTransport()
+    let session = MeshCoreSession(transport: transport)
+    try await startSession(session, transport: transport.inner)
+    await transport.arm()
+    let powerOff = Task { await session.exchangePowerOff() }
+    do {
+      try await waitUntil("power-off should wait for the connection check") { await transport.isWaiting }
+      await session.stop(disconnectTransport: false)
+      await transport.release()
+      #expect(await powerOff.value == .notSubmitted(.notRunning))
+      #expect(await transport.inner.sentData.count == 1)
+      #expect(await transport.isConnected)
+      await transport.disconnect()
+    } catch {
+      await transport.release()
+      _ = await powerOff.value
+      await session.stop()
+      throw error
+    }
+  }
+
+  @Test
   func `runCliCommand returns UTF-8 reply`() async throws {
     let transport = MockTransport()
     let session = MeshCoreSession(
@@ -375,6 +398,51 @@ struct V118SessionMethodsTests {
     )
     try await startSession(session, transport: transport)
     return session
+  }
+
+  private actor ConnectedReadGateTransport: MeshTransport {
+    let inner = MockTransport()
+    private var armed = false
+    private var continuation: CheckedContinuation<Void, Never>?
+    private(set) var isWaiting = false
+
+    var receivedData: AsyncStream<Data> {
+      get async { await inner.receivedData }
+    }
+
+    var isConnected: Bool {
+      get async {
+        if armed {
+          armed = false
+          isWaiting = true
+          await withCheckedContinuation { continuation = $0 }
+          isWaiting = false
+        }
+        return await inner.isConnected
+      }
+    }
+
+    func connect() async throws {
+      try await inner.connect()
+    }
+
+    func disconnect() async {
+      await inner.disconnect()
+    }
+
+    func send(_ data: Data) async throws {
+      try await inner.send(data)
+    }
+
+    func arm() {
+      armed = true
+    }
+
+    func release() {
+      let pending = continuation
+      continuation = nil
+      pending?.resume()
+    }
   }
 }
 

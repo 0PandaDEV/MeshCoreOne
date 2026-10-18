@@ -202,6 +202,7 @@ public extension MeshCoreSession {
     defer { collector.cancel() }
     await Task.yield()
 
+    guard sessionIsRunning else { return .notSubmitted(.notRunning) }
     guard gate.beginSubmission() else { return .notSubmitted(.cancelled) }
 
     let sendFailed: Bool
