@@ -328,6 +328,8 @@ final class AppState {
     /// Optional test-only hooks for deterministic lifecycle ordering tests.
     var bleEnterBackgroundOverride: (@MainActor () async -> Void)?
     var bleBecomeActiveOverride: (@MainActor () async -> Void)?
+    /// Parks power-off cleanup at the Live Activity await. Nil uses the real activity end.
+    var powerOffEndActivityOverride: (@MainActor () async -> Void)?
   #endif
 
   // MARK: - Onboarding State

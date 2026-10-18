@@ -268,7 +268,15 @@ extension AppState {
       throw PowerOffSuperseded()
     }
     connectionLinkSwitch = nil
-    await liveActivityManager.endActivity()
+    #if DEBUG
+      if let powerOffEndActivityOverride {
+        await powerOffEndActivityOverride()
+      } else {
+        await liveActivityManager.endActivity()
+      }
+    #else
+      await liveActivityManager.endActivity()
+    #endif
     guard connectionManager.powerOffOwnsCleanup(token) else {
       throw PowerOffSuperseded()
     }

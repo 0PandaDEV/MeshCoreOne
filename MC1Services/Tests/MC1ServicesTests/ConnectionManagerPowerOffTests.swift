@@ -189,6 +189,65 @@ struct ConnectionManagerPowerOffTests {
     #expect(powerOffs.isEmpty)
     #expect(harness.manager.connectionIntent.wantsConnection)
   }
+
+  @Test
+  func `settled cleanup survives nil publication and dies on a replacement session`() async throws {
+    let harness = try await Harness.make()
+
+    let token = try await harness.manager.powerOffCurrentLink()
+    #expect(harness.manager.powerOffOwnsCleanup(token))
+    harness.manager.setTestState(session: MeshCoreSession?.none)
+    #expect(harness.manager.powerOffOwnsCleanup(token))
+    await harness.manager.disconnect(reason: .powerOff)
+    #expect(harness.manager.powerOffOwnsCleanup(token))
+
+    installReplacement(on: harness.manager, radioID: UUID())
+    #expect(harness.manager.powerOffOwnsCleanup(token) == false)
+  }
+
+  @Test
+  func `explicit disconnect revokes a settled cleanup token`() async throws {
+    let harness = try await Harness.make()
+    let token = try await harness.manager.powerOffCurrentLink()
+    #expect(harness.manager.powerOffOwnsCleanup(token))
+
+    await harness.manager.disconnect()
+
+    #expect(harness.manager.powerOffOwnsCleanup(token) == false)
+  }
+
+  @Test
+  func `a replacement revokes the shared cleanup token for every waiting caller`() async throws {
+    let harness = try await Harness.make()
+    let first = Task { try await harness.manager.powerOffCurrentLink() }
+    let second = Task { try await harness.manager.powerOffCurrentLink() }
+
+    let firstToken = try await first.value
+    let secondToken = try await second.value
+    #expect(firstToken == secondToken)
+    #expect(harness.manager.powerOffOwnsCleanup(firstToken))
+
+    installReplacement(on: harness.manager, radioID: UUID())
+    #expect(harness.manager.powerOffOwnsCleanup(firstToken) == false)
+    #expect(harness.manager.powerOffOwnsCleanup(secondToken) == false)
+  }
+
+  @Test
+  func `a replacement before settlement revokes the shared cleanup token`() async throws {
+    let harness = try await Harness.make()
+    await harness.transport.holdNextSend()
+    let first = Task { try await harness.manager.powerOffCurrentLink() }
+    let second = Task { try await harness.manager.powerOffCurrentLink() }
+    try await waitUntil("poweroff write should park") { await harness.transport.sendIsWaiting }
+
+    installReplacement(on: harness.manager, radioID: harness.device.radioID)
+    await harness.transport.failHeldSend()
+    await harness.transport.releaseHeldSend()
+
+    await #expect(throws: PowerOffSuperseded.self) { try await first.value }
+    await #expect(throws: PowerOffSuperseded.self) { try await second.value }
+    #expect(harness.manager.powerOffCleanupToken == nil)
+  }
 }
 
 @MainActor
@@ -247,4 +306,16 @@ private struct Harness {
     payload.append(5)
     return payload
   }
+}
+
+@MainActor
+private func installReplacement(on manager: ConnectionManager, radioID: UUID) {
+  let replacement = MeshCoreSession(transport: MockTransport())
+  let device = DeviceDTO.testDevice(radioID: radioID, firmwareVersion: 14)
+  manager.setTestState(
+    connectionState: .ready,
+    session: replacement,
+    connectedDevice: device,
+    connectionIntent: .wantsConnection()
+  )
 }

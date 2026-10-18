@@ -77,19 +77,22 @@ extension ConnectionManager {
     operation.remoteLossAfterSubmission = true
   }
 
+  /// A published session drops pending cleanup. Nil keeps the token so the owned teardown can finish.
+  /// A different session also invalidates a worker that has not settled.
   func invalidatePowerOffIfReplaced(newSession: MeshCoreSession?) {
-    guard let newSession, let operation = powerOffOperation, !operation.settled else { return }
+    guard let newSession else { return }
+    powerOffCleanupToken = nil
+    guard let operation = powerOffOperation, !operation.settled else { return }
     guard ObjectIdentifier(newSession) != operation.sessionID else { return }
     operation.invalidated = true
-    if powerOffCleanupToken == operation.id {
-      powerOffCleanupToken = nil
-    }
   }
 
+  /// Explicit disconnect drops cleanup even after the worker has settled.
+  /// The owned power-off disconnect does not call this.
   func invalidatePowerOffForExplicitDisconnect() {
+    powerOffCleanupToken = nil
     guard let operation = powerOffOperation, !operation.settled else { return }
     operation.invalidated = true
-    powerOffCleanupToken = nil
   }
 
   private func finishPowerOff(

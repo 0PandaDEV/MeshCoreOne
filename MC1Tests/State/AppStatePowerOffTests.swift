@@ -97,6 +97,141 @@ struct AppStatePowerOffTests {
     #expect(appState.connectionManager.connectedDevice?.id == replacementDevice.id)
   }
 
+  @Test
+  func `replacement during activity teardown leaves the new connection's session state`() async throws {
+    let transport = MockTransport()
+    let session = MeshCoreSession(
+      transport: transport,
+      configuration: SessionConfiguration(defaultTimeout: 10, clientIdentifier: "MCTst")
+    )
+    let appState = try await makeAppState(session: session)
+    defer { appState.shutdown() }
+    try await startSession(session, transport: transport)
+
+    let probe = CleanupProbe()
+    appState.powerOffEndActivityOverride = {
+      probe.endActivityStarted = true
+      await probe.gate.wait()
+    }
+    let task = Task {
+      do {
+        try await appState.powerOffRadio()
+        probe.outcome = .success(())
+      } catch {
+        probe.outcome = .failure(error)
+      }
+    }
+
+    try await waitUntil("power-off should reach activity teardown") { probe.endActivityStarted }
+    let replacement = try await installReplacementConnection(on: appState)
+    defer {
+      replacement.eventTask.cancel()
+      Task { await replacement.services.tearDown() }
+    }
+    await probe.gate.open()
+    await task.value
+
+    #expect(isPowerOffSuperseded(probe.outcome))
+    #expect(replacement.eventTask.isCancelled == false)
+    #expect(appState.settingsEventsTask != nil)
+    #expect(appState.remoteAdminWorkspaces.repeater(for: replacement.node).settings === replacement.settings)
+    #expect(appState.connectionManager.session === replacement.session)
+  }
+
+  @Test
+  func `a same-session installation during teardown revokes cleanup before the guard`() async throws {
+    let transport = MockTransport()
+    let gate = DisconnectGateTransport(inner: transport)
+    let session = MeshCoreSession(
+      transport: gate,
+      configuration: SessionConfiguration(defaultTimeout: 10, clientIdentifier: "MCTst")
+    )
+    let appState = try await makeAppState(session: session)
+    defer {
+      appState.shutdown()
+      Task {
+        await gate.release()
+        await session.stop()
+      }
+    }
+    try await startSession(session, transport: transport)
+    await gate.arm()
+    let device = try #require(appState.connectedDevice)
+
+    let probe = CleanupProbe()
+    appState.powerOffEndActivityOverride = {
+      probe.endActivityStarted = true
+      await probe.gate.wait()
+    }
+    let task = Task {
+      do {
+        try await appState.powerOffRadio()
+        probe.outcome = .success(())
+      } catch {
+        probe.outcome = .failure(error)
+      }
+    }
+
+    try await waitUntil("owned disconnect should park") { await gate.disconnectIsWaiting }
+    let services = try await ServiceContainer.forTesting(session: session, radioID: device.radioID)
+    let eventTask = makeOpenEventTask()
+    let node = makeRemoteSession(radioID: device.radioID)
+    let settings = appState.remoteAdminWorkspaces.repeater(for: node).settings
+    appState.settingsEventsTask = eventTask
+    appState.connectionManager.setTestState(
+      connectionState: .ready,
+      services: services,
+      session: session,
+      connectedDevice: device,
+      connectionIntent: .wantsConnection()
+    )
+    defer {
+      eventTask.cancel()
+      Task { await services.tearDown() }
+    }
+
+    await gate.release()
+    try await waitUntil("cleanup should pass the guard or reach activity teardown") {
+      probe.endActivityStarted || probe.outcome != nil
+    }
+    if probe.endActivityStarted, probe.outcome == nil {
+      await probe.gate.open()
+    }
+    await task.value
+
+    #expect(probe.endActivityStarted == false)
+    #expect(isPowerOffSuperseded(probe.outcome))
+    #expect(eventTask.isCancelled == false)
+    #expect(appState.settingsEventsTask != nil)
+    #expect(appState.remoteAdminWorkspaces.repeater(for: node).settings === settings)
+  }
+
+  @Test
+  func `owned cleanup still clears session resources`() async throws {
+    let transport = MockTransport()
+    let session = MeshCoreSession(
+      transport: transport,
+      configuration: SessionConfiguration(defaultTimeout: 10, clientIdentifier: "MCTst")
+    )
+    let appState = try await makeAppState(session: session)
+    defer { appState.shutdown() }
+    try await startSession(session, transport: transport)
+
+    let eventTask = makeOpenEventTask()
+    defer { eventTask.cancel() }
+    let node = makeRemoteSession()
+    let settings = appState.remoteAdminWorkspaces.repeater(for: node).settings
+    appState.settingsEventsTask = eventTask
+    appState.powerOffEndActivityOverride = {}
+
+    try await appState.powerOffRadio()
+
+    #expect(appState.settingsEventsTask == nil)
+    #expect(eventTask.isCancelled)
+    #expect(appState.remoteAdminWorkspaces.repeater(for: node).settings !== settings)
+    #expect(appState.connectionManager.connectionIntent.isUserDisconnected)
+  }
+
   private func makeAppState(session: MeshCoreSession) async throws -> AppState {
     let suite = "test.poweroff.\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: suite)!
@@ -116,46 +251,46 @@ struct AppStatePowerOffTests {
     )
     return appState
   }
+}
 
-  private func makeDevice(firmwareVersion: UInt8) -> DeviceDTO {
-    DeviceDTO(
-      id: UUID(),
-      radioID: UUID(),
-      publicKey: Data(repeating: 0x01, count: 32),
-      nodeName: "TestDevice",
-      firmwareVersion: firmwareVersion,
-      firmwareVersionString: "1.18.0",
-      manufacturerName: "Test",
-      buildDate: "",
-      maxContacts: 100,
-      maxChannels: 16,
-      frequency: 869_525,
-      bandwidth: 250_000,
-      spreadingFactor: 11,
-      codingRate: 5,
-      txPower: 20,
-      maxTxPower: 22,
-      latitude: 0,
-      longitude: 0,
-      blePin: 0,
-      clientRepeat: false,
-      pathHashMode: 0,
-      manualAddContacts: false,
-      autoAddConfig: 0,
-      autoAddMaxHops: 0,
-      multiAcks: 0,
-      telemetryModeBase: 0,
-      telemetryModeLoc: 0,
-      telemetryModeEnv: 0,
-      advertLocationPolicy: 0,
-      lastConnected: Date(),
-      lastContactSync: 0,
-      isActive: true,
-      ocvPreset: nil,
-      customOCVArrayString: nil,
-      connectionMethods: []
-    )
-  }
+private func makeDevice(firmwareVersion: UInt8) -> DeviceDTO {
+  DeviceDTO(
+    id: UUID(),
+    radioID: UUID(),
+    publicKey: Data(repeating: 0x01, count: 32),
+    nodeName: "TestDevice",
+    firmwareVersion: firmwareVersion,
+    firmwareVersionString: "1.18.0",
+    manufacturerName: "Test",
+    buildDate: "",
+    maxContacts: 100,
+    maxChannels: 16,
+    frequency: 869_525,
+    bandwidth: 250_000,
+    spreadingFactor: 11,
+    codingRate: 5,
+    txPower: 20,
+    maxTxPower: 22,
+    latitude: 0,
+    longitude: 0,
+    blePin: 0,
+    clientRepeat: false,
+    pathHashMode: 0,
+    manualAddContacts: false,
+    autoAddConfig: 0,
+    autoAddMaxHops: 0,
+    multiAcks: 0,
+    telemetryModeBase: 0,
+    telemetryModeLoc: 0,
+    telemetryModeEnv: 0,
+    advertLocationPolicy: 0,
+    lastConnected: Date(),
+    lastContactSync: 0,
+    isActive: true,
+    ocvPreset: nil,
+    customOCVArrayString: nil,
+    connectionMethods: []
+  )
 }
 
 private func startSession(
@@ -187,4 +322,131 @@ private func makeSelfInfoPacket() -> Data {
   payload.append(11)
   payload.append(5)
   return payload
+}
+
+@MainActor
+private final class CleanupProbe {
+  var endActivityStarted = false
+  var outcome: Result<Void, Error>?
+  let gate = Gate()
+}
+
+private struct ReplacementConnection {
+  let session: MeshCoreSession
+  let services: ServiceContainer
+  let eventTask: Task<Void, Never>
+  let node: RemoteNodeSessionDTO
+  let settings: RepeaterSettingsViewModel
+}
+
+@MainActor
+private func installReplacementConnection(on appState: AppState) async throws -> ReplacementConnection {
+  let session = MeshCoreSession(transport: MockTransport())
+  let device = makeDevice(firmwareVersion: 14)
+  let services = try await ServiceContainer.forTesting(session: session, radioID: device.radioID)
+  let eventTask = makeOpenEventTask()
+  let node = makeRemoteSession(radioID: device.radioID)
+  let settings = appState.remoteAdminWorkspaces.repeater(for: node).settings
+  appState.settingsEventsTask = eventTask
+  appState.connectionManager.setTestState(
+    connectionState: .ready,
+    services: services,
+    session: session,
+    connectedDevice: device,
+    connectionIntent: .wantsConnection()
+  )
+  return ReplacementConnection(
+    session: session,
+    services: services,
+    eventTask: eventTask,
+    node: node,
+    settings: settings
+  )
+}
+
+private func makeRemoteSession(radioID: UUID = UUID()) -> RemoteNodeSessionDTO {
+  RemoteNodeSessionDTO(
+    radioID: radioID,
+    publicKey: Data(repeating: 0xAB, count: 32),
+    name: "Repeater",
+    role: .repeater
+  )
+}
+
+private func makeOpenEventTask() -> Task<Void, Never> {
+  Task {
+    while !Task.isCancelled {
+      try? await Task.sleep(for: .seconds(60))
+    }
+  }
+}
+
+private func isPowerOffSuperseded(_ result: Result<Void, Error>?) -> Bool {
+  guard case let .failure(error) = result else { return false }
+  return error is PowerOffSuperseded
+}
+
+private actor Gate {
+  private var waiter: CheckedContinuation<Void, Never>?
+  private var isOpen = false
+
+  func wait() async {
+    if isOpen { return }
+    await withCheckedContinuation { waiter = $0 }
+  }
+
+  func open() {
+    isOpen = true
+    waiter?.resume()
+    waiter = nil
+  }
+}
+
+private actor DisconnectGateTransport: MeshTransport {
+  private let inner: MockTransport
+  private var armDisconnect = false
+  private var continuation: CheckedContinuation<Void, Never>?
+  private(set) var disconnectIsWaiting = false
+
+  init(inner: MockTransport) {
+    self.inner = inner
+  }
+
+  func arm() {
+    armDisconnect = true
+  }
+
+  func release() {
+    armDisconnect = false
+    disconnectIsWaiting = false
+    let continuation = self.continuation
+    self.continuation = nil
+    continuation?.resume()
+  }
+
+  func connect() async throws {
+    try await inner.connect()
+  }
+
+  func disconnect() async {
+    if armDisconnect {
+      await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        self.continuation = continuation
+        self.disconnectIsWaiting = true
+      }
+    }
+    await inner.disconnect()
+  }
+
+  func send(_ data: Data) async throws {
+    try await inner.send(data)
+  }
+
+  var isConnected: Bool {
+    get async { await inner.isConnected }
+  }
+
+  var receivedData: AsyncStream<Data> {
+    get async { await inner.receivedData }
+  }
 }
