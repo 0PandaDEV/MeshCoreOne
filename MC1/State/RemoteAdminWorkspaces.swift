@@ -92,7 +92,11 @@ final class RemoteAdminWorkspaces {
       )
       await models.status.registerHandlers()
       if let send = models.settings.makeNodeCLISendClosure(session: models.session) {
-        models.cli.configure(sessionName: models.session.name, sendRawCommand: send)
+        models.cli.configure(
+          sessionName: models.session.name,
+          remoteTarget: CLIRemoteTarget(role: models.session.role),
+          sendRawCommand: send
+        )
       }
     }
     for models in rooms.values {
@@ -107,7 +111,11 @@ final class RemoteAdminWorkspaces {
       )
       await models.status.registerHandlers()
       if let send = models.settings.makeNodeCLISendClosure(session: models.session) {
-        models.cli.configure(sessionName: models.session.name, sendRawCommand: send)
+        models.cli.configure(
+          sessionName: models.session.name,
+          remoteTarget: CLIRemoteTarget(role: models.session.role),
+          sendRawCommand: send
+        )
       }
     }
   }

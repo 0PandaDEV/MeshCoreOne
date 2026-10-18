@@ -255,6 +255,9 @@
 /* Location: RepeaterSettingsView.swift - Behavior section footer */
 "remoteNodes.settings.behaviorFooter" = "Intervalli di annuncio, salti flood e modalità ripetitore.";
 
+/* Location: RepeaterSettingsView.swift - Behavior section footer when both advert intervals are 0 */
+"remoteNodes.settings.hiddenFromDiscoverFooter" = "Con entrambi gli intervalli di annuncio impostati a 0, questo ripetitore non risponderà al ping di scoperta.";
+
 /* Location: RepeaterSettingsView.swift - Device actions section header */
 "remoteNodes.settings.deviceActions" = "Azioni dispositivo";
 

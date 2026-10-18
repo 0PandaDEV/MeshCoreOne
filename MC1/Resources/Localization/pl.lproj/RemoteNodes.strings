@@ -252,6 +252,9 @@
 /* Location: RepeaterSettingsView.swift - Behavior section footer */
 "remoteNodes.settings.behaviorFooter" = "Interwały ogłoszeń, skoki zalewania i tryb przekaźnika.";
 
+/* Location: RepeaterSettingsView.swift - Behavior section footer when both advert intervals are 0 */
+"remoteNodes.settings.hiddenFromDiscoverFooter" = "Gdy oba interwały ogłoszeń są ustawione na 0, ten przekaźnik nie odpowiada na ping wykrywania.";
+
 /* Location: RepeaterSettingsView.swift - Device actions section header */
 "remoteNodes.settings.deviceActions" = "Akcje urządzenia";
 

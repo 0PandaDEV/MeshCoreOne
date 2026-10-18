@@ -64,7 +64,7 @@ struct RepeaterSettingsView: View {
         session: session
       )
       if let send = viewModel.makeNodeCLISendClosure(session: session) {
-        cliViewModel.configure(sessionName: session.name, sendRawCommand: send)
+        cliViewModel.configure(sessionName: session.name, remoteTarget: .repeater, sendRawCommand: send)
       }
       // Loaded up front (not just on Telemetry reveal) so the Settings-tab route section can
       // resolve hop hashes to repeater names.
@@ -226,6 +226,12 @@ private struct BehaviorSection: View {
   @Bindable var viewModel: RepeaterSettingsViewModel
   var focusedField: FocusState<NodeSettingsField?>.Binding
 
+  private var behaviorFooter: String {
+    let base = L10n.RemoteNodes.RemoteNodes.Settings.behaviorFooter
+    guard viewModel.isHiddenFromDiscover else { return base }
+    return base + "\n\n" + L10n.RemoteNodes.RemoteNodes.Settings.hiddenFromDiscoverFooter
+  }
+
   var body: some View {
     ExpandableSettingsSection(
       title: L10n.RemoteNodes.RemoteNodes.Settings.behavior,
@@ -235,7 +241,7 @@ private struct BehaviorSection: View {
       isLoading: $viewModel.isLoadingBehavior,
       hasError: $viewModel.behaviorError,
       onLoad: { await viewModel.fetchBehaviorSettings() },
-      footer: L10n.RemoteNodes.RemoteNodes.Settings.behaviorFooter
+      footer: behaviorFooter
     ) {
       Toggle(L10n.RemoteNodes.RemoteNodes.Settings.repeaterMode, isOn: Binding(
         get: { viewModel.repeaterEnabled ?? false },

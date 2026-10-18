@@ -114,6 +114,7 @@ struct CLICompletionEngineTests {
     #expect(suggestions.contains("off"))
     #expect(suggestions.contains("sync"))
     #expect(suggestions.contains("advert"))
+    #expect(suggestions.contains("diag"))
   }
 
   @Test
@@ -588,6 +589,7 @@ struct CLICompletionEngineTests {
     let engine = createEngine()
     #expect(engine.completions(for: "set cad ", isLocal: false) == ["off", "on"])
     #expect(engine.completions(for: "set radio.fem.rxgain ", isLocal: false) == ["off", "on"])
+    #expect(engine.completions(for: "set radio.fem.txgain ", isLocal: false) == ["off", "on"])
   }
 
   @Test
@@ -876,5 +878,33 @@ struct CLICompletionEngineTests {
     #expect(setKeys.contains("fan.lo"))
     #expect(!setKeys.contains("wifi.status"))
     #expect(engine.completions(for: "set radio.fem.txgain ", isLocal: true) == ["off", "on"])
+  }
+
+  @Test
+  func `room target omits repeat`() {
+    let engine = createEngine()
+    #expect(engine.completions(for: "set re", isLocal: false, remoteTarget: .room).isEmpty)
+    #expect(!engine.completions(for: "get ", isLocal: false, remoteTarget: .room).contains("repeat"))
+  }
+
+  @Test
+  func `repeater target omits room.post`() {
+    let engine = createEngine()
+    let suggestions = engine.completions(for: "room", isLocal: false, remoteTarget: .repeater)
+    #expect(!suggestions.contains("room.post"))
+  }
+
+  @Test
+  func `nil target keeps the union`() {
+    let engine = createEngine()
+    #expect(engine.completions(for: "room", isLocal: false).contains("room.post"))
+    #expect(engine.completions(for: "set re", isLocal: false).contains("repeat"))
+  }
+
+  @Test
+  func `power is a remote command`() {
+    let engine = createEngine()
+    #expect(engine.completions(for: "pow", isLocal: false).contains("power"))
+    #expect(!engine.completions(for: "pow", isLocal: true).contains("power"))
   }
 }

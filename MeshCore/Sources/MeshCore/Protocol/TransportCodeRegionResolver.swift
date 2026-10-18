@@ -64,6 +64,14 @@ public enum TransportCodeRegionResolver {
     return rewriteReservedCode(rawCode)
   }
 
+  /// A stored transport code is unscoped when its first little-endian UInt16 is 0.
+  /// Codes shorter than 2 bytes are not unscoped.
+  public static func isUnscoped(_ transportCode: Data) -> Bool {
+    guard transportCode.count >= 2 else { return false }
+    let code = UInt16(transportCode[0]) | (UInt16(transportCode[1]) << 8)
+    return code == 0
+  }
+
   /// Rewrite the reserved transport-code values to their reserved-boundary
   /// neighbors. Mirrors firmware `TransportKey::calcTransportCode` lines 12-15.
   /// Internal for direct boundary-test coverage.

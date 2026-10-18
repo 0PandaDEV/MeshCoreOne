@@ -255,6 +255,9 @@
 /* Location: RepeaterSettingsView.swift - Behavior section footer */
 "remoteNodes.settings.behaviorFooter" = "广播间隔、泛洪跳数和转发节点模式。";
 
+/* Location: RepeaterSettingsView.swift - Behavior section footer when both advert intervals are 0 */
+"remoteNodes.settings.hiddenFromDiscoverFooter" = "两个广播间隔都设为 0 时，此转发节点不会响应发现探测。";
+
 /* Location: RepeaterSettingsView.swift - Device actions section header */
 "remoteNodes.settings.deviceActions" = "设备操作";
 

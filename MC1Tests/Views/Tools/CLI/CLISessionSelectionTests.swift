@@ -63,8 +63,8 @@ struct CLISessionSelectionTests {
     let viewModel = CLIToolViewModel()
     viewModel.localDeviceName = "Test radio"
     viewModel.remoteSessions = [
-      .remote(id: UUID(), name: "Alpha", pathLength: 1),
-      .remote(id: UUID(), name: "Bravo", pathLength: 2)
+      .remote(id: UUID(), name: "Alpha", pathLength: 1, remoteTarget: .repeater),
+      .remote(id: UUID(), name: "Bravo", pathLength: 2, remoteTarget: .room)
     ]
     return viewModel
   }

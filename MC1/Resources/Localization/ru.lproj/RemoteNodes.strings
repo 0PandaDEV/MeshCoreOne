@@ -252,6 +252,9 @@
 /* Location: RepeaterSettingsView.swift - Behavior section footer */
 "remoteNodes.settings.behaviorFooter" = "Интервалы объявлений, переходы рассылки и режим ретранслятора.";
 
+/* Location: RepeaterSettingsView.swift - Behavior section footer when both advert intervals are 0 */
+"remoteNodes.settings.hiddenFromDiscoverFooter" = "Если оба интервала объявлений равны 0, этот ретранслятор не ответит на пинг обнаружения.";
+
 /* Location: RepeaterSettingsView.swift - Device actions section header */
 "remoteNodes.settings.deviceActions" = "Действия с устройством";
 

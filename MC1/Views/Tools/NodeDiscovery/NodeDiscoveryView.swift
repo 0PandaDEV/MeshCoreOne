@@ -126,7 +126,12 @@ extension NodeDiscoveryWorkspace {
           ContentUnavailableView {
             Label(L10n.Tools.Tools.NodeDiscovery.noResults(viewModel.filter.localizedTitle), systemImage: "magnifyingglass")
           } description: {
-            Text(L10n.Tools.Tools.NodeDiscovery.noResultsDescription(viewModel.filter.localizedTitle))
+            VStack(spacing: 8) {
+              Text(L10n.Tools.Tools.NodeDiscovery.noResultsDescription(viewModel.filter.localizedTitle))
+              if viewModel.filter == .repeaters {
+                Text(L10n.Tools.Tools.NodeDiscovery.hiddenRepeatersNote)
+              }
+            }
           }
           .listRowBackground(Color.clear)
           .listRowSeparator(.hidden)

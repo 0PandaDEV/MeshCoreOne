@@ -20,7 +20,11 @@ extension CLIToolViewModel {
     }
 
     let isLocal = activeSession?.isLocal ?? true
-    let suggestions = completionEngine.completions(for: currentInput, isLocal: isLocal)
+    let suggestions = completionEngine.completions(
+      for: currentInput,
+      isLocal: isLocal,
+      remoteTarget: activeSession?.remoteTarget
+    )
 
     guard let first = suggestions.first else {
       ghostText = ""
@@ -64,7 +68,11 @@ extension CLIToolViewModel {
 
     // Generate new suggestions
     let isLocal = activeSession?.isLocal ?? true
-    let suggestions = completionEngine.completions(for: currentInput, isLocal: isLocal)
+    let suggestions = completionEngine.completions(
+      for: currentInput,
+      isLocal: isLocal,
+      remoteTarget: activeSession?.remoteTarget
+    )
 
     guard !suggestions.isEmpty else {
       tabSuggestions = nil

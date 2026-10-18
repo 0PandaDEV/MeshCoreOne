@@ -255,6 +255,9 @@
 /* Location: RepeaterSettingsView.swift - Behavior section footer */
 "remoteNodes.settings.behaviorFooter" = "애드버트 간격, 플러드 홉 및 리피터 모드.";
 
+/* Location: RepeaterSettingsView.swift - Behavior section footer when both advert intervals are 0 */
+"remoteNodes.settings.hiddenFromDiscoverFooter" = "두 애드버트 간격을 모두 0으로 설정하면 이 리피터는 탐색 핑에 응답하지 않습니다.";
+
 /* Location: RepeaterSettingsView.swift - Device actions section header */
 "remoteNodes.settings.deviceActions" = "기기 작업";
 

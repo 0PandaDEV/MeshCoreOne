@@ -13,6 +13,12 @@ final class RepeaterSettingsViewModel {
 
   var advertIntervalMinutes: Int?
   var floodAdvertIntervalHours: Int?
+
+  /// Both form fields at 0 means this repeater does not answer Discover. Nil is not 0.
+  var isHiddenFromDiscover: Bool {
+    advertIntervalMinutes == 0 && floodAdvertIntervalHours == 0
+  }
+
   var floodMaxHops: Int?
   var repeaterEnabled: Bool?
   private var originalAdvertIntervalMinutes: Int?

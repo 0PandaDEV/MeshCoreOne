@@ -173,10 +173,15 @@ extension CLIToolViewModel {
       try? await remoteNodeService.storePassword(password, forNodeKey: contact.publicKey)
 
       // Success - create CLI session
+      guard let remoteTarget = CLIRemoteTarget(contactType: contact.type) else {
+        appendOutput("\(L10n.Tools.Tools.Cli.nodeNotFound) \(contact.name)", type: .error)
+        return
+      }
       let cliSession = CLISession.remote(
         id: remoteSession.id,
         name: contact.name,
-        pathLength: contact.outPathLength
+        pathLength: contact.outPathLength,
+        remoteTarget: remoteTarget
       )
       remoteSessions.append(cliSession)
       activeSession = cliSession

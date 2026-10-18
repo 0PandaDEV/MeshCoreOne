@@ -3667,6 +3667,8 @@ public enum L10n {
         public static let floodMaxValidation = L10n.tr("RemoteNodes", "remoteNodes.settings.floodMaxValidation", fallback: "Accepts 0-64 hops")
         /// Location: RepeaterSettingsView.swift - Frequency label
         public static let frequencyMHz = L10n.tr("RemoteNodes", "remoteNodes.settings.frequencyMHz", fallback: "Frequency (MHz)")
+        /// Location: RepeaterSettingsView.swift - Behavior section footer when both advert intervals are 0
+        public static let hiddenFromDiscoverFooter = L10n.tr("RemoteNodes", "remoteNodes.settings.hiddenFromDiscoverFooter", fallback: "With both advert intervals set to 0, this repeater won't respond to the discovery ping.")
         /// Location: RepeaterSettingsView.swift - Hops unit
         public static let hops = L10n.tr("RemoteNodes", "remoteNodes.settings.hops", fallback: "hops")
         /// Location: RepeaterSettingsView.swift - Hours unit
@@ -6353,6 +6355,8 @@ public enum L10n {
       public enum NodeDiscovery {
         /// Location: NodeDiscoveryView.swift - Error alert title
         public static let errorTitle = L10n.tr("Tools", "tools.nodeDiscovery.errorTitle", fallback: "Scan Failed")
+        /// Location: NodeDiscoveryView.swift - Empty state when the repeater filter hides zero-interval nodes
+        public static let hiddenRepeatersNote = L10n.tr("Tools", "tools.nodeDiscovery.hiddenRepeatersNote", fallback: "Repeaters with both advert intervals set to 0 don't respond to the discovery ping.")
         /// Location: NodeDiscoveryView.swift - No results empty state title
         public static func noResults(_ p1: Any) -> String {
           return L10n.tr("Tools", "tools.nodeDiscovery.noResults", String(describing: p1), fallback: "No %@ Found")
@@ -6529,6 +6533,8 @@ public enum L10n {
         public static let regionLabel = L10n.tr("Tools", "tools.rxLog.regionLabel", fallback: "Region:")
         /// Location: RxLogView.swift - Unresolved region value
         public static let regionUnresolved = L10n.tr("Tools", "tools.rxLog.regionUnresolved", fallback: "Unknown")
+        /// Location: RxLogView.swift - Unscoped region value
+        public static let regionUnscoped = L10n.tr("Tools", "tools.rxLog.regionUnscoped", fallback: "Unscoped")
         /// Location: RxLogView.swift - Filter menu section header
         public static let routeType = L10n.tr("Tools", "tools.rxLog.routeType", fallback: "Route Type")
         /// Location: RxLogView.swift - RSSI label

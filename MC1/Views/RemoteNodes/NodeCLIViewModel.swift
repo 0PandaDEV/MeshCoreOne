@@ -28,6 +28,7 @@ final class NodeCLIViewModel {
   // MARK: - Dependencies
 
   private var sessionName: String = ""
+  private var remoteTarget: CLIRemoteTarget?
   private var sendRawCommand: (@MainActor (_ command: String, _ timeout: Duration) async throws -> String)?
   private var currentCommandTask: Task<Void, Never>?
   private var hasConfigured = false
@@ -58,9 +59,11 @@ final class NodeCLIViewModel {
   /// so toggling the Settings/CLI segment does not re-banner.
   func configure(
     sessionName: String,
+    remoteTarget: CLIRemoteTarget,
     sendRawCommand: @escaping @MainActor (_ command: String, _ timeout: Duration) async throws -> String
   ) {
     self.sessionName = sessionName
+    self.remoteTarget = remoteTarget
     self.sendRawCommand = sendRawCommand
     guard !hasConfigured else { return }
     hasConfigured = true
@@ -237,7 +240,12 @@ extension NodeCLIViewModel {
   /// session-management commands the node firmware can't handle.
   func updateGhostText(cursorAtEnd: Bool) {
     guard !currentInput.isEmpty, cursorAtEnd else { ghostText = ""; return }
-    let suggestions = completionEngine.completions(for: currentInput, isLocal: false, includeSessionCommands: false)
+    let suggestions = completionEngine.completions(
+      for: currentInput,
+      isLocal: false,
+      remoteTarget: remoteTarget,
+      includeSessionCommands: false
+    )
     guard let first = suggestions.first else { ghostText = ""; return }
     let parts = currentInput.split(separator: " ", omittingEmptySubsequences: false)
     let lastPart = parts.last.map(String.init) ?? ""
@@ -262,7 +270,12 @@ extension NodeCLIViewModel {
       }
       return suggestions
     }
-    let suggestions = completionEngine.completions(for: currentInput, isLocal: false, includeSessionCommands: false)
+    let suggestions = completionEngine.completions(
+      for: currentInput,
+      isLocal: false,
+      remoteTarget: remoteTarget,
+      includeSessionCommands: false
+    )
     guard !suggestions.isEmpty else {
       tabSuggestions = nil
       tabSelectionIndex = nil

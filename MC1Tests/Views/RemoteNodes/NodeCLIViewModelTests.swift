@@ -25,7 +25,7 @@ struct NodeCLIViewModelTests {
 
   private func makeViewModel(spy: SendSpy) -> NodeCLIViewModel {
     let viewModel = NodeCLIViewModel()
-    viewModel.configure(sessionName: "TestNode", sendRawCommand: spy.closure())
+    viewModel.configure(sessionName: "TestNode", remoteTarget: .repeater, sendRawCommand: spy.closure())
     return viewModel
   }
 
@@ -40,7 +40,7 @@ struct NodeCLIViewModelTests {
   func `configure is idempotent: re-configuring does not duplicate the banner`() {
     let viewModel = makeViewModel(spy: SendSpy())
     let lineCountAfterFirstConfigure = viewModel.outputLines.count
-    viewModel.configure(sessionName: "TestNode", sendRawCommand: SendSpy().closure())
+    viewModel.configure(sessionName: "TestNode", remoteTarget: .repeater, sendRawCommand: SendSpy().closure())
     #expect(viewModel.outputLines.count == lineCountAfterFirstConfigure)
   }
 
@@ -164,7 +164,7 @@ struct NodeCLIViewModelTests {
   @Test
   func `Output is capped at 1000 lines`() {
     let viewModel = NodeCLIViewModel()
-    viewModel.configure(sessionName: "N", sendRawCommand: { _, _ in "" })
+    viewModel.configure(sessionName: "N", remoteTarget: .repeater, sendRawCommand: { _, _ in "" })
     for i in 0..<1001 {
       viewModel.appendOutput("line\(i)", type: .response)
     }

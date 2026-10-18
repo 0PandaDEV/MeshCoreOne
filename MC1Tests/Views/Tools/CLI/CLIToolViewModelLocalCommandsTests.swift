@@ -505,7 +505,7 @@ struct CLIToolViewModelLocalCommandsTests {
   func `get custom on a remote session does not touch the settings service`() async {
     let mock = MockConfigurationSession(customVars: ["gps": "0"])
     let viewModel = makeViewModel(mock: mock)
-    viewModel.activeSession = .remote(id: UUID(), name: "Repeater", pathLength: 1)
+    viewModel.activeSession = .remote(id: UUID(), name: "Repeater", pathLength: 1, remoteTarget: .repeater)
 
     await run(viewModel, "get custom")
 
@@ -549,7 +549,7 @@ struct CLIToolViewModelLocalCommandsTests {
   func `local get on a remote session does not touch the settings service`() async {
     let mock = MockConfigurationSession(name: "FieldNode")
     let viewModel = makeViewModel(mock: mock)
-    viewModel.activeSession = .remote(id: UUID(), name: "Repeater", pathLength: 1)
+    viewModel.activeSession = .remote(id: UUID(), name: "Repeater", pathLength: 1, remoteTarget: .repeater)
 
     await run(viewModel, "get name")
 

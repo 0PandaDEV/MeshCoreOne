@@ -255,6 +255,9 @@
 /* Location: RepeaterSettingsView.swift - Behavior section footer */
 "remoteNodes.settings.behaviorFooter" = "Ankündigungsintervalle, Flood-Sprünge und Repeatermodus.";
 
+/* Location: RepeaterSettingsView.swift - Behavior section footer when both advert intervals are 0 */
+"remoteNodes.settings.hiddenFromDiscoverFooter" = "Wenn beide Ankündigungsintervalle auf 0 stehen, antwortet dieser Repeater nicht auf den Erkennungsping.";
+
 /* Location: RepeaterSettingsView.swift - Device actions section header */
 "remoteNodes.settings.deviceActions" = "Geräteaktionen";
 

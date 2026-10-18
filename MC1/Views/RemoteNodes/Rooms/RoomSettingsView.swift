@@ -53,7 +53,7 @@ struct RoomSettingsView: View {
         session: session
       )
       if let send = viewModel.makeNodeCLISendClosure(session: session) {
-        cliViewModel.configure(sessionName: session.name, sendRawCommand: send)
+        cliViewModel.configure(sessionName: session.name, remoteTarget: .room, sendRawCommand: send)
       }
     }
     .onChange(of: managementTab) { _, newTab in
