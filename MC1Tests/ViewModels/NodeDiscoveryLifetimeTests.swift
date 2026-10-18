@@ -75,6 +75,21 @@ struct NodeDiscoveryLifetimeTests {
   }
 
   @Test
+  func `repeater scan prompt includes hidden repeater guidance`() {
+    let repeater = NodeDiscoveryFilter.repeaters.scanPromptDescription
+    let repeaterPrompt = L10n.Tools.Tools.NodeDiscovery.scanPromptDescription(
+      NodeDiscoveryFilter.repeaters.localizedTitle
+    )
+    #expect(repeater.hasPrefix(repeaterPrompt))
+    #expect(repeater.contains(L10n.Tools.Tools.NodeDiscovery.hiddenRepeatersNote))
+
+    let sensors = NodeDiscoveryFilter.sensors.scanPromptDescription
+    #expect(sensors == L10n.Tools.Tools.NodeDiscovery.scanPromptDescription(
+      L10n.Tools.Tools.NodeDiscovery.sensors
+    ))
+  }
+
+  @Test
   func `hiding during load, send, and listen still appends the response`() async throws {
     let session = MeshCoreSession(transport: MockTransport())
     let (viewModel, box) = makeViewModel(session: session)

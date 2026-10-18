@@ -22,6 +22,12 @@ enum NodeDiscoveryFilter: String, CaseIterable {
     case .sensors: L10n.Tools.Tools.NodeDiscovery.sensors
     }
   }
+
+  var scanPromptDescription: String {
+    let description = L10n.Tools.Tools.NodeDiscovery.scanPromptDescription(localizedTitle)
+    guard self == .repeaters else { return description }
+    return "\(description)\n\n\(L10n.Tools.Tools.NodeDiscovery.hiddenRepeatersNote)"
+  }
 }
 
 enum NodeDiscoverySortOrder: String, CaseIterable {

@@ -98,7 +98,7 @@ extension NodeDiscoveryWorkspace {
       ContentUnavailableView {
         Label(L10n.Tools.Tools.NodeDiscovery.scanPrompt(viewModel.filter.localizedTitle), systemImage: "magnifyingglass")
       } description: {
-        Text(L10n.Tools.Tools.NodeDiscovery.scanPromptDescription(viewModel.filter.localizedTitle))
+        Text(viewModel.filter.scanPromptDescription)
       }
 
       Spacer()
@@ -126,12 +126,7 @@ extension NodeDiscoveryWorkspace {
           ContentUnavailableView {
             Label(L10n.Tools.Tools.NodeDiscovery.noResults(viewModel.filter.localizedTitle), systemImage: "magnifyingglass")
           } description: {
-            VStack(spacing: 8) {
-              Text(L10n.Tools.Tools.NodeDiscovery.noResultsDescription(viewModel.filter.localizedTitle))
-              if viewModel.filter == .repeaters {
-                Text(L10n.Tools.Tools.NodeDiscovery.hiddenRepeatersNote)
-              }
-            }
+            Text(L10n.Tools.Tools.NodeDiscovery.noResultsDescription(viewModel.filter.localizedTitle))
           }
           .listRowBackground(Color.clear)
           .listRowSeparator(.hidden)
