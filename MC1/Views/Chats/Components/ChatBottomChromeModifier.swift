@@ -295,6 +295,8 @@ private struct ChatBottomChromeModifier<Chrome: View>: ViewModifier {
       }
 
       @objc private func keyboardWillChange(_ notification: Notification) {
+        // Sheet dismissal restores the keyboard without becomeFirstResponder.
+        prepareForKeyboardPresentation()
         synchronizePopFreeze()
       }
 

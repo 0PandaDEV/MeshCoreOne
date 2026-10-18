@@ -121,6 +121,63 @@ final class ChatKeyboardSheetDismissalTests: XCTestCase {
     try await exerciseSheet(interruptingDismissal: false)
   }
 
+  func testChannelInfoSheetDismissalKeepsChatAboveVisibleKeyboard() async throws {
+    let scene = try await foregroundScene()
+    let window = try XCTUnwrap(scene.keyWindow)
+    let originalController = window.rootViewController
+    let appState = AppState()
+    let presentation = InfoPresentation()
+    let controller = UIHostingController(rootView: InfoSheetHarness(appState: appState, presentation: presentation))
+    window.rootViewController = controller
+    window.makeKeyAndVisible()
+    let frames = KeyboardNotificationTop(window: window)
+    frames.start()
+    defer {
+      window.endEditing(true)
+      window.rootViewController = originalController
+      window.makeKeyAndVisible()
+      appState.shutdown()
+    }
+
+    let mounted = await waitUntil { self.findComposer(in: window) != nil }
+    XCTAssertTrue(mounted, "The production composer did not mount")
+    let composer = try XCTUnwrap(findComposer(in: window))
+    try await Task.sleep(for: Metrics.settleInterval)
+    let restingTop = window.bounds.maxY
+    disconnectHardwareKeyboard()
+    XCTAssertTrue(composer.becomeFirstResponder())
+    let shown = await waitUntil {
+      let notified = frames.top.map { $0 < restingTop - Metrics.minimumKeyboardHeight } ?? false
+      let guide = self.keyboardTop(in: controller, window: window) < restingTop - Metrics.minimumKeyboardHeight
+      let visual = self.visualKeyboardTop(in: scene, window: window)
+        .map { $0 < restingTop - Metrics.minimumKeyboardHeight } ?? false
+      return notified || guide || visual
+    }
+    XCTAssertTrue(shown, """
+    The software keyboard must appear before the info sheet. \
+    notification=\(String(describing: frames.top)) \
+    guide=\(keyboardTop(in: controller, window: window)) \
+    visual=\(String(describing: visualKeyboardTop(in: scene, window: window))) \
+    firstResponder=\(composer.isFirstResponder) bounds=\(window.bounds)
+    """)
+    try await Task.sleep(for: Metrics.settleInterval)
+
+    presentation.showInfo = true
+    let presented = await waitUntil { self.presentedController(in: controller) != nil }
+    XCTAssertTrue(presented, "The info sheet must present while the composer is first responder")
+    try await Task.sleep(for: Metrics.settleInterval)
+    presentation.showInfo = false
+    let dismissed = await waitUntil { self.presentedController(in: controller) == nil }
+    XCTAssertTrue(dismissed, "The info sheet must dismiss")
+
+    let settled = await waitUntil(timeout: Metrics.timeout) {
+      self.chatCoversKeyboard(composer: composer, scene: scene, window: window, notificationTop: frames.top) == nil
+    }
+    XCTAssertTrue(settled, chatCoversKeyboard(
+      composer: composer, scene: scene, window: window, notificationTop: frames.top
+    ) ?? "The chat stayed under the keyboard after the info sheet dismissed")
+  }
+
   func testKeyboardStaysDismissedAfterLargeMessageActionsInterruptsDismissal() async throws {
     try await exerciseSheet(interruptingDismissal: true, usesLargeSheet: true)
   }
@@ -269,6 +326,77 @@ final class ChatKeyboardSheetDismissalTests: XCTestCase {
     return view.subviews.compactMap { findComposer(in: $0) }.first
   }
 
+  /// Nil when the composer and the latest row sit above the visible keyboard.
+  private func chatCoversKeyboard(
+    composer: UIView, scene: UIWindowScene, window: UIWindow, notificationTop: CGFloat?
+  ) -> String? {
+    let visualTop = visualKeyboardTop(in: scene, window: window)
+    let keyboardTop = visualTop ?? notificationTop ?? window.bounds.maxY
+    guard keyboardTop < window.bounds.maxY - Metrics.minimumKeyboardHeight else { return nil }
+    let composerFrame = composer.convert(composer.bounds, to: window)
+    let guideTop = window.rootViewController?.view.keyboardLayoutGuide.layoutFrame.minY
+    if composerFrame.maxY > keyboardTop + Metrics.tolerance {
+      return """
+      Composer maxY \(composerFrame.maxY) is under keyboard top \(keyboardTop) \
+      (visual=\(String(describing: visualTop)), notification=\(String(describing: notificationTop)), \
+      guide=\(String(describing: guideTop)), firstResponder=\(composer.isFirstResponder))
+      """
+    }
+    if let collection = findCollection(in: window),
+       let cell = collection.visibleCells.max(by: { $0.frame.maxY < $1.frame.maxY }) {
+      let rowBottom = cell.convert(cell.bounds, to: window).maxY
+      if rowBottom > keyboardTop + Metrics.tolerance {
+        return "Row maxY \(rowBottom) is under keyboard top \(keyboardTop)"
+      }
+    }
+    return nil
+  }
+
+  private func visualKeyboardTop(in scene: UIWindowScene, window: UIWindow) -> CGFloat? {
+    var top: CGFloat?
+    for candidate in scene.windows {
+      visit(candidate) { view in
+        let name = String(describing: type(of: view))
+        guard name.contains("InputSetHost") || name.contains("UIKeyboard") else { return }
+        let frame = window.convert(view.bounds, from: view)
+        guard frame.height > Metrics.minimumKeyboardHeight,
+              frame.maxY >= window.bounds.maxY - Metrics.tolerance,
+              frame.minY < window.bounds.maxY - Metrics.minimumKeyboardHeight else { return }
+        top = min(top ?? frame.minY, frame.minY)
+      }
+    }
+    return top
+  }
+
+  private func visit(_ view: UIView, _ body: (UIView) -> Void) {
+    body(view)
+    for child in view.subviews {
+      visit(child, body)
+    }
+  }
+
+  private func findCollection(in view: UIView) -> UICollectionView? {
+    if let collection = view as? UICollectionView { return collection }
+    return view.subviews.compactMap { findCollection(in: $0) }.first
+  }
+
+  private func disconnectHardwareKeyboard() {
+    let selector = NSSelectorFromString("setHardwareLayout:")
+    for mode in UITextInputMode.activeInputModes where mode.responds(to: selector) {
+      mode.perform(selector, with: nil)
+    }
+  }
+
+  private func foregroundScene() async throws -> UIWindowScene {
+    var readyScene: UIWindowScene?
+    _ = await waitUntil(timeout: Metrics.sceneTimeout) {
+      readyScene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        .first { $0.activationState == .foregroundActive && $0.keyWindow != nil }
+      return readyScene != nil
+    }
+    return try XCTUnwrap(readyScene)
+  }
+
   private func waitUntil(timeout: TimeInterval = Metrics.timeout, _ condition: () -> Bool) async -> Bool {
     let deadline = Date(timeIntervalSinceNow: timeout)
     while Date() < deadline {
@@ -276,5 +404,124 @@ final class ChatKeyboardSheetDismissalTests: XCTestCase {
       try? await Task.sleep(for: Metrics.pollInterval)
     }
     return condition()
+  }
+}
+
+@Observable
+@MainActor
+private final class InfoPresentation {
+  var showInfo = false
+}
+
+private struct InfoSheetHarness: View {
+  let appState: AppState
+  @Bindable var presentation: InfoPresentation
+  private let rows = (0..<ChatKeyboardSheetDismissalTests.RowCount.rowCount).map {
+    ChatKeyboardSheetDismissalTests.InfoRow(index: $0)
+  }
+
+  @State private var text = ""
+  @State private var isAtBottom = true
+  @State private var unreadCount = 0
+  @State private var columnVisibility = NavigationSplitViewVisibility.detailOnly
+  @State private var preferredColumn = NavigationSplitViewColumn.detail
+  @State private var selectedTab = 0
+
+  var body: some View {
+    TabView(selection: $selectedTab) {
+      Tab("Chats", systemImage: "message.fill", value: 0) {
+        NavigationSplitView(
+          columnVisibility: $columnVisibility,
+          preferredCompactColumn: $preferredColumn
+        ) {
+          Color.clear
+        } detail: {
+          NavigationStack {
+            conversation
+          }
+        }
+        .navigationSplitViewStyle(.balanced)
+      }
+    }
+    .sectionSplitChrome(tabBarVisibility: .hidden)
+    .environment(\.appState, appState)
+    .environment(\.horizontalSizeClass, .compact)
+    .environment(\.scenePhase, .active)
+  }
+
+  private var conversation: some View {
+    ChatTiledView(
+      items: rows,
+      cellContent: { row in
+        Color.blue.frame(height: ChatKeyboardSheetDismissalTests.RowCount.rowHeight)
+          .overlay { Text("\(row.index)") }
+      },
+      isAtBottom: $isAtBottom, unreadCount: $unreadCount
+    )
+    .chatBottomChrome(canvas: Color(.systemBackground)) {
+      ChatInputBar(
+        text: $text, focusRequest: 0, placeholder: "Keyboard test",
+        maxBytes: ProtocolLimits.maxDirectMessageLength, isEncrypted: false,
+        onSend: { _ in }
+      )
+    }
+    .navigationHeader(
+      title: "Channel", subtitle: "Region", contentScrollsUnderBar: true,
+      onTitleTap: { presentation.showInfo = true }
+    )
+    .sheet(isPresented: $presentation.showInfo) {
+      NavigationStack {
+        Form {
+          ForEach(0..<12, id: \.self) { index in
+            Text("Channel info \(index)")
+          }
+        }
+        .navigationTitle("Info")
+      }
+    }
+  }
+}
+
+extension ChatKeyboardSheetDismissalTests {
+  struct InfoRow: Identifiable, Hashable, Sendable {
+    let id = UUID()
+    let index: Int
+  }
+
+  enum RowCount {
+    static let rowCount = 40
+    static let rowHeight: CGFloat = 44
+  }
+}
+
+@MainActor
+private final class KeyboardNotificationTop: NSObject {
+  var top: CGFloat?
+  private weak var window: UIWindow?
+
+  init(window: UIWindow) {
+    self.window = window
+  }
+
+  func start() {
+    for name in [
+      UIResponder.keyboardWillChangeFrameNotification, UIResponder.keyboardDidChangeFrameNotification,
+      UIResponder.keyboardWillShowNotification, UIResponder.keyboardDidShowNotification,
+      UIResponder.keyboardWillHideNotification, UIResponder.keyboardDidHideNotification,
+    ] {
+      NotificationCenter.default.addObserver(self, selector: #selector(changed), name: name, object: nil)
+    }
+  }
+
+  deinit {
+    NotificationCenter.default.removeObserver(self)
+  }
+
+  @objc private func changed(_ notification: Notification) {
+    guard let window, let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else {
+      return
+    }
+    let converted = window.convert(frame, from: nil)
+    top = converted.minY
   }
 }
