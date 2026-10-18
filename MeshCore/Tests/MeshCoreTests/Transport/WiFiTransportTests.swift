@@ -80,7 +80,7 @@ struct WiFiTransportTests {
     let transport = WiFiTransport()
     let callTracker = CallTracker()
 
-    await transport.setDisconnectionHandler { _ in
+    await transport.setDisconnectionHandler { _, _ in
       callTracker.markCalled()
     }
 
@@ -98,7 +98,7 @@ struct WiFiTransportTests {
     let transport = WiFiTransport()
     let callTracker = CallTracker()
 
-    await transport.setDisconnectionHandler { _ in
+    await transport.setDisconnectionHandler { _, _ in
       callTracker.markCalled()
     }
 
@@ -204,7 +204,7 @@ struct WiFiTransportTests {
 
     let transport = WiFiTransport()
     let disconnectionTracker = CallTracker()
-    await transport.setDisconnectionHandler { _ in
+    await transport.setDisconnectionHandler { _, _ in
       disconnectionTracker.markCalled()
     }
     await transport.setConnectionInfo(host: "127.0.0.1", port: port)

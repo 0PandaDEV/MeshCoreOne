@@ -42,7 +42,7 @@ public actor WiFiTransport: MeshTransport {
   private var connectContinuation: CheckedContinuation<Void, Error>?
 
   /// Disconnection notification
-  private var disconnectionHandler: (@Sendable (Error?) -> Void)?
+  private var disconnectionHandler: (@Sendable (Error?, CFAbsoluteTime) -> Void)?
 
   // MARK: - Configuration
 
@@ -84,7 +84,7 @@ public actor WiFiTransport: MeshTransport {
   }
 
   /// Sets a handler to be called when the connection is unexpectedly lost.
-  public func setDisconnectionHandler(_ handler: @escaping @Sendable (Error?) -> Void) {
+  public func setDisconnectionHandler(_ handler: @escaping @Sendable (Error?, CFAbsoluteTime) -> Void) {
     disconnectionHandler = handler
   }
 
@@ -284,7 +284,7 @@ public actor WiFiTransport: MeshTransport {
         continuation.resume(throwing: WiFiTransportError.connectionFailed(error.localizedDescription))
       } else {
         // Connection was established then lost - notify handler
-        disconnectionHandler?(error)
+        disconnectionHandler?(error, CFAbsoluteTimeGetCurrent())
       }
 
     case .cancelled:
@@ -293,7 +293,7 @@ public actor WiFiTransport: MeshTransport {
       _isConnected = false
       // Only report if this wasn't during initial connection and wasn't user-initiated
       if wasConnected, connectContinuation == nil {
-        disconnectionHandler?(nil)
+        disconnectionHandler?(nil, CFAbsoluteTimeGetCurrent())
       }
 
     case let .waiting(error):
@@ -353,7 +353,7 @@ public actor WiFiTransport: MeshTransport {
     connection = nil
     frameDecoder.reset()
     dataContinuation.finish()
-    disconnectionHandler?(error)
+    disconnectionHandler?(error, CFAbsoluteTimeGetCurrent())
   }
 
   private func processReceivedData(_ data: Data) {

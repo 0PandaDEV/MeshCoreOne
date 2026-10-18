@@ -276,4 +276,162 @@ struct NodeCLIViewModelTests {
     #expect(block.contains("Available commands"))
     #expect(block.contains("Reset node statistics"))
   }
+
+  @Test(arguments: [
+    "set wifi.pwd ",
+    "set wifi.pwd secret  ",
+    "set wifi.ssid  my net  ",
+    "set wifi.ssid café"
+  ])
+  func `radio sends echoes and recalls the submitted line`(_ line: String) async throws {
+    let spy = SendSpy()
+    spy.result = "OK"
+    let viewModel = makeViewModel(spy: spy, remoteTarget: .radio)
+
+    viewModel.executeCommand(line)
+    try await waitUntil("line settled") {
+      spy.calls.contains { $0.command == line } && !viewModel.isWaitingForResponse
+    }
+
+    let echoed = try #require(viewModel.outputLines.last { $0.type == .command })
+    #expect(viewModel.getResponseBlock(containing: echoed) == line)
+    viewModel.historyUp()
+    #expect(viewModel.currentInput == line)
+
+    viewModel.executeCommand(viewModel.currentInput)
+    try await waitUntil("line replayed") { spy.calls.filter { $0.command == line }.count == 2 }
+  }
+
+  @Test
+  func `radio whitespace and spaced app commands do not send`() async throws {
+    let spy = SendSpy()
+    let viewModel = makeViewModel(spy: spy, remoteTarget: .radio)
+
+    viewModel.executeCommand("   ")
+    viewModel.executeCommand("  help  ")
+    try await waitUntil("help output appears") {
+      viewModel.outputLines.contains { $0.text.contains("Available commands") }
+    }
+    viewModel.executeCommand("  clear  ")
+
+    #expect(spy.calls.isEmpty)
+    viewModel.historyUp()
+    #expect(viewModel.currentInput == "clear")
+    viewModel.historyUp()
+    #expect(viewModel.currentInput == "help")
+  }
+
+  @Test
+  func `repeater and room forwarding still trims and matches no-reply commands`() async throws {
+    let repeater = SendSpy()
+    repeater.error = RemoteNodeError.timeout
+    let repeaterModel = makeViewModel(spy: repeater, remoteTarget: .repeater)
+    repeaterModel.executeCommand("poweroff ")
+    try await waitUntil("repeater poweroff settled") {
+      repeater.calls.contains { $0.command == "poweroff" } && !repeaterModel.isWaitingForResponse
+    }
+    repeaterModel.executeCommand("set wifi.pwd ")
+    try await waitUntil("repeater commands sent") { repeater.calls.count == 2 }
+    #expect(repeater.calls.map(\.command) == ["poweroff", "set wifi.pwd"])
+    #expect(repeater.calls[0].timeout == .seconds(2))
+    #expect(repeater.calls[1].timeout == .seconds(10))
+    #expect(repeaterModel.outputLines.contains {
+      $0.text == L10n.RemoteNodes.RemoteNodes.NodeCli.powerOffSent && $0.type == .success
+    })
+
+    let room = SendSpy()
+    room.error = RemoteNodeError.timeout
+    let roomModel = makeViewModel(spy: room, remoteTarget: .room)
+    roomModel.executeCommand("reboot ")
+    try await waitUntil("room reboot sent") { room.calls.contains { $0.command == "reboot" } }
+    #expect(room.calls[0].timeout == .seconds(2))
+    #expect(roomModel.outputLines.contains {
+      $0.text == L10n.RemoteNodes.RemoteNodes.NodeCli.rebootSent && $0.type == .success
+    })
+  }
+
+  @Test(arguments: radioNoReplyLines)
+  func `radio empty reply follows the transmitted line`(_ sample: RadioNoReplyLine) async throws {
+    let spy = SendSpy()
+    spy.result = ""
+    let viewModel = makeViewModel(spy: spy, remoteTarget: .radio)
+    viewModel.executeCommand(sample.line)
+    try await waitUntil("empty reply settled") { !viewModel.isWaitingForResponse && !spy.calls.isEmpty }
+    let call = try #require(spy.calls.first)
+    #expect(call.command == sample.line)
+    #expect(call.timeout == (sample.kind == .ordinary ? .seconds(10) : .seconds(2)))
+    if let sent = sample.kind.sentText {
+      #expect(viewModel.outputLines.contains { $0.text == sent && $0.type == .success })
+    } else {
+      #expect(!viewModel.outputLines.contains { $0.type == .success })
+    }
+  }
+
+  @Test(arguments: radioNoReplyLines)
+  func `radio timeout follows the transmitted line`(_ sample: RadioNoReplyLine) async throws {
+    let spy = SendSpy()
+    spy.error = RemoteNodeError.timeout
+    let viewModel = makeViewModel(spy: spy, remoteTarget: .radio)
+    viewModel.executeCommand(sample.line)
+    try await waitUntil("timeout settled") { !viewModel.isWaitingForResponse && !spy.calls.isEmpty }
+    let call = try #require(spy.calls.first)
+    #expect(call.command == sample.line)
+    #expect(call.timeout == (sample.kind == .ordinary ? .seconds(10) : .seconds(2)))
+    if let sent = sample.kind.sentText {
+      #expect(viewModel.outputLines.contains { $0.text == sent && $0.type == .success })
+    } else {
+      let noReply = L10n.RemoteNodes.RemoteNodes.NodeCli.radioNoReply("TestNode")
+      #expect(viewModel.outputLines.contains { $0.text == noReply && $0.type == .error })
+      #expect(!viewModel.outputLines.contains { $0.type == .success })
+    }
+  }
+
+  @Test(arguments: radioNoReplyLines)
+  func `radio reply body follows the transmitted line`(_ sample: RadioNoReplyLine) async throws {
+    let spy = SendSpy()
+    spy.result = "still on"
+    let viewModel = makeViewModel(spy: spy, remoteTarget: .radio)
+    viewModel.executeCommand(sample.line)
+    try await waitUntil("body printed") {
+      viewModel.outputLines.contains { $0.text == "still on" && $0.type == .response }
+    }
+    let call = try #require(spy.calls.first)
+    #expect(call.command == sample.line)
+    #expect(call.timeout == (sample.kind == .ordinary ? .seconds(10) : .seconds(2)))
+    #expect(!viewModel.outputLines.contains { $0.type == .success })
+    if let sent = sample.kind.sentText {
+      #expect(!viewModel.outputLines.contains { $0.text == sent })
+    }
+  }
 }
+
+struct RadioNoReplyLine: Sendable {
+  var line: String
+  var kind: RadioNoReplyKind
+}
+
+enum RadioNoReplyKind: Sendable {
+  case powerOff
+  case reboot
+  case ordinary
+
+  var sentText: String? {
+    switch self {
+    case .powerOff:
+      L10n.RemoteNodes.RemoteNodes.NodeCli.powerOffSent
+    case .reboot:
+      L10n.RemoteNodes.RemoteNodes.NodeCli.rebootSent
+    case .ordinary:
+      nil
+    }
+  }
+}
+
+private let radioNoReplyLines: [RadioNoReplyLine] = [
+  RadioNoReplyLine(line: "poweroff", kind: .powerOff),
+  RadioNoReplyLine(line: "shutdown", kind: .powerOff),
+  RadioNoReplyLine(line: "reboot", kind: .reboot),
+  RadioNoReplyLine(line: "poweroff ", kind: .ordinary),
+  RadioNoReplyLine(line: "POWEROFF", kind: .ordinary),
+  RadioNoReplyLine(line: "poweroff now", kind: .ordinary)
+]

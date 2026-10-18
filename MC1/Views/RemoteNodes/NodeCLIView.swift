@@ -17,6 +17,11 @@ struct NodeCLIView: View {
       tabSuggestions: viewModel.tabSuggestions,
       tabSelectionIndex: viewModel.tabSelectionIndex,
       isWaitingForResponse: viewModel.isWaitingForResponse,
+      canCancelCommand: CLICommandCancel.allows(
+        isWaiting: viewModel.isWaitingForResponse,
+        powerOffActive: false,
+        powerOffCanStillPreventSend: true
+      ),
       showSessionsButton: false,
       currentInput: $viewModel.currentInput,
       scrollPosition: $scrollPosition,

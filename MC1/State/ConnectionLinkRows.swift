@@ -3,6 +3,13 @@ import MC1Services
 
 /// What the Connection row and the Connection page show for the phone's link.
 enum ConnectionLinkRows {
+  /// Whether the current firmware exposes Wi-Fi settings. Unknown includes a probe that has not succeeded.
+  enum WiFiSettingsSupport: Equatable, Sendable {
+    case unknown
+    case supported
+    case unavailable
+  }
+
   struct Snapshot: Equatable, Sendable {
     var rows: [Row]
     var checked: TransportType?
@@ -14,6 +21,8 @@ enum ConnectionLinkRows {
     var link: TransportType
     /// Host with no port. Nil when the Wi-Fi row has nothing to show under the title.
     var address: String?
+    /// The row can start a switch. An in-progress attempt disables the control separately.
+    var canSwitch: Bool
 
     var id: TransportType {
       link
@@ -26,13 +35,14 @@ enum ConnectionLinkRows {
     case wifi
   }
 
-  /// While `activeSwitch` exists, it supplies the rows, the check, the target, and the host.
-  /// Otherwise Bluetooth follows the live transport or a saved peripheral id, and Wi-Fi follows the live transport or `showsConnectOverWiFi`.
+  /// While `activeSwitch` exists, it supplies the rows, the check, and the host.
+  /// Otherwise each row follows the live link, and a Wi-Fi switch needs a usable dial.
   static func make(
     liveTransport: TransportType?,
     savedPeripheralID: UUID?,
-    liveWiFiHost: String?,
-    showsConnectOverWiFi: Bool,
+    wifiSupport: WiFiSettingsSupport,
+    wifiAssociated: Bool,
+    wifiDial: ConnectionLinkWiFiDial?,
     activeSwitch: ConnectionLinkSwitch?
   ) -> Snapshot {
     if let activeSwitch {
@@ -42,11 +52,19 @@ enum ConnectionLinkRows {
     let checked = liveTransport
     var rows: [Row] = []
     if liveTransport == .bluetooth || savedPeripheralID != nil {
-      rows.append(Row(link: .bluetooth, address: nil))
+      rows.append(Row(
+        link: .bluetooth,
+        address: nil,
+        canSwitch: savedPeripheralID != nil && liveTransport != .bluetooth
+      ))
     }
-    let host = displayHost(liveWiFiHost)
-    if liveTransport == .wifi || showsConnectOverWiFi {
-      rows.append(Row(link: .wifi, address: host))
+    let host = wifiDial?.displayHost
+    if liveTransport == .wifi || wifiSupport == .supported {
+      rows.append(Row(
+        link: .wifi,
+        address: host,
+        canSwitch: liveTransport != .wifi && wifiAssociated && wifiDial?.canDial == true
+      ))
     }
     let checkedHost = checked == .wifi ? host : nil
     return Snapshot(
@@ -59,12 +77,14 @@ enum ConnectionLinkRows {
 
   private static func snapshot(from record: ConnectionLinkSwitch) -> Snapshot {
     var rows: [Row] = []
+    let bluetoothCanSwitch = record.bluetoothPeripheralID != nil && record.checked != .bluetooth
+    let wifiCanSwitch = record.wifi?.canDial == true && record.checked != .wifi
     if record.checked == .bluetooth || record.bluetoothPeripheralID != nil || record.target == .bluetooth {
-      rows.append(Row(link: .bluetooth, address: nil))
+      rows.append(Row(link: .bluetooth, address: nil, canSwitch: bluetoothCanSwitch))
     }
     let host = record.wifi?.displayHost
     if record.checked == .wifi || record.wifi != nil || record.target == .wifi {
-      rows.append(Row(link: .wifi, address: host))
+      rows.append(Row(link: .wifi, address: host, canSwitch: wifiCanSwitch))
     }
     return Snapshot(
       rows: rows,
@@ -85,12 +105,5 @@ enum ConnectionLinkRows {
         .wifi
       }
     }
-  }
-
-  private static func displayHost(_ host: String?) -> String? {
-    guard let host else { return nil }
-    let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else { return nil }
-    return trimmed
   }
 }

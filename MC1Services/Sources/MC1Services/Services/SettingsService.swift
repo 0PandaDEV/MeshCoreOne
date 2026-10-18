@@ -244,17 +244,14 @@ public actor SettingsService {
   }
 
   /// Asks the paired radio to cut power.
-  /// A CLI reply means the board stayed on. Link loss counts as powered off, because the board drops the link first.
+  /// A CLI reply means the board stayed on. Only silence after a submitted frame counts as powered off.
   public func powerOff() async throws {
     let poweredOff: Bool
     do {
       poweredOff = try await session.powerOff()
-    } catch BLEError.notConnected, BLEError.operationTimeout {
-      return
-    } catch WiFiTransportError.notConnected, WiFiTransportError.sendTimeout {
-      return
+    } catch is CancellationError {
+      throw CancellationError()
     } catch let error as MeshCoreError {
-      if case .notConnected = error { return }
       throw SettingsServiceError.sessionError(error)
     }
     guard poweredOff else {

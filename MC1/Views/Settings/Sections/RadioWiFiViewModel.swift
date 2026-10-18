@@ -13,6 +13,13 @@ final class RadioWiFiViewModel {
   private static let maxSSIDBytes = 32
   private static let maxPasswordBytes = 63
 
+  /// Which surface presents `errorMessage`. One error has one presenter.
+  enum RecoverySurface: Equatable {
+    case connection
+    case wifiPage
+    case editor
+  }
+
   private var settingsServiceProvider: @MainActor () -> SettingsService? = { nil }
   private var connectionStateProvider: @MainActor () -> DeviceConnectionState = { .disconnected }
   private var connectedDeviceProvider: @MainActor () -> DeviceDTO? = { nil }
@@ -23,7 +30,19 @@ final class RadioWiFiViewModel {
   /// editor is closed and this view model is idle, and only that service may replace the rows.
   private var owedSettingsService: SettingsService?
 
-  private(set) var showsSection = false
+  /// Radio currently displayed. A different id clears the previous radio before the next probe.
+  private var adoptedRadioID: UUID?
+  /// Service currently displayed. A replacement must probe again before its fields are writable.
+  private var adoptedServiceID: ObjectIdentifier?
+  /// Service that parsed `wifi.enabled`. Writes use this, not a default or a previous service.
+  private var confirmedRadioID: UUID?
+  private var confirmedServiceID: ObjectIdentifier?
+  private var enabledConfirmed = false
+  private var networkConfirmed = false
+  private var credentialsConfirmed = false
+  private var ignoreEditorClose = false
+
+  private(set) var wifiSettingsSupport: ConnectionLinkRows.WiFiSettingsSupport = .unknown
   private(set) var isLoading = false
   private(set) var isWriting = false
   var errorMessage: String?
@@ -34,6 +53,7 @@ final class RadioWiFiViewModel {
   private(set) var rebootPending = false
   var editorOpen = false {
     didSet {
+      guard ignoreEditorClose == false else { return }
       guard oldValue, editorOpen == false else { return }
       Task { await startOwedRead() }
     }
@@ -57,9 +77,20 @@ final class RadioWiFiViewModel {
     var passwordChanged: Bool
   }
 
+  private struct CommandOwner: Equatable {
+    var radioID: UUID?
+    var serviceID: ObjectIdentifier
+  }
+
   private enum WiFiWarningAction {
     case save(WiFiCredentialSubmission)
     case disable
+  }
+
+  private enum EnabledProbe {
+    case enabled(Bool)
+    case unavailable
+    case invalid
   }
 
   private var settingsService: SettingsService? {
@@ -70,8 +101,8 @@ final class RadioWiFiViewModel {
     currentTransportTypeProvider() == .wifi
   }
 
-  var showsConnectOverWiFi: Bool {
-    currentTransportTypeProvider() == .bluetooth && statusConnected && ipAddress != nil
+  var showsSection: Bool {
+    wifiSettingsSupport == .supported
   }
 
   var isBusy: Bool {
@@ -79,11 +110,18 @@ final class RadioWiFiViewModel {
   }
 
   var canRunCommands: Bool {
-    connectionStateProvider() == .ready && !isBusy
+    guard connectionStateProvider() == .ready, isBusy == false else { return false }
+    guard enabledConfirmed, let confirmedServiceID, let confirmedRadioID else { return false }
+    guard let settings = settingsService, ObjectIdentifier(settings) == confirmedServiceID else { return false }
+    return connectedDeviceProvider()?.radioID == confirmedRadioID
+  }
+
+  var canEditNetwork: Bool {
+    canRunCommands && credentialsConfirmed
   }
 
   var canSave: Bool {
-    guard canRunCommands else { return false }
+    guard canEditNetwork else { return false }
     guard ssidField != loadedSSID || passwordField != loadedPassword else { return false }
     let nameBytes = Self.utf8ByteCount(ssidField)
     guard nameBytes >= Self.minSSIDBytes, nameBytes <= Self.maxSSIDBytes else { return false }
@@ -91,7 +129,7 @@ final class RadioWiFiViewModel {
   }
 
   var canClear: Bool {
-    networkName != nil && canRunCommands
+    networkConfirmed && networkName != nil && canRunCommands
   }
 
   var editorFooter: String {
@@ -140,6 +178,25 @@ final class RadioWiFiViewModel {
     }
   }
 
+  func recoverySurface(wifiPageVisible: Bool) -> RecoverySurface? {
+    Self.recoverySurface(
+      errorMessage: errorMessage,
+      editorOpen: editorOpen,
+      wifiPageVisible: wifiPageVisible
+    )
+  }
+
+  static func recoverySurface(
+    errorMessage: String?,
+    editorOpen: Bool,
+    wifiPageVisible: Bool
+  ) -> RecoverySurface? {
+    guard errorMessage != nil else { return nil }
+    if editorOpen { return .editor }
+    if wifiPageVisible { return .wifiPage }
+    return .connection
+  }
+
   func configure(
     settingsService: @escaping @MainActor () -> SettingsService?,
     connectionState: @escaping @MainActor () -> DeviceConnectionState,
@@ -156,26 +213,36 @@ final class RadioWiFiViewModel {
 
   /// Clears the live link rows while the phone is down, or owes one snapshot for the current service.
   func noteSessionReadiness() async {
+    adoptCurrentRadio()
     guard connectionStateProvider() == .ready, let settings = settingsService else {
       statusConnected = false
       ipAddress = nil
       owedSettingsService = nil
       return
     }
+    adoptService(settings)
     owedSettingsService = settings
     await startOwedRead()
   }
 
+  /// Reads again when the editor is closed and no read or write is running. A busy editor keeps the debt.
+  func refresh() async {
+    await noteSessionReadiness()
+  }
+
   func load() async {
     guard !isBusy else { return }
-    guard connectedDeviceProvider()?.supportsRadioCLI == true else {
-      showsSection = false
+    adoptCurrentRadio()
+    let device = connectedDeviceProvider()
+    guard device?.supportsRadioCLI == true else {
+      markRadioCLIUnavailable()
       return
     }
     guard let settings = settingsService else {
-      showsSection = false
+      wifiSettingsSupport = .unknown
       return
     }
+    adoptService(settings)
     await performSnapshot(from: settings)
     await continueOwedRead()
   }
@@ -185,18 +252,19 @@ final class RadioWiFiViewModel {
     ssidField = loadedSSID
     passwordField = loadedPassword
     guard let settings = settingsService else { return }
+    let radioID = connectedDeviceProvider()?.radioID
     isLoading = true
     do {
       let password = try await settings.getRadioCLIValue(RadioCLIKey.wifiPassword)
-      if settingsService === settings, Task.isCancelled == false {
+      if matches(settings, radioID: radioID), Task.isCancelled == false {
         loadedPassword = Self.storedPassword(password)
         passwordField = loadedPassword
-        await refreshRebootPending(from: settings)
+        await refreshRebootPending(from: settings, radioID: radioID)
       }
     } catch is CancellationError {
       // Cancellation leaves the password fields and does not set an error.
     } catch {
-      if settingsService === settings {
+      if matches(settings, radioID: radioID) {
         errorMessage = error.userFacingMessage
       }
     }
@@ -228,7 +296,7 @@ final class RadioWiFiViewModel {
   }
 
   func requestClear() {
-    guard canRunCommands else { return }
+    guard canClear else { return }
     showingClearConfirm = true
   }
 
@@ -257,25 +325,28 @@ final class RadioWiFiViewModel {
   }
 
   func confirmClear() async {
-    guard canRunCommands else { return }
+    guard canClear else { return }
     showingClearConfirm = false
     guard let settings = settingsService else {
       errorMessage = SettingsServiceError.notConnected.userFacingMessage
       return
     }
+    let radioID = connectedDeviceProvider()?.radioID
     isWriting = true
     do {
       try await settings.setRadioCLIValue(RadioCLIKey.wifiClear, to: nil)
-      if settingsService === settings {
+      if matches(settings, radioID: radioID) {
         loadedSSID = ""
         loadedPassword = ""
         ssidField = ""
         passwordField = ""
         networkName = nil
-        await refreshRebootPending(from: settings)
+        networkConfirmed = true
+        credentialsConfirmed = true
+        await refreshRebootPending(from: settings, radioID: radioID)
       }
     } catch {
-      if settingsService === settings {
+      if matches(settings, radioID: radioID) {
         errorMessage = error.userFacingMessage
       }
     }
@@ -284,7 +355,7 @@ final class RadioWiFiViewModel {
   }
 
   func requestReboot() {
-    guard canRunCommands else { return }
+    guard canRunCommands, rebootPending else { return }
     showingRebootConfirm = true
   }
 
@@ -295,9 +366,13 @@ final class RadioWiFiViewModel {
   func confirmReboot() async {
     showingRebootConfirm = false
     guard canRunCommands else { return }
+    let radioID = connectedDeviceProvider()?.radioID
+    let serviceID = settingsService.map(ObjectIdentifier.init)
     do {
       try await rebootAction()
     } catch {
+      guard connectedDeviceProvider()?.radioID == radioID else { return }
+      guard settingsService.map(ObjectIdentifier.init) == serviceID else { return }
       switch error {
       case BLEError.notConnected, BLEError.operationTimeout:
         // The radio reboots without a reply and drops the link.
@@ -316,30 +391,33 @@ final class RadioWiFiViewModel {
       errorMessage = SettingsServiceError.notConnected.userFacingMessage
       return
     }
+    let radioID = connectedDeviceProvider()?.radioID
     isWriting = true
     let ssidChanged = submission.ssid != loadedSSID
     do {
       if ssidChanged || submission.passwordChanged {
         try await settings.setRadioCLIValue(RadioCLIKey.wifiSSID, to: submission.ssid)
-        if settingsService === settings {
+        if matches(settings, radioID: radioID) {
           loadedSSID = submission.ssid
-          networkName = Self.displayedNetworkName(submission.ssid)
+          networkName = Self.displayedNetworkName(loadedSSID)
+          networkConfirmed = true
+          credentialsConfirmed = true
         }
       }
-      if submission.passwordChanged, settingsService === settings {
+      if submission.passwordChanged, matches(settings, radioID: radioID) {
         try await settings.setRadioCLIValue(RadioCLIKey.wifiPassword, to: submission.password)
-        if settingsService === settings {
+        if matches(settings, radioID: radioID) {
           loadedPassword = submission.password
         }
       }
-      if settingsService === settings {
-        await refreshRebootPending(from: settings)
-        editorOpen = false
+      if matches(settings, radioID: radioID) {
+        await refreshRebootPending(from: settings, radioID: radioID)
+        closeEditor()
       }
     } catch {
-      if settingsService === settings {
+      if matches(settings, radioID: radioID) {
         errorMessage = error.userFacingMessage
-        await refreshRebootPending(from: settings)
+        await refreshRebootPending(from: settings, radioID: radioID)
       }
     }
     isWriting = false
@@ -352,18 +430,19 @@ final class RadioWiFiViewModel {
       errorMessage = SettingsServiceError.notConnected.userFacingMessage
       return
     }
+    let radioID = connectedDeviceProvider()?.radioID
     isWriting = true
     do {
       try await settings.setRadioCLIValue(
         RadioCLIKey.wifiEnabled,
         to: enabled ? Self.enabledValue : Self.disabledValue
       )
-      if settingsService === settings {
+      if matches(settings, radioID: radioID) {
         wifiEnabled = enabled
-        await refreshRebootPending(from: settings)
+        await refreshRebootPending(from: settings, radioID: radioID)
       }
     } catch {
-      if settingsService === settings {
+      if matches(settings, radioID: radioID) {
         errorMessage = error.userFacingMessage
       }
     }
@@ -372,37 +451,46 @@ final class RadioWiFiViewModel {
   }
 
   private func performSnapshot(from settings: SettingsService) async {
+    let owner = CommandOwner(
+      radioID: connectedDeviceProvider()?.radioID,
+      serviceID: ObjectIdentifier(settings)
+    )
     isLoading = true
     defer { isLoading = false }
     do {
       let enabled = try await settings.getRadioCLIValue(RadioCLIKey.wifiEnabled)
-      guard shouldApplySnapshot(from: settings) else { return }
-      guard let enabled else {
-        showsSection = false
+      guard shouldApplySnapshot(owner) else { return }
+      switch Self.classifyEnabled(enabled) {
+      case .unavailable:
+        applyUnavailable()
         return
+      case .invalid:
+        applyReadFailure(owner: owner, error: SettingsServiceError.invalidResponse)
+        return
+      case let .enabled(isOn):
+        applySupported(owner: owner, isOn: isOn)
       }
       let ssid = try await settings.getRadioCLIValue(RadioCLIKey.wifiSSID)
-      guard shouldApplySnapshot(from: settings) else { return }
+      guard shouldApplySnapshot(owner) else { return }
       let status = try await settings.getRadioCLIValue(RadioCLIKey.wifiStatus)
-      guard shouldApplySnapshot(from: settings) else { return }
+      guard shouldApplySnapshot(owner) else { return }
       let ip = try await settings.getRadioCLIValue(RadioCLIKey.wifiIP)
-      guard shouldApplySnapshot(from: settings) else { return }
+      guard shouldApplySnapshot(owner) else { return }
       let rebootPending = await settings.radioWiFiRebootPending
-      guard shouldApplySnapshot(from: settings) else { return }
-      applyLoad(enabled: enabled, ssid: ssid, status: status, ip: ip, rebootPending: rebootPending)
+      guard shouldApplySnapshot(owner) else { return }
+      applyDetails(ssid: ssid, status: status, ip: ip, rebootPending: rebootPending)
     } catch is CancellationError {
       // Cancellation leaves the previous rows and does not set an error.
     } catch {
-      if settingsService === settings {
-        errorMessage = error.userFacingMessage
-      }
+      guard shouldApplySnapshot(owner) else { return }
+      applyReadFailure(owner: owner, error: error)
     }
   }
 
-  private func shouldApplySnapshot(from settings: SettingsService) -> Bool {
+  private func shouldApplySnapshot(_ owner: CommandOwner) -> Bool {
     guard Task.isCancelled == false else { return false }
-    guard settingsService === settings else { return false }
-    if let owed = owedSettingsService, owed !== settings {
+    guard matches(serviceID: owner.serviceID, radioID: owner.radioID) else { return false }
+    if let owed = owedSettingsService, ObjectIdentifier(owed) != owner.serviceID {
       return false
     }
     return true
@@ -432,13 +520,18 @@ final class RadioWiFiViewModel {
     guard connectionStateProvider() == .ready else { return }
     guard editorOpen == false, isBusy == false else { return }
     guard let owed = owedSettingsService else { return }
-    guard settingsService === owed else {
+    guard let settings = settingsService, settings === owed else {
       owedSettingsService = nil
       return
     }
-    guard connectedDeviceProvider()?.supportsRadioCLI == true else {
+    let device = connectedDeviceProvider()
+    if let radioID = device?.radioID, radioID != adoptedRadioID {
       owedSettingsService = nil
-      showsSection = false
+      return
+    }
+    guard device?.supportsRadioCLI == true else {
+      owedSettingsService = nil
+      markRadioCLIUnavailable()
       return
     }
     owedSettingsService = nil
@@ -446,27 +539,147 @@ final class RadioWiFiViewModel {
     await continueOwedRead()
   }
 
-  private func applyLoad(
-    enabled: String,
-    ssid: String?,
-    status: String?,
-    ip: String?,
-    rebootPending: Bool
-  ) {
-    showsSection = true
-    wifiEnabled = enabled.trimmingCharacters(in: .whitespacesAndNewlines) == Self.enabledValue
+  private func adoptCurrentRadio() {
+    guard let radioID = connectedDeviceProvider()?.radioID, radioID != adoptedRadioID else { return }
+    resetForNewRadio(radioID)
+  }
+
+  private func adoptService(_ settings: SettingsService) {
+    let serviceID = ObjectIdentifier(settings)
+    guard serviceID != adoptedServiceID else { return }
+    invalidateForService(serviceID)
+  }
+
+  private func resetForNewRadio(_ radioID: UUID) {
+    adoptedRadioID = radioID
+    adoptedServiceID = nil
+    owedSettingsService = nil
+    wifiSettingsSupport = .unknown
+    clearConfirmedFields()
+    clearDisplayedNetwork()
+    errorMessage = nil
+    closeEditor()
+  }
+
+  private func invalidateForService(_ serviceID: ObjectIdentifier) {
+    adoptedServiceID = serviceID
+    wifiSettingsSupport = .unknown
+    clearConfirmedFields()
+    clearDisplayedNetwork()
+    errorMessage = nil
+    closeEditor()
+  }
+
+  private func markRadioCLIUnavailable() {
+    wifiSettingsSupport = .unknown
+    enabledConfirmed = false
+    networkConfirmed = false
+    credentialsConfirmed = false
+    confirmedRadioID = nil
+    confirmedServiceID = nil
+  }
+
+  private func clearConfirmedFields() {
+    enabledConfirmed = false
+    networkConfirmed = false
+    credentialsConfirmed = false
+    confirmedRadioID = nil
+    confirmedServiceID = nil
+    rebootPending = false
+    statusConnected = false
+    ipAddress = nil
+    pendingWiFiAction = nil
+    showingWiFiWarning = false
+    showingClearConfirm = false
+    showingRebootConfirm = false
+  }
+
+  private func clearDisplayedNetwork() {
+    networkName = nil
+    wifiEnabled = false
+    loadedSSID = ""
+    loadedPassword = ""
+    ssidField = ""
+    passwordField = ""
+  }
+
+  private func closeEditor() {
+    ignoreEditorClose = true
+    editorOpen = false
+    ignoreEditorClose = false
+  }
+
+  private func applySupported(owner: CommandOwner, isOn: Bool) {
+    if let radioID = owner.radioID {
+      adoptedRadioID = radioID
+    }
+    adoptedServiceID = owner.serviceID
+    confirmedRadioID = owner.radioID
+    confirmedServiceID = owner.serviceID
+    enabledConfirmed = true
+    wifiSettingsSupport = .supported
+    wifiEnabled = isOn
+  }
+
+  private func applyUnavailable() {
+    wifiSettingsSupport = .unavailable
+    enabledConfirmed = false
+    networkConfirmed = false
+    credentialsConfirmed = false
+    confirmedRadioID = nil
+    confirmedServiceID = nil
+    statusConnected = false
+    ipAddress = nil
+    rebootPending = false
+    clearDisplayedNetwork()
+    errorMessage = nil
+  }
+
+  private func applyDetails(ssid: String?, status: String?, ip: String?, rebootPending: Bool) {
+    networkConfirmed = true
+    credentialsConfirmed = true
     loadedSSID = Self.storedSSID(ssid)
     networkName = Self.displayedNetworkName(loadedSSID)
     let statusText = status?.trimmingCharacters(in: .whitespacesAndNewlines)
     statusConnected = statusText == Self.connectedStatus
     ipAddress = Self.displayedIP(ip)
     self.rebootPending = rebootPending
+    errorMessage = nil
   }
 
-  private func refreshRebootPending(from settings: SettingsService) async {
+  /// Support from this service stays. Association and the IP do not, so a switch cannot use them.
+  private func applyReadFailure(owner: CommandOwner, error: Error) {
+    errorMessage = error.userFacingMessage
+    statusConnected = false
+    ipAddress = nil
+    let stillSupported = wifiSettingsSupport == .supported
+      && enabledConfirmed
+      && confirmedServiceID == owner.serviceID
+      && confirmedRadioID == owner.radioID
+    if stillSupported { return }
+  }
+
+  private func matches(_ settings: SettingsService, radioID: UUID?) -> Bool {
+    matches(serviceID: ObjectIdentifier(settings), radioID: radioID)
+  }
+
+  private func matches(serviceID: ObjectIdentifier, radioID: UUID?) -> Bool {
+    guard let settings = settingsService, ObjectIdentifier(settings) == serviceID else { return false }
+    return connectedDeviceProvider()?.radioID == radioID
+  }
+
+  private func refreshRebootPending(from settings: SettingsService, radioID: UUID?) async {
     let pending = await settings.radioWiFiRebootPending
-    guard settingsService === settings else { return }
+    guard matches(settings, radioID: radioID) else { return }
     rebootPending = pending
+  }
+
+  private static func classifyEnabled(_ value: String?) -> EnabledProbe {
+    guard let value else { return .unavailable }
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed == enabledValue { return .enabled(true) }
+    if trimmed == disabledValue { return .enabled(false) }
+    return .invalid
   }
 
   private static func utf8ByteCount(_ value: String) -> Int {

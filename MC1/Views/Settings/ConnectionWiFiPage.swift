@@ -19,11 +19,25 @@ struct ConnectionWiFiPage: View {
     .themedCanvas(theme)
     .navigationTitle(L10n.Settings.Connection.Link.wifi)
     .navigationBarTitleDisplayMode(.inline)
+    .refreshable {
+      await radioWiFi.refresh()
+    }
+    .errorAlert(pageRecoveryMessage, retryAction: { Task { await radioWiFi.refresh() } })
     .sheet(isPresented: $showingWiFiEditSheet) {
       WiFiEditSheet()
     }
     .sheet(isPresented: $radioWiFi.editorOpen) {
       RadioWiFiEditSheet(viewModel: radioWiFi)
     }
+  }
+
+  private var pageRecoveryMessage: Binding<String?> {
+    Binding(
+      get: {
+        guard radioWiFi.recoverySurface(wifiPageVisible: true) == .wifiPage else { return nil }
+        return radioWiFi.errorMessage
+      },
+      set: { radioWiFi.errorMessage = $0 }
+    )
   }
 }

@@ -78,24 +78,37 @@ final class NodeCLIViewModel {
   // MARK: - Command Execution
 
   func executeCommand(_ command: String) {
-    let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
+    let normalized = command.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !isWaitingForResponse else { return }
     let promptPrefix = promptText.trimmingCharacters(in: .whitespaces)
 
-    guard !trimmed.isEmpty else {
+    guard !normalized.isEmpty else {
       appendOutput(promptPrefix, type: .command)
       return
     }
 
-    addToHistory(trimmed)
-    appendOutput("\(promptPrefix) \(trimmed)", type: .command)
+    let transmitted = transmittedLine(original: command, normalized: normalized)
+    addToHistory(transmitted)
+    appendOutput("\(promptPrefix) \(transmitted)", type: .command)
 
-    let parts = trimmed.split(separator: " ", maxSplits: 1).map(String.init)
+    let parts = normalized.split(separator: " ", maxSplits: 1).map(String.init)
     let cmd = parts[0].lowercased()
     let args = parts.count > 1 ? parts[1] : ""
 
-    currentCommandTask = Task { await handleCommand(cmd, args: args, raw: trimmed) }
+    currentCommandTask = Task { await handleCommand(cmd, args: args, raw: transmitted) }
     currentInput = ""
+  }
+
+  /// Radio CLI sends the submitted line. Help, clear, and the other targets keep the trimmed line.
+  private func transmittedLine(original: String, normalized: String) -> String {
+    guard remoteTarget == .radio else { return normalized }
+    let parts = normalized.split(separator: " ", maxSplits: 1).map(String.init)
+    let verb = parts[0].lowercased()
+    let args = parts.count > 1 ? parts[1] : ""
+    if verb == "help" || (verb == "clear" && args.isEmpty) {
+      return normalized
+    }
+    return original
   }
 
   func cancelCurrentCommand() {

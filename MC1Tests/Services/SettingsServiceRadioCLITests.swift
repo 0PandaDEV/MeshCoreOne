@@ -125,14 +125,18 @@ struct SettingsServiceRadioCLITests {
   }
 
   @Test
-  func `power off returns when the link drops`() async throws {
+  func `power off does not treat a dropped link as success`() async {
     let ble = MockConfigurationSession()
     await ble.setPowerOffBehavior(.bleNotConnected)
-    try await SettingsService(session: ble).powerOff()
+    await #expect(throws: BLEError.self) {
+      try await SettingsService(session: ble).powerOff()
+    }
 
     let wifi = MockConfigurationSession()
     await wifi.setPowerOffBehavior(.wifiNotConnected)
-    try await SettingsService(session: wifi).powerOff()
+    await #expect(throws: WiFiTransportError.self) {
+      try await SettingsService(session: wifi).powerOff()
+    }
   }
 
   @Test

@@ -232,6 +232,150 @@ struct V118SessionMethodsTests {
     #expect(poweredOff == true)
     await session.stop()
   }
+
+  @Test
+  func `powerOff exchange keeps an empty CLI reply as still on`() async throws {
+    let transport = MockTransport()
+    let session = try await startedSession(transport)
+    await transport.holdNextSend()
+
+    let task = Task { await session.exchangePowerOff() }
+    try await waitUntil("poweroff write should park") { await transport.sendIsWaiting }
+    await transport.simulateReceive(Data([ResponseCode.cliReply.rawValue]))
+    await transport.releaseHeldSend()
+
+    #expect(await task.value == .submitted(.stillOn("")))
+    await session.stop()
+  }
+
+  @Test
+  func `powerOff exchange keeps a CLI reply that arrives before a failed write`() async throws {
+    let transport = MockTransport()
+    let session = try await startedSession(transport)
+    await transport.holdNextSend()
+
+    let task = Task { await session.exchangePowerOff() }
+    try await waitUntil("poweroff write should park") { await transport.sendIsWaiting }
+    var reply = Data([ResponseCode.cliReply.rawValue])
+    reply.append(contentsOf: "busy".utf8)
+    await transport.simulateReceive(reply)
+    await transport.failHeldSend()
+    await transport.releaseHeldSend()
+
+    #expect(await task.value == .submitted(.stillOn("busy")))
+    await session.stop()
+  }
+
+  @Test
+  func `powerOff exchange keeps a firmware error that arrives before a failed write`() async throws {
+    let transport = MockTransport()
+    let session = try await startedSession(transport)
+    await transport.holdNextSend()
+
+    let task = Task { await session.exchangePowerOff() }
+    try await waitUntil("poweroff write should park") { await transport.sendIsWaiting }
+    await transport.simulateError(code: 1)
+    await transport.failHeldSend()
+    await transport.releaseHeldSend()
+
+    #expect(await task.value == .submitted(.rejected(1)))
+    await session.stop()
+  }
+
+  @Test
+  func `powerOff exchange reports send failure when nothing was buffered`() async throws {
+    let transport = MockTransport()
+    let session = try await startedSession(transport)
+    await transport.holdNextSend()
+
+    let task = Task { await session.exchangePowerOff() }
+    try await waitUntil("poweroff write should park") { await transport.sendIsWaiting }
+    await transport.failHeldSend()
+    await transport.releaseHeldSend()
+
+    #expect(await task.value == .submitted(.sendFailed))
+    await session.stop()
+  }
+
+  @Test
+  func `powerOff exchange reports a stopped session instead of silence`() async throws {
+    let transport = MockTransport()
+    let session = try await startedSession(transport)
+    await transport.holdNextSend()
+
+    let task = Task { await session.exchangePowerOff() }
+    try await waitUntil("poweroff write should park") { await transport.sendIsWaiting }
+    await transport.releaseHeldSend()
+    await session.stop()
+
+    #expect(await task.value == .submitted(.stopped))
+  }
+
+  @Test
+  func `powerOff exchange does not submit when the session is stopped or disconnected`() async throws {
+    let idle = MeshCoreSession(transport: MockTransport())
+    #expect(await idle.exchangePowerOff() == .notSubmitted(.notRunning))
+
+    let transport = MockTransport()
+    let session = try await startedSession(transport)
+    await transport.disconnect()
+    let result = await session.exchangePowerOff()
+    guard case .notSubmitted = result else {
+      Issue.record("expected no submission, got \(result)")
+      return
+    }
+  }
+
+  @Test
+  func `powerOff exchange sends nothing when cancelled while queued`() async throws {
+    let transport = MockTransport()
+    let session = try await startedSession(transport)
+    await transport.holdNextSend()
+
+    let blocker = Task { try await session.runCliCommand("board") }
+    try await waitUntil("blocker write should park") { await transport.sendIsWaiting }
+
+    let gate = PowerOffSubmissionGate()
+    let powerOff = Task { await session.exchangePowerOff(gate: gate) }
+    try await Task.sleep(for: .milliseconds(50))
+    #expect(gate.cancelIfUnsubmitted())
+
+    await transport.releaseHeldSend()
+    await transport.simulateReceive(Data([ResponseCode.cliReply.rawValue, 0x4F, 0x4B]))
+    _ = try await blocker.value
+
+    #expect(await powerOff.value == .notSubmitted(.cancelled))
+    let sent = await transport.sentData
+    #expect(sent.count == 2)
+    #expect(sent.contains { Data($0.dropFirst()) == Data(PacketBuilder.powerOffCommand.utf8) } == false)
+    await session.stop()
+  }
+
+  @Test
+  func `powerOff exchange still finishes when cancel loses the submission race`() async throws {
+    let transport = MockTransport()
+    let session = try await startedSession(transport)
+    await transport.holdNextSend()
+    let gate = PowerOffSubmissionGate()
+
+    let task = Task { await session.exchangePowerOff(gate: gate) }
+    try await waitUntil("poweroff write should park") { await transport.sendIsWaiting }
+    #expect(gate.cancelIfUnsubmitted() == false)
+    await transport.simulateReceive(Data([ResponseCode.cliReply.rawValue]))
+    await transport.releaseHeldSend()
+
+    #expect(await task.value == .submitted(.stillOn("")))
+    await session.stop()
+  }
+
+  private func startedSession(_ transport: MockTransport) async throws -> MeshCoreSession {
+    let session = MeshCoreSession(
+      transport: transport,
+      configuration: SessionConfiguration(defaultTimeout: 10, clientIdentifier: "MCTst")
+    )
+    try await startSession(session, transport: transport)
+    return session
+  }
 }
 
 private func startSession(

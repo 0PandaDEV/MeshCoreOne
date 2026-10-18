@@ -38,7 +38,7 @@ struct RadioWiFiSection: View {
           }
         }
         .foregroundStyle(.primary)
-        .disabled(!viewModel.canRunCommands)
+        .disabled(!viewModel.canEditNetwork)
 
         LabeledContent(
           L10n.Settings.RadioWiFi.status,
@@ -96,9 +96,5 @@ struct RadioWiFiSection: View {
     } message: {
       Text(viewModel.rebootMessage)
     }
-    .errorAlert(Binding(
-      get: { viewModel.editorOpen ? nil : viewModel.errorMessage },
-      set: { viewModel.errorMessage = $0 }
-    ))
   }
 }

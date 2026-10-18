@@ -4,6 +4,14 @@ import UIKit
 /// Terminal font optimized for mobile screens.
 private let terminalFont = Font.caption.monospaced()
 
+/// Shared cancel eligibility for both terminal hosts. Ordinary commands cancel
+/// while they are waiting. Power-off cancels only before its frame is submitted.
+enum CLICommandCancel {
+  static func allows(isWaiting: Bool, powerOffActive: Bool, powerOffCanStillPreventSend: Bool) -> Bool {
+    isWaiting && (!powerOffActive || powerOffCanStillPreventSend)
+  }
+}
+
 /// Presentational terminal shared by the Tools-tab CLI and the node CLI.
 /// Holds no view model: all state arrives as values/bindings and all events
 /// leave via callbacks, so each host wires its own view model.
@@ -14,6 +22,7 @@ struct CLITerminalView: View {
   let tabSuggestions: [String]?
   let tabSelectionIndex: Int?
   let isWaitingForResponse: Bool
+  let canCancelCommand: Bool
   let showSessionsButton: Bool
 
   @Binding var currentInput: String
@@ -141,7 +150,7 @@ struct CLITerminalView: View {
     .safeAreaInset(edge: .bottom) {
       if keyboardFocus.isFocused {
         CLIInputAccessoryView(
-          isWaiting: isWaitingForResponse,
+          isWaiting: canCancelCommand,
           showSessionsButton: showSessionsButton,
           onHistoryUp: onHistoryUp,
           onHistoryDown: onHistoryDown,
@@ -179,7 +188,7 @@ struct CLITerminalView: View {
         onClearTabState()
         return .handled
       }
-      if isWaitingForResponse {
+      if canCancelCommand {
         onCancel()
       } else {
         keyboardFocus.clearFocus()

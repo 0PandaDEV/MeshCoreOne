@@ -36,7 +36,7 @@ extension ConnectionManager {
             continue
           }
           logger.warning("WiFi heartbeat failed: \(error.localizedDescription)")
-          await handleWiFiDisconnection(error: error)
+          await handleWiFiDisconnection(error: error, remoteLossAt: nil, isHeartbeat: true)
           break
         }
       }
@@ -55,8 +55,21 @@ extension ConnectionManager {
 
   // MARK: - WiFi Disconnection Handling
 
-  /// Handles unexpected WiFi connection loss
-  private func handleWiFiDisconnection(error: Error?) async {
+  /// Socket loss records `remoteLossAt`. A heartbeat passes nil and `isHeartbeat`
+  /// because the socket is still up and cannot prove the radio powered off.
+  func handleWiFiDisconnection(
+    error: Error?,
+    remoteLossAt: CFAbsoluteTime?,
+    isHeartbeat: Bool = false
+  ) async {
+    if let remoteLossAt {
+      notePowerOffRemoteLoss(deviceID: connectedDevice?.id, eventTime: remoteLossAt)
+    }
+    if isHeartbeat, powerOffBlocksReconnect {
+      logger.info("[WiFi] Heartbeat ignored during power-off")
+      return
+    }
+
     // User-initiated disconnect - don't reconnect
     guard connectionIntent.wantsConnection else { return }
 
@@ -109,6 +122,10 @@ extension ConnectionManager {
 
   /// Starts the WiFi reconnection retry loop
   private func startWiFiReconnection() {
+    guard !powerOffBlocksReconnect else {
+      logger.info("[WiFi] Reconnect suppressed during power-off")
+      return
+    }
     // If a reconnect task is already running, don't start another
     if wifiReconnectTask != nil {
       logger.info("WiFi reconnection already in progress, skipping")
@@ -147,7 +164,7 @@ extension ConnectionManager {
 
       let startTime = ContinuousClock.now
 
-      while !Task.isCancelled, connectionIntent.wantsConnection {
+      while !Task.isCancelled, connectionIntent.wantsConnection, !powerOffBlocksReconnect {
         // Check if we've exceeded 30 second window
         let elapsed = ContinuousClock.now - startTime
         let maxReconnectDuration: Duration
@@ -241,9 +258,9 @@ extension ConnectionManager {
     persistConnection(deviceID: deviceID, radioID: radioID, deviceName: selfInfo.name)
 
     // Wire disconnection handler on new transport
-    await transport.setDisconnectionHandler { [weak self] error in
+    await transport.setDisconnectionHandler { [weak self] error, eventTime in
       Task { @MainActor in
-        await self?.handleWiFiDisconnection(error: error)
+        await self?.handleWiFiDisconnection(error: error, remoteLossAt: eventTime)
       }
     }
 
@@ -290,7 +307,7 @@ extension ConnectionManager {
       let isConnected = await wifiTransport.isConnected
       if !isConnected {
         logger.info("WiFi connection died while backgrounded")
-        await handleWiFiDisconnection(error: nil)
+        await handleWiFiDisconnection(error: nil, remoteLossAt: nil)
         return
       }
     }
@@ -383,9 +400,9 @@ extension ConnectionManager {
       let syncSucceeded = await performInitialSync(radioID: radioID, services: newServices, transportType: .wifi, forceFullSync: forceFullSync)
 
       // Wire disconnection handler before promotion — needed even if promotion fails
-      await newWiFiTransport.setDisconnectionHandler { [weak self] error in
+      await newWiFiTransport.setDisconnectionHandler { [weak self] error, eventTime in
         Task { @MainActor in
-          await self?.handleWiFiDisconnection(error: error)
+          await self?.handleWiFiDisconnection(error: error, remoteLossAt: eventTime)
         }
       }
 

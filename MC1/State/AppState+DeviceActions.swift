@@ -257,14 +257,22 @@ extension AppState {
     tearDownAppStateSessionState()
   }
 
-  /// Asks the paired radio to cut power, then disconnects.
-  /// A throw, including a board that stays on, leaves the connection as it was.
+  /// Asks the paired radio to cut power. The manager disconnects that link only
+  /// when the attempt still owns it. A throw leaves a newer connection alone.
   func powerOffRadio() async throws {
-    guard let settingsService = services?.settingsService else {
+    guard services?.settingsService != nil else {
       throw SettingsServiceError.notConnected
     }
-    try await settingsService.powerOff()
-    await disconnect(reason: .powerOff)
+    let token = try await connectionManager.powerOffCurrentLink()
+    guard connectionManager.powerOffOwnsCleanup(token) else {
+      throw PowerOffSuperseded()
+    }
+    connectionLinkSwitch = nil
+    await liveActivityManager.endActivity()
+    guard connectionManager.powerOffOwnsCleanup(token) else {
+      throw PowerOffSuperseded()
+    }
+    tearDownAppStateSessionState()
   }
 
   /// Connect to a device via WiFi/TCP
@@ -364,7 +372,6 @@ extension AppState {
     }
   }
 
-  /// A live Wi-Fi session keeps its own host and port. Otherwise the radio snapshot supplies the host and the default port.
   private func capturedWiFiDial(snapshotHost: String?) -> ConnectionLinkWiFiDial? {
     ConnectionLinkWiFiDial.capture(
       liveTransport: connectionManager.currentTransportType,

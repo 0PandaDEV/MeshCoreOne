@@ -567,6 +567,9 @@ public extension ConnectionManager {
   /// Disconnects from the current device.
   /// - Parameter reason: The reason for disconnecting (for debugging)
   func disconnect(reason: DisconnectReason = .userInitiated) async {
+    if reason != .powerOff {
+      invalidatePowerOffForExplicitDisconnect()
+    }
     let initialState = String(describing: connectionState)
     let transportName = switch currentTransportType {
     case .bluetooth: "bluetooth"
@@ -621,6 +624,8 @@ public extension ConnectionManager {
     // and re-reading self.services would tear that new container down.
     let oldServices = services
     let oldSession = session
+    let capturedTransportType = currentTransportType
+    let capturedWiFi = wifiTransport
     services = nil
     session = nil
     logger.info("[BLE] disconnect: state → .disconnected")
@@ -641,16 +646,20 @@ public extension ConnectionManager {
     // Stop session
     await oldSession?.stop()
 
-    // Disconnect appropriate transport based on current type
-    if let wifiTransport {
-      await wifiTransport.disconnect()
-      self.wifiTransport = nil
-    } else {
+    // Disconnect the transport captured before the awaits. A replacement link
+    // installed while teardown was suspended keeps its own transport.
+    if let capturedWiFi {
+      await capturedWiFi.disconnect()
+      if wifiTransport === capturedWiFi {
+        wifiTransport = nil
+      }
+    } else if session == nil, currentTransportType == capturedTransportType {
       await transport.disconnect()
     }
 
-    // Clear transport type
-    currentTransportType = nil
+    if session == nil, currentTransportType == capturedTransportType {
+      currentTransportType = nil
+    }
 
     persistDisconnectDiagnostic(
       "source=disconnect(reason), " +

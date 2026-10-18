@@ -239,6 +239,10 @@ extension ConnectionManager {
   /// connected but the device is stuck in disconnected state (e.g., after auto-reconnect failure).
   /// Uses exponential backoff: 30s → 60s → 120s (capped).
   func startReconnectionWatchdog() {
+    guard !powerOffBlocksReconnect else {
+      logger.info("[BLE] Watchdog suppressed during power-off")
+      return
+    }
     stopReconnectionWatchdog()
 
     reconnectionWatchdogGeneration += 1
@@ -264,7 +268,8 @@ extension ConnectionManager {
         guard !Task.isCancelled else { return }
 
         guard connectionIntent.wantsConnection,
-              connectionState == .disconnected else {
+              connectionState == .disconnected,
+              !powerOffBlocksReconnect else {
           logger.info("[BLE] Watchdog exiting: intent or state changed")
           return
         }

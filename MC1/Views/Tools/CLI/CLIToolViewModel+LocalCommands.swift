@@ -240,9 +240,13 @@ extension CLIToolViewModel {
   }
 
   private func runPowerOff() async {
+    powerOffCommandActive = true
+    defer { powerOffCommandActive = false }
     do {
       try await powerOffRadio()
       output(LocalCommandOutput.okPoweringOff)
+    } catch is PowerOffSuperseded {
+      return
     } catch {
       guard !Task.isCancelled else { return }
       appendOutput(error.userFacingMessage, type: .error)

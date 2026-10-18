@@ -343,22 +343,23 @@ public extension MeshCoreSession {
   /// power off replies at once. The window only covers one round trip.
   static let powerOffReplyWindow: TimeInterval = 3
 
-  /// Asks the paired radio to cut power.
-  /// A CLI reply means the board stayed on. A timeout counts as powered off.
+  /// How long a failed write may still observe a reply that was already buffered.
+  static let powerOffBufferedReplyGrace: TimeInterval = 0.05
+
+  /// Silence after the frame is handed to the transport counts as powered off.
+  /// A CLI reply, send failure, or stopped session does not.
   func powerOff() async throws -> Bool {
-    do {
-      let stillOn: Bool = try await sendAndWaitWithError(
-        PacketBuilder.runCliCommand(PacketBuilder.powerOffCommand),
-        matching: { event in
-          if case .cliReply = event { return false }
-          return nil
-        },
-        errorMatcher: Self.deviceErrorMatcher,
-        timeout: Self.powerOffReplyWindow
-      )
-      return stillOn
-    } catch MeshCoreError.timeout {
+    switch await exchangePowerOff() {
+    case .submitted(.silence):
       return true
+    case .submitted(.stillOn):
+      return false
+    case let .submitted(.rejected(code)):
+      throw MeshCoreError.deviceError(code: code)
+    case .submitted(.sendFailed), .notSubmitted(.notConnected):
+      throw MeshCoreError.notConnected
+    case .submitted(.stopped), .notSubmitted(.cancelled), .notSubmitted(.notRunning):
+      throw CancellationError()
     }
   }
 

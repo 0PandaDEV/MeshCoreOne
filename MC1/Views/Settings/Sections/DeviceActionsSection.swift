@@ -90,6 +90,8 @@ struct DeviceActionsSection: View {
       defer { isPoweringOff = false }
       do {
         try await appState.powerOffRadio()
+      } catch is PowerOffSuperseded {
+        return
       } catch {
         errorMessage = error.userFacingMessage
       }

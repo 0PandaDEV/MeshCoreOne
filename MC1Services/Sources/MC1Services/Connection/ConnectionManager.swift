@@ -294,7 +294,14 @@ public final class ConnectionManager {
   private let lastConnectionStore: LastConnectionStore
   let transport: any iOSMeshTransport
   var wifiTransport: WiFiTransport?
-  var session: MeshCoreSession?
+  var session: MeshCoreSession? {
+    didSet { invalidatePowerOffIfReplaced(newSession: session) }
+  }
+
+  /// The in-flight power-off, if this manager still owns it.
+  var powerOffOperation: PowerOffOperation?
+  var powerOffCancelGeneration = 0
+  var powerOffCleanupToken: UUID?
   /// Device discovery + system pairing-registry seam. Resolves to AccessorySetupKit on
   /// iOS, or an in-app CoreBluetooth scan picker on macOS "Designed for iPad".
   let pairing: any DevicePairingService
@@ -734,6 +741,12 @@ public final class ConnectionManager {
       }
     }
 
+    await stateMachine.setRemoteLinkLostHandler { [weak self] deviceID, eventTime in
+      Task { @MainActor in
+        self?.notePowerOffRemoteLoss(deviceID: deviceID, eventTime: eventTime)
+      }
+    }
+
     // A bond verified in a previous launch must still shield an exhausted
     // encryption-timeout budget, so seed the persisted verification before
     // any teardown classification can run. Keyed off the bond slot, not the
@@ -748,6 +761,10 @@ public final class ConnectionManager {
     await stateMachine.setAutoReconnectingHandler { [weak self] (deviceID: UUID, errorInfo: String) in
       Task { @MainActor in
         guard let self else { return }
+        guard !self.powerOffSuppressesReconnect(for: deviceID) else {
+          self.logger.info("[BLE] Auto-reconnect suppressed during power-off for \(deviceID.uuidString.prefix(8))")
+          return
+        }
 
         if self.shouldDeferOpportunisticReconnect {
           self.logger.info(

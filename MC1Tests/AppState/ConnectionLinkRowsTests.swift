@@ -14,12 +14,14 @@ struct ConnectionLinkRowsTests {
     let snapshot = ConnectionLinkRows.make(
       liveTransport: row.live,
       savedPeripheralID: row.peripheral,
-      liveWiFiHost: row.host,
-      showsConnectOverWiFi: row.showsWiFi,
+      wifiSupport: row.support,
+      wifiAssociated: row.associated,
+      wifiDial: row.dial,
       activeSwitch: row.record
     )
     #expect(snapshot.rows.map(\.link) == row.links)
     #expect(snapshot.rows.map(\.address) == row.addresses)
+    #expect(snapshot.rows.map(\.canSwitch) == row.canSwitch)
     #expect(snapshot.checked == row.checked)
     #expect(snapshot.target == row.target)
     #expect(snapshot.settingsDetail == row.detail)
@@ -31,47 +33,101 @@ struct ConnectionLinkRowsTests {
     let snapshot = ConnectionLinkRows.make(
       liveTransport: nil,
       savedPeripheralID: nil,
-      liveWiFiHost: nil,
-      showsConnectOverWiFi: false,
+      wifiSupport: .unknown,
+      wifiAssociated: false,
+      wifiDial: nil,
       activeSwitch: record
     )
     #expect(snapshot.rows.map(\.link) == [.bluetooth, .wifi])
     #expect(snapshot.rows.map(\.address) == [nil, "10.0.0.8"])
+    #expect(snapshot.rows.map(\.canSwitch) == [false, true])
     #expect(snapshot.checked == .bluetooth)
     #expect(snapshot.target == .wifi)
   }
 
   private static let cases: [RowCase] = [
     RowCase(
-      name: "Bluetooth before the snapshot",
+      name: "Bluetooth before support is known",
       live: .bluetooth,
       peripheral: peripheral,
-      host: "192.168.1.9",
-      showsWiFi: false,
+      support: .unknown,
       links: [.bluetooth],
       addresses: [nil],
+      canSwitch: [false],
       checked: .bluetooth,
       detail: .bluetooth
     ),
     RowCase(
-      name: "Bluetooth after a connected address",
+      name: "unknown support ignores a saved endpoint",
       live: .bluetooth,
       peripheral: peripheral,
-      host: "10.0.0.8",
-      showsWiFi: true,
+      support: .unknown,
+      dial: dial("192.168.1.9"),
+      links: [.bluetooth],
+      addresses: [nil],
+      canSwitch: [false],
+      checked: .bluetooth,
+      detail: .bluetooth
+    ),
+    RowCase(
+      name: "unavailable support ignores association and an endpoint",
+      live: .bluetooth,
+      peripheral: peripheral,
+      support: .unavailable,
+      associated: true,
+      dial: dial("10.0.0.8"),
+      links: [.bluetooth],
+      addresses: [nil],
+      canSwitch: [false],
+      checked: .bluetooth,
+      detail: .bluetooth
+    ),
+    RowCase(
+      name: "supported radio with no association keeps Wi-Fi configuration",
+      live: .bluetooth,
+      peripheral: peripheral,
+      support: .supported,
+      links: [.bluetooth, .wifi],
+      addresses: [nil, nil],
+      canSwitch: [false, false],
+      checked: .bluetooth,
+      detail: .bluetooth
+    ),
+    RowCase(
+      name: "a saved host stays visible before association",
+      live: .bluetooth,
+      peripheral: peripheral,
+      support: .supported,
+      dial: ConnectionLinkWiFiDial(host: "radio.local", port: 4242),
+      links: [.bluetooth, .wifi],
+      addresses: [nil, "radio.local"],
+      canSwitch: [false, false],
+      checked: .bluetooth,
+      detail: .bluetooth
+    ),
+    RowCase(
+      name: "supported radio can switch after association and an endpoint",
+      live: .bluetooth,
+      peripheral: peripheral,
+      support: .supported,
+      associated: true,
+      dial: dial("10.0.0.8"),
       links: [.bluetooth, .wifi],
       addresses: [nil, "10.0.0.8"],
+      canSwitch: [false, true],
       checked: .bluetooth,
       detail: .bluetooth
     ),
     RowCase(
-      name: "Bluetooth after a finished snapshot with no address",
+      name: "association without a usable endpoint stays configuration only",
       live: .bluetooth,
       peripheral: peripheral,
-      host: "192.168.1.9",
-      showsWiFi: false,
-      links: [.bluetooth],
-      addresses: [nil],
+      support: .supported,
+      associated: true,
+      dial: dial("   "),
+      links: [.bluetooth, .wifi],
+      addresses: [nil, nil],
+      canSwitch: [false, false],
       checked: .bluetooth,
       detail: .bluetooth
     ),
@@ -79,10 +135,23 @@ struct ConnectionLinkRowsTests {
       name: "Wi-Fi with a host",
       live: .wifi,
       peripheral: peripheral,
-      host: "10.0.0.4",
-      showsWiFi: false,
+      support: .unknown,
+      dial: dial("10.0.0.4"),
       links: [.bluetooth, .wifi],
       addresses: [nil, "10.0.0.4"],
+      canSwitch: [true, false],
+      checked: .wifi,
+      detail: .host("10.0.0.4")
+    ),
+    RowCase(
+      name: "Wi-Fi stays available when settings are unavailable",
+      live: .wifi,
+      peripheral: peripheral,
+      support: .unavailable,
+      dial: dial("10.0.0.4"),
+      links: [.bluetooth, .wifi],
+      addresses: [nil, "10.0.0.4"],
+      canSwitch: [true, false],
       checked: .wifi,
       detail: .host("10.0.0.4")
     ),
@@ -90,10 +159,11 @@ struct ConnectionLinkRowsTests {
       name: "Wi-Fi with an empty host",
       live: .wifi,
       peripheral: peripheral,
-      host: "",
-      showsWiFi: false,
+      support: .unknown,
+      dial: dial(""),
       links: [.bluetooth, .wifi],
       addresses: [nil, nil],
+      canSwitch: [true, false],
       checked: .wifi,
       detail: .wifi
     ),
@@ -101,10 +171,11 @@ struct ConnectionLinkRowsTests {
       name: "no peripheral id",
       live: .wifi,
       peripheral: nil,
-      host: "10.0.0.4",
-      showsWiFi: false,
+      support: .unavailable,
+      dial: dial("10.0.0.4"),
       links: [.wifi],
       addresses: ["10.0.0.4"],
+      canSwitch: [false],
       checked: .wifi,
       detail: .host("10.0.0.4")
     ),
@@ -112,10 +183,21 @@ struct ConnectionLinkRowsTests {
       name: "nil transport and nil peripheral",
       live: nil,
       peripheral: nil,
-      host: nil,
-      showsWiFi: false,
+      support: .unknown,
       links: [],
       addresses: [],
+      canSwitch: [],
+      checked: nil,
+      detail: .bluetooth
+    ),
+    RowCase(
+      name: "supported configuration remains when the live transport is nil",
+      live: nil,
+      peripheral: nil,
+      support: .supported,
+      links: [.wifi],
+      addresses: [nil],
+      canSwitch: [false],
       checked: nil,
       detail: .bluetooth
     ),
@@ -123,28 +205,46 @@ struct ConnectionLinkRowsTests {
       name: "held record while the live transport is nil",
       live: nil,
       peripheral: nil,
-      host: nil,
-      showsWiFi: false,
+      support: .unknown,
       record: heldRecord(checked: .bluetooth, target: .wifi, host: "10.0.0.8"),
       links: [.bluetooth, .wifi],
       addresses: [nil, "10.0.0.8"],
+      canSwitch: [false, true],
       checked: .bluetooth,
       target: .wifi,
+      detail: .bluetooth
+    ),
+    RowCase(
+      name: "held retry keeps the captured Wi-Fi endpoint",
+      live: nil,
+      peripheral: nil,
+      support: .unavailable,
+      record: heldRecord(checked: .bluetooth, target: nil, host: "10.0.0.8"),
+      links: [.bluetooth, .wifi],
+      addresses: [nil, "10.0.0.8"],
+      canSwitch: [false, true],
+      checked: .bluetooth,
       detail: .bluetooth
     ),
     RowCase(
       name: "held record keeps an empty Wi-Fi host",
       live: nil,
       peripheral: nil,
-      host: "10.9.9.9",
-      showsWiFi: true,
+      support: .supported,
+      associated: true,
+      dial: dial("10.9.9.9"),
       record: heldRecord(checked: .wifi, target: nil, host: ""),
       links: [.bluetooth, .wifi],
       addresses: [nil, nil],
+      canSwitch: [true, false],
       checked: .wifi,
       detail: .wifi
     )
   ]
+
+  private static func dial(_ host: String) -> ConnectionLinkWiFiDial {
+    ConnectionLinkWiFiDial(host: host, port: ConnectionMethod.defaultWiFiPort)
+  }
 
   private static func heldRecord(
     checked: TransportType,
@@ -167,11 +267,13 @@ struct RowCase: Sendable, CustomTestStringConvertible {
   var name: String
   var live: TransportType?
   var peripheral: UUID?
-  var host: String?
-  var showsWiFi: Bool
+  var support: ConnectionLinkRows.WiFiSettingsSupport = .unknown
+  var associated: Bool = false
+  var dial: ConnectionLinkWiFiDial?
   var record: ConnectionLinkSwitch?
   var links: [TransportType]
   var addresses: [String?]
+  var canSwitch: [Bool]
   var checked: TransportType?
   var target: TransportType?
   var detail: ConnectionLinkRows.SettingsDetail

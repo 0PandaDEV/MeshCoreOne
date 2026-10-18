@@ -18,7 +18,7 @@ struct SettingsDetailView: View {
     case .location:
       LocationSettingsView()
     case .connection:
-      ConnectionSettingsView()
+      ConnectionSettingsView(descendantPath: descendantPath)
     case .advanced:
       AdvancedSettingsView(descendantPath: descendantPath, requestRegionAdd: requestRegionAdd)
     case .notifications:

@@ -17,7 +17,8 @@ struct CLIToolViewModelTests {
     dataStore: @escaping @MainActor () -> PersistenceStoreProtocol? = { nil },
     radioID: @escaping @MainActor () -> UUID? = { nil },
     connectedDevice: @escaping @MainActor () -> DeviceDTO? = { nil },
-    powerOffRadio: @escaping @MainActor () async throws -> Void = {}
+    powerOffRadio: @escaping @MainActor () async throws -> Void = {},
+    powerOffCancelAvailable: @escaping @MainActor () -> Bool = { true }
   ) -> CLIToolViewModel.Dependencies {
     CLIToolViewModel.Dependencies(
       repeaterAdminService: repeaterAdminService,
@@ -26,7 +27,8 @@ struct CLIToolViewModelTests {
       dataStore: dataStore,
       radioID: radioID,
       connectedDevice: connectedDevice,
-      powerOffRadio: powerOffRadio
+      powerOffRadio: powerOffRadio,
+      powerOffCancelAvailable: powerOffCancelAvailable
     )
   }
 

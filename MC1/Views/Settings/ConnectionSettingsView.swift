@@ -5,6 +5,7 @@ import SwiftUI
 struct ConnectionSettingsView: View {
   @Environment(\.appState) private var appState
   @Environment(\.appTheme) private var theme
+  let descendantPath: [SettingsSubpage]
   @State private var radioWiFi = RadioWiFiViewModel()
 
   var body: some View {
@@ -27,6 +28,10 @@ struct ConnectionSettingsView: View {
     .themedCanvas(theme)
     .navigationTitle(L10n.Settings.Connection.header)
     .navigationBarTitleDisplayMode(.inline)
+    .refreshable {
+      await radioWiFi.refresh()
+    }
+    .errorAlert(connectionRecoveryMessage, retryAction: { Task { await radioWiFi.refresh() } })
     .settingsSubpageDestinations(radioWiFi: radioWiFi)
     .task(id: radioWiFiRefreshID) {
       radioWiFi.configure(
@@ -52,17 +57,31 @@ struct ConnectionSettingsView: View {
   private var linkPresentation: ConnectionLinkRows.Snapshot {
     let device = appState.connectedDevice
     let live = appState.connectionManager.currentTransportType
+    let snapshotHost = radioWiFi.statusConnected ? radioWiFi.ipAddress : nil
     let wifi = ConnectionLinkWiFiDial.capture(
       liveTransport: live,
       savedWiFi: device?.wifiConnectionMethod,
-      snapshotHost: radioWiFi.showsConnectOverWiFi ? radioWiFi.ipAddress : nil
+      snapshotHost: snapshotHost
     )
     return ConnectionLinkRows.make(
       liveTransport: live,
       savedPeripheralID: device?.bluetoothPeripheralID,
-      liveWiFiHost: wifi?.host,
-      showsConnectOverWiFi: radioWiFi.showsConnectOverWiFi,
+      wifiSupport: radioWiFi.wifiSettingsSupport,
+      wifiAssociated: radioWiFi.statusConnected,
+      wifiDial: wifi,
       activeSwitch: appState.connectionLinkSwitch
+    )
+  }
+
+  private var connectionRecoveryMessage: Binding<String?> {
+    Binding(
+      get: {
+        guard radioWiFi.recoverySurface(wifiPageVisible: descendantPath.contains(.wifiLink)) == .connection else {
+          return nil
+        }
+        return radioWiFi.errorMessage
+      },
+      set: { radioWiFi.errorMessage = $0 }
     )
   }
 
@@ -77,7 +96,8 @@ struct ConnectionSettingsView: View {
   private func switchLink(_ link: TransportType) {
     guard link != liveLink else { return }
     guard appState.connectionLinkSwitch?.target == nil else { return }
-    let snapshotHost = radioWiFi.showsConnectOverWiFi ? radioWiFi.ipAddress : nil
+    guard linkPresentation.rows.contains(where: { $0.link == link && $0.canSwitch }) else { return }
+    let snapshotHost = radioWiFi.statusConnected ? radioWiFi.ipAddress : nil
     Task {
       await appState.beginLinkSwitch(to: link, snapshotWiFiHost: snapshotHost)
     }
@@ -121,7 +141,7 @@ private struct ConnectionLinkChoiceRow: View {
         .contentShape(Rectangle())
       }
       .buttonStyle(.borderless)
-      .disabled(attemptInProgress)
+      .disabled(attemptInProgress || (!isLive && !row.canSwitch))
       .accessibilityLabel(title)
       .accessibilityAddTraits(isLive ? .isSelected : [])
       .modifier(ConnectionLinkSpokenValue(value: spokenValue, hint: switchHint))
@@ -182,7 +202,7 @@ private struct ConnectionLinkChoiceRow: View {
   }
 
   private var switchHint: Text? {
-    if attemptInProgress || isLive {
+    if attemptInProgress || isLive || row.canSwitch == false {
       return nil
     }
     return Text(L10n.Settings.Connection.Link.switchHint)

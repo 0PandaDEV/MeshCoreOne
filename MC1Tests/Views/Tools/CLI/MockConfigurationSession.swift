@@ -35,7 +35,9 @@ actor MockConfigurationSession: ConfigurationSessionOps {
   var cliReply = "OK"
   var cliReplyQueue: [String] = []
   private var cliError: (any Error & Sendable)?
+  private var deferredCLIFailures: [(remaining: Int, error: any Error & Sendable)] = []
   private var holdNextCLI = false
+  private var holdSkip: Int?
   private var heldCLIContinuation: CheckedContinuation<String, Never>?
 
   func setCLIReply(_ reply: String) {
@@ -52,9 +54,19 @@ actor MockConfigurationSession: ConfigurationSessionOps {
     cliError = error
   }
 
+  /// Throws `error` on the `runCliCommand` that is `skip` calls from now. Zero is the next call.
+  func failCLICommand(after skip: Int, _ error: any Error & Sendable) {
+    deferredCLIFailures.append((remaining: skip, error: error))
+  }
+
   /// The next `runCliCommand` records its command and waits for `releaseHeldCLIReply()`.
   func holdNextCLIReply() {
     holdNextCLI = true
+  }
+
+  /// Holds the `runCliCommand` that is `skip` calls from now. Zero is the next call.
+  func holdCLIReply(after skip: Int) {
+    holdSkip = skip
   }
 
   /// Returns the parked CLI reply. The reply is the queue head, or `cliReply`.
@@ -285,20 +297,44 @@ actor MockConfigurationSession: ConfigurationSessionOps {
 
   func runCliCommand(_ command: String) async throws -> String {
     runCliCommandCalls.append(command)
+    if let failure = takeDueCLIFailure() {
+      throw failure
+    }
     if let cliError {
       self.cliError = nil
       throw cliError
     }
+    if let skip = holdSkip {
+      if skip == 0 {
+        holdSkip = nil
+        return await parkCLI(command)
+      }
+      holdSkip = skip - 1
+    }
     if holdNextCLI {
       holdNextCLI = false
-      heldCLICommand = command
-      let reply = await withCheckedContinuation { (continuation: CheckedContinuation<String, Never>) in
-        heldCLIContinuation = continuation
-      }
-      heldCLICommand = nil
-      return reply
+      return await parkCLI(command)
     }
     return dequeueCLIReply()
+  }
+
+  private func takeDueCLIFailure() -> (any Error & Sendable)? {
+    defer {
+      deferredCLIFailures = deferredCLIFailures.map { (remaining: $0.remaining - 1, error: $0.error) }
+    }
+    guard let index = deferredCLIFailures.firstIndex(where: { $0.remaining == 0 }) else {
+      return nil
+    }
+    return deferredCLIFailures.remove(at: index).error
+  }
+
+  private func parkCLI(_ command: String) async -> String {
+    heldCLICommand = command
+    let reply = await withCheckedContinuation { (continuation: CheckedContinuation<String, Never>) in
+      heldCLIContinuation = continuation
+    }
+    heldCLICommand = nil
+    return reply
   }
 
   private func dequeueCLIReply() -> String {

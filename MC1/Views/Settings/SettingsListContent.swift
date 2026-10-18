@@ -247,15 +247,18 @@ private struct ConnectionSettingsLinkRow: View {
 
   private var presentation: ConnectionLinkRows.Snapshot {
     let device = appState.connectedDevice
-    var host: String?
-    if case let .wifi(wifiHost, _, _) = device?.wifiConnectionMethod {
-      host = wifiHost
+    let live = appState.connectionManager.currentTransportType
+    let wifiDial: ConnectionLinkWiFiDial? = if live == .wifi, case let .wifi(host, port, _) = device?.wifiConnectionMethod {
+      ConnectionLinkWiFiDial(host: host, port: port)
+    } else {
+      nil
     }
     return ConnectionLinkRows.make(
-      liveTransport: appState.connectionManager.currentTransportType,
+      liveTransport: live,
       savedPeripheralID: device?.bluetoothPeripheralID,
-      liveWiFiHost: host,
-      showsConnectOverWiFi: false,
+      wifiSupport: .unknown,
+      wifiAssociated: false,
+      wifiDial: wifiDial,
       activeSwitch: appState.connectionLinkSwitch
     )
   }

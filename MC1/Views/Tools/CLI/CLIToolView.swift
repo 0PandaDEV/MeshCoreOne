@@ -63,6 +63,9 @@ private struct CLIToolContent: View {
           connectedDevice: { [appState] in appState.connectedDevice },
           powerOffRadio: { [appState] in
             try await appState.powerOffRadio()
+          },
+          powerOffCancelAvailable: { [appState] in
+            appState.connectionManager.powerOffCancelAvailable
           }
         ),
         localDeviceName: appState.connectedDevice?.nodeName ?? L10n.Tools.Tools.Cli.defaultDevice,
@@ -93,6 +96,11 @@ private struct CLIToolContent: View {
       tabSuggestions: viewModel.tabSuggestions,
       tabSelectionIndex: viewModel.tabSelectionIndex,
       isWaitingForResponse: viewModel.isWaitingForResponse,
+      canCancelCommand: CLICommandCancel.allows(
+        isWaiting: viewModel.isWaitingForResponse,
+        powerOffActive: viewModel.powerOffCommandActive,
+        powerOffCanStillPreventSend: appState.connectionManager.powerOffCancelAvailable
+      ),
       showSessionsButton: true,
       currentInput: $viewModel.currentInput,
       scrollPosition: $scrollPosition,

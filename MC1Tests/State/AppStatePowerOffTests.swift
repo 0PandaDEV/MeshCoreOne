@@ -61,6 +61,42 @@ struct AppStatePowerOffTests {
     #expect(appState.connectionState == .disconnected)
   }
 
+  @Test
+  func `a replacement connection survives a power off that was already waiting`() async throws {
+    let transport = MockTransport()
+    let session = MeshCoreSession(
+      transport: transport,
+      configuration: SessionConfiguration(defaultTimeout: 10, clientIdentifier: "MCTst")
+    )
+    let appState = try await makeAppState(session: session)
+    defer { appState.shutdown() }
+    try await startSession(session, transport: transport)
+
+    await transport.holdNextSend()
+    let task = Task { try await appState.powerOffRadio() }
+    try await waitUntil("poweroff write should park") { await transport.sendIsWaiting }
+
+    let replacementTransport = MockTransport()
+    let replacement = MeshCoreSession(transport: replacementTransport)
+    let replacementDevice = makeDevice(firmwareVersion: 14)
+    let replacementServices = try await ServiceContainer.forTesting(session: replacement)
+    appState.connectionManager.setTestState(
+      connectionState: .ready,
+      services: replacementServices,
+      session: replacement,
+      connectedDevice: replacementDevice,
+      connectionIntent: .wantsConnection()
+    )
+    await transport.failHeldSend()
+    await transport.releaseHeldSend()
+
+    await #expect(throws: PowerOffSuperseded.self) { try await task.value }
+    #expect(appState.connectionManager.session === replacement)
+    #expect(appState.connectionManager.connectionIntent.wantsConnection)
+    #expect(appState.connectionState == .ready)
+    #expect(appState.connectionManager.connectedDevice?.id == replacementDevice.id)
+  }
+
   private func makeAppState(session: MeshCoreSession) async throws -> AppState {
     let suite = "test.poweroff.\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: suite)!

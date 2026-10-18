@@ -347,6 +347,123 @@ struct ConnectionLinkSwitchTests {
     await harness.appState.wireServicesIfConnected()
     #expect(harness.appState.connectionLinkSwitch == nil)
   }
+
+  @Test
+  func `a completed wifi session returns to its saved host and port`() async throws {
+    let harness = try makeHarness(
+      live: .wifi,
+      peripheralID: UUID(),
+      wifiHost: "radio.local",
+      wifiPort: 4242
+    )
+    defer { harness.appState.shutdown() }
+    harness.manager.testBluetoothConnectHandler = { _ in
+      harness.manager.setTestState(
+        connectedDevice: .some(harness.device),
+        currentTransportType: .bluetooth
+      )
+    }
+
+    await harness.appState.beginLinkSwitch(to: .bluetooth, snapshotWiFiHost: "10.9.9.9")
+    #expect(harness.appState.connectionLinkSwitch == nil)
+
+    await harness.appState.beginLinkSwitch(to: .wifi, snapshotWiFiHost: "10.1.2.3")
+
+    let attempt = try #require(harness.manager.testWiFiConnectAttempts.first)
+    #expect(harness.manager.testWiFiConnectAttempts.count == 1)
+    #expect(attempt.host == "radio.local")
+    #expect(attempt.port == 4242)
+    #expect(harness.appState.connectionUI.showingConnectionFailedAlert)
+  }
+
+  @Test
+  func `a failed saved dial does not try the reported address`() async throws {
+    let harness = try makeHarness(
+      live: .bluetooth,
+      peripheralID: UUID(),
+      wifiHost: "radio.example",
+      wifiPort: 4242
+    )
+    defer { harness.appState.shutdown() }
+
+    await harness.appState.beginLinkSwitch(to: .wifi, snapshotWiFiHost: "10.0.0.8")
+
+    let attempt = try #require(harness.manager.testWiFiConnectAttempts.first)
+    #expect(harness.manager.testWiFiConnectAttempts.count == 1)
+    #expect(attempt.host == "radio.example")
+    #expect(attempt.port == 4242)
+    #expect(harness.manager.testBluetoothConnectAttempts.isEmpty)
+    #expect(harness.appState.connectionUI.showingConnectionFailedAlert)
+    #expect(harness.appState.connectionLinkSwitch?.wifi == ConnectionLinkWiFiDial(host: "radio.example", port: 4242))
+  }
+
+  @Test
+  func `an unusable saved endpoint uses the reported address on the default port`() async throws {
+    let harness = try makeHarness(live: .bluetooth, peripheralID: UUID(), wifiHost: "bad host", wifiPort: 4242)
+    defer { harness.appState.shutdown() }
+
+    await harness.appState.beginLinkSwitch(to: .wifi, snapshotWiFiHost: "10.0.0.8")
+
+    let attempt = try #require(harness.manager.testWiFiConnectAttempts.first)
+    #expect(harness.manager.testWiFiConnectAttempts.count == 1)
+    #expect(attempt.host == "10.0.0.8")
+    #expect(attempt.port == ConnectionMethod.defaultWiFiPort)
+  }
+
+  @Test
+  func `no usable wifi source does not dial`() async throws {
+    let harness = try makeHarness(live: .bluetooth, peripheralID: UUID(), wifiHost: "bad host", wifiPort: 4242)
+    defer { harness.appState.shutdown() }
+
+    await harness.appState.beginLinkSwitch(to: .wifi, snapshotWiFiHost: "999.1.1.1")
+
+    #expect(harness.appState.connectionLinkSwitch == nil)
+    #expect(harness.manager.testWiFiConnectAttempts.isEmpty)
+    #expect(!harness.appState.connectionUI.showingConnectionFailedAlert)
+  }
+
+  @Test
+  func `a held attempt keeps its endpoint when saved data and the snapshot change`() async throws {
+    let harness = try makeHarness(
+      live: .bluetooth,
+      peripheralID: UUID(),
+      wifiHost: "  radio.local  ",
+      wifiPort: 4242
+    )
+    defer { harness.appState.shutdown() }
+    let gate = LinkSwitchGate()
+    harness.manager.testWiFiConnectHandler = { _, _ in
+      await gate.enter()
+      throw BLEError.connectionTimeout
+    }
+
+    let task = Task {
+      await harness.appState.beginLinkSwitch(to: .wifi, snapshotWiFiHost: "10.0.0.8")
+    }
+    await gate.waitUntilEntered()
+
+    var replaced = harness.device
+    replaced.connectionMethods = [
+      .wifi(host: "other.example", port: 9, displayName: nil)
+    ]
+    harness.manager.setTestState(connectedDevice: .some(replaced))
+    await harness.appState.beginLinkSwitch(to: .wifi, snapshotWiFiHost: "10.9.9.9")
+
+    let running = try #require(harness.appState.connectionLinkSwitch)
+    #expect(running.wifi == ConnectionLinkWiFiDial(host: "radio.local", port: 4242))
+    #expect(harness.manager.testWiFiConnectAttempts.count == 1)
+
+    gate.release()
+    await task.value
+
+    harness.manager.testWiFiConnectHandler = { _, _ in
+      throw BLEError.connectionTimeout
+    }
+    await harness.appState.beginLinkSwitch(to: .wifi, snapshotWiFiHost: "10.8.8.8")
+    #expect(harness.manager.testWiFiConnectAttempts.count == 2)
+    #expect(harness.manager.testWiFiConnectAttempts.last?.host == "radio.local")
+    #expect(harness.manager.testWiFiConnectAttempts.last?.port == 4242)
+  }
 }
 
 @MainActor
