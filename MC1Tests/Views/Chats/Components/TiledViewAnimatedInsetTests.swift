@@ -18,7 +18,7 @@ struct TiledViewAnimatedInsetTests {
     static let animationDuration: TimeInterval = 0.4
     static let sampleDuration: TimeInterval = 0.6
     static let waitTimeout: TimeInterval = 5
-    static let runLoopSlice: TimeInterval = 0.02
+    static let sampleInterval: TimeInterval = 0.02
     static let tolerance: CGFloat = 2
     static let captureProgress: [CGFloat] = [0.25, 0.5, 0.75]
     static let reservationIdentifier = "tiled-animated-inset-reservation"
@@ -119,34 +119,34 @@ struct TiledViewAnimatedInsetTests {
   }
 
   @Test
-  func `collapsing the bottom inset leaves idle history in place`() throws {
-    try verifyCollapse(from: .history)
+  func `collapsing the bottom inset leaves idle history in place`() async throws {
+    try await verifyCollapse(from: .history)
   }
 
   @Test
-  func `collapsing the bottom inset preserves a dragging history session and its cells`() throws {
-    try verifyCollapse(from: .draggingHistory)
+  func `collapsing the bottom inset preserves a dragging history session and its cells`() async throws {
+    try await verifyCollapse(from: .draggingHistory)
   }
 
   @Test
-  func `collapsing the bottom inset preserves a decelerating history session and its cells`() throws {
-    try verifyCollapse(from: .deceleratingHistory)
+  func `collapsing the bottom inset preserves a decelerating history session and its cells`() async throws {
+    try await verifyCollapse(from: .deceleratingHistory)
   }
 
   @Test
-  func `collapsing the bottom inset keeps the newest row above chrome`() throws {
-    try verifyCollapse(from: .bottom)
+  func `collapsing the bottom inset keeps the newest row above chrome`() async throws {
+    try await verifyCollapse(from: .bottom)
   }
 
   @Test
-  func `collapsing the bottom inset preserves the initial target`() throws {
-    try verifyCollapse(from: .initialAnchor)
+  func `collapsing the bottom inset preserves the initial target`() async throws {
+    try await verifyCollapse(from: .initialAnchor)
   }
 
-  private func verifyCollapse(from position: Position) throws {
+  private func verifyCollapse(from position: Position) async throws {
     let model = Model(position: position)
     let capture = try TiledInsetRenderedCapture()
-    let host = try mount(model)
+    let host = try await mount(model)
     let animationsEnabled = UIView.areAnimationsEnabled
     UIView.setAnimationsEnabled(true)
     defer {
@@ -158,9 +158,10 @@ struct TiledViewAnimatedInsetTests {
 
     if position.isHistory {
       model.position.scrollTo(id: Metrics.historyIndex, anchor: .top, animated: false)
-      try #require(waitUntil {
+      let anchored = try await waitUntil {
         abs(rowTop(Metrics.historyIndex, in: host) - readableTop(in: host)) < Metrics.tolerance
-      }, "history top \(rowTop(Metrics.historyIndex, in: host)), readable top \(readableTop(in: host))")
+      }
+      try #require(anchored, "history top \(rowTop(Metrics.historyIndex, in: host)), readable top \(readableTop(in: host))")
     }
 
     let offsetBefore = host.collectionView.contentOffset
@@ -207,7 +208,7 @@ struct TiledViewAnimatedInsetTests {
         expectedOffsetY -= Metrics.scrollStep
         host.collectionView.setContentOffset(CGPoint(x: offsetBefore.x, y: expectedOffsetY), animated: false)
       }
-      RunLoop.main.run(until: Date(timeIntervalSinceNow: Metrics.runLoopSlice))
+      try await Task.sleep(for: .seconds(Metrics.sampleInterval))
       let current = try sample(host, capture: capture)
       samples.append(current)
       let progress = (initialReservationHeight - current.reservationHeight) / Metrics.keyboardLift
@@ -259,7 +260,7 @@ struct TiledViewAnimatedInsetTests {
     }
   }
 
-  private func mount(_ model: Model) throws -> Host {
+  private func mount(_ model: Model) async throws -> Host {
     let controller = UIHostingController(rootView: Harness(model: model))
     let frame = CGRect(origin: .zero, size: Metrics.viewport)
     let window = if let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first {
@@ -272,20 +273,21 @@ struct TiledViewAnimatedInsetTests {
     controller.view.frame = window.bounds
     window.isHidden = false
     window.layoutIfNeeded()
-    try #require(waitUntil {
+    let mounted = try await waitUntil {
       guard let collection = firstCollectionView(in: window) else { return false }
       return collection.contentSize.height > Metrics.viewport.height
         && collection.numberOfSections > 0
         && view(withIdentifier: Metrics.reservationIdentifier, in: window) != nil
         && !collection.visibleCells.isEmpty
-    }, "the hosted timeline did not lay out")
+    }
+    try #require(mounted, "the hosted timeline did not lay out")
     let collection = try #require(firstCollectionView(in: window))
     let layout = try #require(collection.collectionViewLayout as? TiledCollectionViewLayout)
     let section = try #require((0..<collection.numberOfSections).first {
       collection.numberOfItems(inSection: $0) == Metrics.rowCount
     })
     let reservation = try #require(view(withIdentifier: Metrics.reservationIdentifier, in: window))
-    RunLoop.main.run(until: Date(timeIntervalSinceNow: Metrics.animationDuration))
+    try await Task.sleep(for: .seconds(Metrics.animationDuration))
     return Host(
       window: window,
       collectionView: collection,
@@ -348,11 +350,11 @@ struct TiledViewAnimatedInsetTests {
     host.layout.additionalContentInset.top
   }
 
-  private func waitUntil(_ condition: () -> Bool) -> Bool {
+  private func waitUntil(_ condition: () -> Bool) async throws -> Bool {
     let deadline = Date(timeIntervalSinceNow: Metrics.waitTimeout)
     while Date() < deadline {
       if condition() { return true }
-      RunLoop.main.run(until: Date(timeIntervalSinceNow: Metrics.runLoopSlice))
+      try await Task.sleep(for: .seconds(Metrics.sampleInterval))
     }
     return condition()
   }
