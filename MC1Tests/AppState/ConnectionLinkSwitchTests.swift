@@ -422,6 +422,65 @@ struct ConnectionLinkSwitchTests {
     #expect(!harness.appState.connectionUI.showingConnectionFailedAlert)
   }
 
+  @Test(arguments: [TransportType.bluetooth, .wifi])
+  func `a failed switch can recover through either captured link`(_ source: TransportType) async throws {
+    let peripheralID = UUID()
+    let capturedPort: UInt16 = 4242
+    let harness = try makeHarness(
+      live: source,
+      peripheralID: peripheralID,
+      wifiHost: "radio.local",
+      wifiPort: capturedPort
+    )
+    defer { harness.appState.shutdown() }
+    let target: TransportType = source == .bluetooth ? .wifi : .bluetooth
+    let clearLive = {
+      harness.manager.setTestState(
+        connectedDevice: .some(nil),
+        currentTransportType: .some(nil)
+      )
+    }
+    harness.manager.testWiFiConnectHandler = { _, _ in
+      clearLive()
+      throw BLEError.connectionTimeout
+    }
+    harness.manager.testBluetoothConnectHandler = { _ in
+      clearLive()
+      throw BLEError.connectionTimeout
+    }
+
+    await harness.appState.beginLinkSwitch(to: target, snapshotWiFiHost: "10.9.9.9")
+
+    var replaced = harness.device
+    replaced.connectionMethods = [
+      .bluetooth(peripheralUUID: UUID(), displayName: nil),
+      .wifi(host: "other.example", port: 9, displayName: nil)
+    ]
+    harness.manager.setTestState(
+      connectedDevice: .some(replaced),
+      currentTransportType: .some(nil)
+    )
+
+    try expectRecoveryRow(harness, link: source, peripheralID: peripheralID, port: capturedPort)
+    await harness.appState.beginLinkSwitch(to: source, snapshotWiFiHost: "10.8.8.8")
+    try expectRecoveryRow(harness, link: target, peripheralID: peripheralID, port: capturedPort)
+    await harness.appState.beginLinkSwitch(to: target, snapshotWiFiHost: "10.1.2.3")
+
+    let record = try #require(harness.appState.connectionLinkSwitch)
+    #expect(record.checked == source)
+    #expect(record.bluetoothPeripheralID == peripheralID)
+    #expect(record.wifi == ConnectionLinkWiFiDial(host: "radio.local", port: capturedPort))
+    if source == .bluetooth {
+      #expect(harness.manager.testBluetoothConnectAttempts == [peripheralID])
+      #expect(harness.manager.testWiFiConnectAttempts.map(\.host) == ["radio.local", "radio.local"])
+      #expect(harness.manager.testWiFiConnectAttempts.map(\.port) == [capturedPort, capturedPort])
+    } else {
+      #expect(harness.manager.testBluetoothConnectAttempts == [peripheralID, peripheralID])
+      #expect(harness.manager.testWiFiConnectAttempts.map(\.host) == ["radio.local"])
+      #expect(harness.manager.testWiFiConnectAttempts.map(\.port) == [capturedPort])
+    }
+  }
+
   @Test
   func `a held attempt keeps its endpoint when saved data and the snapshot change`() async throws {
     let harness = try makeHarness(
@@ -506,6 +565,31 @@ private struct LinkSwitchHarness {
   var manager: ConnectionManager {
     appState.connectionManager
   }
+}
+
+@MainActor
+private func expectRecoveryRow(
+  _ harness: LinkSwitchHarness,
+  link: TransportType,
+  peripheralID: UUID,
+  port: UInt16
+) throws {
+  let record = try #require(harness.appState.connectionLinkSwitch)
+  let device = harness.appState.connectedDevice
+  let snapshot = ConnectionLinkRows.make(
+    liveTransport: harness.manager.currentTransportType,
+    savedPeripheralID: device?.bluetoothPeripheralID,
+    wifiSupport: .supported,
+    wifiAssociated: true,
+    wifiDial: ConnectionLinkWiFiDial(host: "other.example", port: 9),
+    activeSwitch: record
+  )
+  let row = try #require(snapshot.rows.first { $0.link == link })
+  #expect(row.canSwitch)
+  #expect(snapshot.checked == record.checked)
+  #expect(snapshot.rows.first { $0.link == .wifi }?.address == "radio.local")
+  #expect(record.bluetoothPeripheralID == peripheralID)
+  #expect(record.wifi == ConnectionLinkWiFiDial(host: "radio.local", port: port))
 }
 
 @MainActor

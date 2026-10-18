@@ -46,7 +46,7 @@ enum ConnectionLinkRows {
     activeSwitch: ConnectionLinkSwitch?
   ) -> Snapshot {
     if let activeSwitch {
-      return snapshot(from: activeSwitch)
+      return snapshot(from: activeSwitch, liveTransport: liveTransport)
     }
 
     let checked = liveTransport
@@ -75,10 +75,11 @@ enum ConnectionLinkRows {
     )
   }
 
-  private static func snapshot(from record: ConnectionLinkSwitch) -> Snapshot {
+  /// Eligibility follows the live transport, so a retained checkmark cannot block recovery.
+  private static func snapshot(from record: ConnectionLinkSwitch, liveTransport: TransportType?) -> Snapshot {
     var rows: [Row] = []
-    let bluetoothCanSwitch = record.bluetoothPeripheralID != nil && record.checked != .bluetooth
-    let wifiCanSwitch = record.wifi?.canDial == true && record.checked != .wifi
+    let bluetoothCanSwitch = record.bluetoothPeripheralID != nil && liveTransport != .bluetooth
+    let wifiCanSwitch = record.wifi?.canDial == true && liveTransport != .wifi
     if record.checked == .bluetooth || record.bluetoothPeripheralID != nil || record.target == .bluetooth {
       rows.append(Row(link: .bluetooth, address: nil, canSwitch: bluetoothCanSwitch))
     }

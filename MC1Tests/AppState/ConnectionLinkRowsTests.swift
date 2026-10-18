@@ -40,7 +40,7 @@ struct ConnectionLinkRowsTests {
     )
     #expect(snapshot.rows.map(\.link) == [.bluetooth, .wifi])
     #expect(snapshot.rows.map(\.address) == [nil, "10.0.0.8"])
-    #expect(snapshot.rows.map(\.canSwitch) == [false, true])
+    #expect(snapshot.rows.map(\.canSwitch) == [true, true])
     #expect(snapshot.checked == .bluetooth)
     #expect(snapshot.target == .wifi)
   }
@@ -209,7 +209,7 @@ struct ConnectionLinkRowsTests {
       record: heldRecord(checked: .bluetooth, target: .wifi, host: "10.0.0.8"),
       links: [.bluetooth, .wifi],
       addresses: [nil, "10.0.0.8"],
-      canSwitch: [false, true],
+      canSwitch: [true, true],
       checked: .bluetooth,
       target: .wifi,
       detail: .bluetooth
@@ -222,9 +222,73 @@ struct ConnectionLinkRowsTests {
       record: heldRecord(checked: .bluetooth, target: nil, host: "10.0.0.8"),
       links: [.bluetooth, .wifi],
       addresses: [nil, "10.0.0.8"],
+      canSwitch: [true, true],
+      checked: .bluetooth,
+      detail: .bluetooth
+    ),
+    RowCase(
+      name: "no live link makes a captured Wi-Fi check selectable too",
+      live: nil,
+      peripheral: nil,
+      support: .unknown,
+      record: heldRecord(checked: .wifi, host: "radio.local"),
+      links: [.bluetooth, .wifi],
+      addresses: [nil, "radio.local"],
+      canSwitch: [true, true],
+      checked: .wifi,
+      detail: .host("radio.local")
+    ),
+    RowCase(
+      name: "live Bluetooth disables only the Bluetooth row",
+      live: .bluetooth,
+      peripheral: nil,
+      support: .unavailable,
+      record: heldRecord(checked: .wifi, host: "radio.local"),
+      links: [.bluetooth, .wifi],
+      addresses: [nil, "radio.local"],
+      canSwitch: [false, true],
+      checked: .wifi,
+      detail: .host("radio.local")
+    ),
+    RowCase(
+      name: "live Wi-Fi disables only the Wi-Fi row",
+      live: .wifi,
+      peripheral: peripheral,
+      support: .supported,
+      associated: true,
+      dial: dial("10.9.9.9"),
+      record: heldRecord(checked: .bluetooth, host: "radio.local"),
+      links: [.bluetooth, .wifi],
+      addresses: [nil, "radio.local"],
+      canSwitch: [true, false],
+      checked: .bluetooth,
+      detail: .bluetooth
+    ),
+    RowCase(
+      name: "a missing peripheral stays ineligible",
+      live: nil,
+      peripheral: peripheral,
+      support: .supported,
+      record: heldRecord(checked: .bluetooth, host: "radio.local", peripheral: nil),
+      links: [.bluetooth, .wifi],
+      addresses: [nil, "radio.local"],
       canSwitch: [false, true],
       checked: .bluetooth,
       detail: .bluetooth
+    ),
+    RowCase(
+      name: "a missing Wi-Fi endpoint stays ineligible",
+      live: nil,
+      peripheral: nil,
+      support: .supported,
+      associated: true,
+      dial: dial("10.9.9.9"),
+      record: heldRecord(checked: .wifi, host: nil),
+      links: [.bluetooth, .wifi],
+      addresses: [nil, nil],
+      canSwitch: [true, false],
+      checked: .wifi,
+      detail: .wifi
     ),
     RowCase(
       name: "held record keeps an empty Wi-Fi host",
@@ -248,8 +312,9 @@ struct ConnectionLinkRowsTests {
 
   private static func heldRecord(
     checked: TransportType,
-    target: TransportType?,
-    host: String
+    target: TransportType? = nil,
+    host: String?,
+    peripheral: UUID? = Self.peripheral
   ) -> ConnectionLinkSwitch {
     ConnectionLinkSwitch(
       radioID: radio,
@@ -258,7 +323,7 @@ struct ConnectionLinkRowsTests {
       target: target,
       token: UUID(uuidString: "DDDDDDDD-DDDD-DDDD-DDDD-DDDDDDDDDDDD")!,
       bluetoothPeripheralID: peripheral,
-      wifi: ConnectionLinkWiFiDial(host: host, port: ConnectionMethod.defaultWiFiPort)
+      wifi: host.map { ConnectionLinkWiFiDial(host: $0, port: ConnectionMethod.defaultWiFiPort) }
     )
   }
 }
