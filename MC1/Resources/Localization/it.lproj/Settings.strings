@@ -639,6 +639,18 @@
 /* Alert message for reboot confirmation */
 "deviceActions.alert.reboot.message" = "Il dispositivo si riavvierà e si disconnetterà temporaneamente.";
 
+/* Button to turn the device off */
+"deviceActions.powerOff" = "Spegni dispositivo";
+
+/* Alert title for power off confirmation */
+"deviceActions.alert.powerOff.title" = "Spegnere il dispositivo?";
+
+/* Button to confirm power off */
+"deviceActions.alert.powerOff.confirm" = "Spegni";
+
+/* Alert message for power off confirmation */
+"deviceActions.alert.powerOff.message" = "Il dispositivo si spegnerà e si disconnetterà. Riaccendilo con il pulsante di accensione, poi riconnettiti.";
+
 // MARK: - Danger Zone Section
 
 /* Section header for danger zone */

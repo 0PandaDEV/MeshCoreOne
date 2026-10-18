@@ -192,6 +192,46 @@ struct V118SessionMethodsTests {
     }
     await session.stop()
   }
+
+  @Test
+  func `powerOff sends poweroff and returns false when the board replies`() async throws {
+    let transport = MockTransport()
+    let session = MeshCoreSession(
+      transport: transport,
+      configuration: SessionConfiguration(defaultTimeout: 10, clientIdentifier: "MCTst")
+    )
+    try await startSession(session, transport: transport)
+
+    let task = Task { try await session.powerOff() }
+    try await waitUntil("poweroff should be sent") {
+      await transport.sentData.count == 2
+    }
+    let sent = await transport.sentData[1]
+    #expect(sent.first == 0x42)
+    #expect(Data(sent.dropFirst()) == Data(PacketBuilder.powerOffCommand.utf8))
+
+    await transport.simulateReceive(Data([ResponseCode.cliReply.rawValue]))
+    let poweredOff = try await task.value
+    #expect(poweredOff == false)
+    await session.stop()
+  }
+
+  @Test
+  func `powerOff returns true when the reply window expires`() async throws {
+    let transport = MockTransport()
+    let session = MeshCoreSession(
+      transport: transport,
+      configuration: SessionConfiguration(defaultTimeout: 10, clientIdentifier: "MCTst")
+    )
+    try await startSession(session, transport: transport)
+
+    let poweredOff = try await session.powerOff()
+    let sent = await transport.sentData[1]
+    #expect(sent.first == 0x42)
+    #expect(Data(sent.dropFirst()) == Data(PacketBuilder.powerOffCommand.utf8))
+    #expect(poweredOff == true)
+    await session.stop()
+  }
 }
 
 private func startSession(

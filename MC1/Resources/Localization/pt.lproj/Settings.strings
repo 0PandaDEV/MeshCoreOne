@@ -639,6 +639,18 @@
 /* Alert message for reboot confirmation */
 "deviceActions.alert.reboot.message" = "O dispositivo irá reiniciar e a ligação será interrompida temporariamente.";
 
+/* Button to turn the device off */
+"deviceActions.powerOff" = "Desligar dispositivo";
+
+/* Alert title for power off confirmation */
+"deviceActions.alert.powerOff.title" = "Desligar o dispositivo?";
+
+/* Button to confirm power off */
+"deviceActions.alert.powerOff.confirm" = "Desligar";
+
+/* Alert message for power off confirmation */
+"deviceActions.alert.powerOff.message" = "O dispositivo irá desligar-se e a ligação será terminada. Ligue-o com o botão de energia e volte a ligar.";
+
 // MARK: - Danger Zone Section
 
 /* Section header for danger zone */

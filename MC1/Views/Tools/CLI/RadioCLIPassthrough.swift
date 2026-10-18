@@ -11,18 +11,16 @@ enum RadioCLIPassthrough {
   ]
   static let getOnlyKeys: Set<String> = [RadioCLIKey.wifiStatus, RadioCLIKey.wifiIP]
   static let setOnlyKeys: Set<String> = ["pin", RadioCLIKey.wifiClear, "fan.lo", "fan.hi"]
-  /// The radio powers off without sending `RESP_CODE_CLI_REPLY`, so a reply waiter would time out.
-  static let noReplyCommands: Set<String> = ["poweroff", "shutdown"]
 
+  /// Power-off verbs stay app-mapped because the radio powers off without a CLI reply.
   private static let mappedFirstWords: Set<String> = [
-    "clock", "ver", "board", "advert", "advert.zerohop", "floodadv", "reboot",
+    "clock", "ver", "board", "advert", "advert.zerohop", "floodadv", "reboot", "poweroff", "shutdown",
     "get", "set", "help", "clear", "session", "login", "logout", "nodes", "channels",
   ]
 
   static func shouldSend(_ line: String) -> Bool {
     let parts = line.split(whereSeparator: \.isWhitespace).map { $0.lowercased() }
     guard let first = parts.first else { return false }
-    if noReplyCommands.contains(first) { return false }
 
     if first == "get" {
       guard parts.count >= 2 else { return false }

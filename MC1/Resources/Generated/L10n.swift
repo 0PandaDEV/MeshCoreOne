@@ -2687,6 +2687,8 @@ public enum L10n {
         public static let invalidResponse = L10n.tr("Localizable", "error.settings.invalidResponse", fallback: "Invalid response from device")
         /// Location: SettingsServiceError+UserFacingMessage.swift - No active connection to the radio
         public static let notConnected = L10n.tr("Localizable", "error.settings.notConnected", fallback: "Device not connected")
+        /// Location: SettingsServiceError+UserFacingMessage.swift - The radio cannot turn itself off
+        public static let powerOffUnsupported = L10n.tr("Localizable", "error.settings.powerOffUnsupported", fallback: "This radio can't turn itself off. It is still on and connected.")
         /// Location: SettingsServiceError+UserFacingMessage.swift - Radio CLI command was rejected
         public static func radioCLIRejected(_ p1: Any) -> String {
           return L10n.tr("Localizable", "error.settings.radioCLIRejected", String(describing: p1), fallback: "The radio returned an error: %@")
@@ -4820,11 +4822,21 @@ public enum L10n {
     public enum DeviceActions {
       /// Section header for device actions
       public static let header = L10n.tr("Settings", "deviceActions.header", fallback: "Device")
+      /// Button to turn the device off
+      public static let powerOff = L10n.tr("Settings", "deviceActions.powerOff", fallback: "Power Off Device")
       /// Button to reboot the device
       public static let rebootDevice = L10n.tr("Settings", "deviceActions.rebootDevice", fallback: "Reboot Device")
       /// Text shown while rebooting
       public static let rebooting = L10n.tr("Settings", "deviceActions.rebooting", fallback: "Rebooting...")
       public enum Alert {
+        public enum PowerOff {
+          /// Button to confirm power off
+          public static let confirm = L10n.tr("Settings", "deviceActions.alert.powerOff.confirm", fallback: "Power Off")
+          /// Alert message for power off confirmation
+          public static let message = L10n.tr("Settings", "deviceActions.alert.powerOff.message", fallback: "The device will turn off and disconnect. Turn it on with its power button, then reconnect.")
+          /// Alert title for power off confirmation
+          public static let title = L10n.tr("Settings", "deviceActions.alert.powerOff.title", fallback: "Power Off Device?")
+        }
         public enum Reboot {
           /// Button to confirm reboot
           public static let confirm = L10n.tr("Settings", "deviceActions.alert.reboot.confirm", fallback: "Reboot")

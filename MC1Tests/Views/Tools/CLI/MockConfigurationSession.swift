@@ -1,4 +1,5 @@
 import Foundation
+import MC1Services
 @testable import MeshCore
 
 /// A stateful fake `ConfigurationSessionOps` for exercising a real `SettingsService`
@@ -18,6 +19,8 @@ actor MockConfigurationSession: ConfigurationSessionOps {
 
   private(set) var readCount = 0
   private(set) var rebootCalled = false
+  private(set) var powerOffCallCount = 0
+  private var powerOffBehavior: PowerOffBehavior = .poweredOff
   private(set) var setNameCalls: [String] = []
   private(set) var setTxPowerCalls: [Int8] = []
   private(set) var setPathHashModeCalls: [UInt8] = []
@@ -217,6 +220,34 @@ actor MockConfigurationSession: ConfigurationSessionOps {
 
   func reboot() async throws {
     rebootCalled = true
+  }
+
+  enum PowerOffBehavior: Sendable {
+    case poweredOff
+    case stillOn
+    case bleNotConnected
+    case wifiNotConnected
+    case invalidInput
+  }
+
+  func setPowerOffBehavior(_ behavior: PowerOffBehavior) {
+    powerOffBehavior = behavior
+  }
+
+  func powerOff() async throws -> Bool {
+    powerOffCallCount += 1
+    switch powerOffBehavior {
+    case .poweredOff:
+      return true
+    case .stillOn:
+      return false
+    case .bleNotConnected:
+      throw BLEError.notConnected
+    case .wifiNotConnected:
+      throw WiFiTransportError.notConnected
+    case .invalidInput:
+      throw MeshCoreError.invalidInput("power off")
+    }
   }
 
   // MARK: - Custom Variables

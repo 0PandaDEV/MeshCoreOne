@@ -475,7 +475,8 @@ struct CLIToolViewModelLocalCommandsTests {
         settingsService: { settings },
         dataStore: { nil },
         radioID: { UUID() },
-        connectedDevice: { nil }
+        connectedDevice: { nil },
+        powerOffRadio: {}
       ),
       localDeviceName: "TestDevice",
       sendSelfAdvert: { _ in }
@@ -492,7 +493,8 @@ struct CLIToolViewModelLocalCommandsTests {
         settingsService: { nil },
         dataStore: { nil },
         radioID: { nil },
-        connectedDevice: { nil }
+        connectedDevice: { nil },
+        powerOffRadio: {}
       ),
       localDeviceName: "TestDevice",
       sendSelfAdvert: { _ in }
@@ -527,7 +529,8 @@ struct CLIToolViewModelLocalCommandsTests {
         settingsService: { nil },
         dataStore: { nil },
         radioID: { nil },
-        connectedDevice: { nil }
+        connectedDevice: { nil },
+        powerOffRadio: {}
       ),
       localDeviceName: "TestDevice",
       sendSelfAdvert: { _ in }
@@ -589,6 +592,57 @@ struct CLIToolViewModelLocalCommandsTests {
   }
 
   @Test
+  func `v14 poweroff prompts and yes powers off once`() async {
+    let probe = PowerOffProbe()
+    let viewModel = makeViewModel(
+      mock: MockConfigurationSession(),
+      device: makeDevice(firmwareVersion: 14),
+      powerOff: { await probe.record() }
+    )
+
+    await run(viewModel, "poweroff")
+    #expect(viewModel.pendingConfirmation == .powerOff)
+    #expect(probe.count == 0)
+
+    await run(viewModel, "yes")
+    #expect(probe.count == 1)
+    #expect(lastResponse(viewModel) == LocalCommandOutput.okPoweringOff)
+    #expect(viewModel.pendingConfirmation == nil)
+  }
+
+  @Test
+  func `v14 poweroff prints the unsupported message and not the ok line`() async {
+    let viewModel = makeViewModel(
+      mock: MockConfigurationSession(),
+      device: makeDevice(firmwareVersion: 14),
+      powerOff: { throw SettingsServiceError.powerOffUnsupported }
+    )
+
+    await run(viewModel, "poweroff")
+    await run(viewModel, "yes")
+
+    let texts = viewModel.outputLines.map(\.text)
+    #expect(texts.contains(L10n.Localizable.Error.Settings.powerOffUnsupported))
+    #expect(!texts.contains(LocalCommandOutput.okPoweringOff))
+  }
+
+  @Test
+  func `v13 poweroff is an unknown command`() async {
+    let probe = PowerOffProbe()
+    let viewModel = makeViewModel(
+      mock: MockConfigurationSession(),
+      device: makeDevice(firmwareVersion: 13),
+      powerOff: { await probe.record() }
+    )
+
+    await run(viewModel, "poweroff")
+
+    #expect(viewModel.pendingConfirmation == nil)
+    #expect(probe.count == 0)
+    #expect(viewModel.outputLines.contains { $0.text == "\(L10n.Tools.Tools.Cli.unknownCommand) poweroff" })
+  }
+
+  @Test
   func `v14 logout does not call runCliCommand`() async {
     let mock = MockConfigurationSession()
     let viewModel = makeViewModel(mock: mock, device: makeDevice(firmwareVersion: 14))
@@ -601,7 +655,8 @@ struct CLIToolViewModelLocalCommandsTests {
   private func makeViewModel(
     mock: MockConfigurationSession,
     device: DeviceDTO? = nil,
-    floods: FloodRecorder? = nil
+    floods: FloodRecorder? = nil,
+    powerOff: @escaping @MainActor () async throws -> Void = {}
   ) -> CLIToolViewModel {
     let service = SettingsService(session: mock)
     let viewModel = CLIToolViewModel()
@@ -612,7 +667,8 @@ struct CLIToolViewModelLocalCommandsTests {
         settingsService: { service },
         dataStore: { nil },
         radioID: { UUID() },
-        connectedDevice: { device }
+        connectedDevice: { device },
+        powerOffRadio: powerOff
       ),
       localDeviceName: "TestDevice",
       sendSelfAdvert: { flood in floods?.record(flood) }
@@ -684,6 +740,17 @@ struct CLIToolViewModelLocalCommandsTests {
       customOCVArrayString: nil,
       connectionMethods: []
     )
+  }
+}
+
+// MARK: - Power Off Probe
+
+@MainActor
+final class PowerOffProbe {
+  private(set) var count = 0
+
+  func record() {
+    count += 1
   }
 }
 

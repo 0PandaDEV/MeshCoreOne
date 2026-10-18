@@ -60,7 +60,10 @@ private struct CLIToolContent: View {
           settingsService: { [appState] in appState.services?.settingsService },
           dataStore: { [appState] in appState.services?.dataStore },
           radioID: { [appState] in appState.connectedDevice?.radioID },
-          connectedDevice: { [appState] in appState.connectedDevice }
+          connectedDevice: { [appState] in appState.connectedDevice },
+          powerOffRadio: { [appState] in
+            try await appState.powerOffRadio()
+          }
         ),
         localDeviceName: appState.connectedDevice?.nodeName ?? L10n.Tools.Tools.Cli.defaultDevice,
         sendSelfAdvert: { [appState] flood in

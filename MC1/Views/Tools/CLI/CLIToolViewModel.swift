@@ -62,6 +62,7 @@ final class CLIToolViewModel {
     let dataStore: @MainActor () -> PersistenceStoreProtocol?
     let radioID: @MainActor () -> UUID?
     let connectedDevice: @MainActor () -> DeviceDTO?
+    let powerOffRadio: @MainActor () async throws -> Void
   }
 
   private var repeaterAdminServiceProvider: @MainActor () -> RepeaterAdminService? = { nil }
@@ -71,6 +72,7 @@ final class CLIToolViewModel {
   private var radioIDProvider: @MainActor () -> UUID? = { nil }
   private var connectedDeviceProvider: @MainActor () -> DeviceDTO? = { nil }
   private var sendSelfAdvertAction: @MainActor (_ flood: Bool) async throws -> Void = { _ in }
+  private var powerOffRadioAction: @MainActor () async throws -> Void = {}
 
   /// Both old and new providers read the same live state, so change detection
   /// needs the instance seen at the previous configure. Weak, so a torn-down
@@ -103,6 +105,10 @@ final class CLIToolViewModel {
 
   func sendSelfAdvert(_ flood: Bool) async throws {
     try await sendSelfAdvertAction(flood)
+  }
+
+  func powerOffRadio() async throws {
+    try await powerOffRadioAction()
   }
 
   var localDeviceName: String = ""
@@ -151,6 +157,7 @@ final class CLIToolViewModel {
     radioIDProvider = dependencies.radioID
     connectedDeviceProvider = dependencies.connectedDevice
     sendSelfAdvertAction = sendSelfAdvert
+    powerOffRadioAction = dependencies.powerOffRadio
 
     let incomingService = dependencies.repeaterAdminService()
     repeaterAdminServiceProvider = dependencies.repeaterAdminService
@@ -371,6 +378,10 @@ final class CLIToolViewModel {
     if activeSession?.isLocal == true {
       switch CLILocalCommandParser.parse(raw) {
       case let .command(command):
+        if case .powerOff = command, connectedDevice?.supportsRadioCLI != true {
+          appendOutput("\(L10n.Tools.Tools.Cli.unknownCommand) \(cmd)", type: .error)
+          return
+        }
         if command.requiresConfirmation {
           pendingConfirmation = command
         } else {

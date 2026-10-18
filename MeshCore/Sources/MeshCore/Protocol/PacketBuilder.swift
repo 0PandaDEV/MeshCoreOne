@@ -1001,6 +1001,9 @@ public enum PacketBuilder: Sendable {
     Data([CommandCode.getDefaultFloodScope.rawValue])
   }
 
+  /// CLI verb that asks the board to cut its own power.
+  public static let powerOffCommand = "poweroff"
+
   /// Builds a `runCliCommand` packet: opcode plus UTF-8 command bytes.
   ///
   /// Firmware v14+ (`CMD_RUN_CLI_COMMAND`). The radio null-terminates the

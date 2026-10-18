@@ -640,6 +640,18 @@
 /* Alert message for reboot confirmation */
 "deviceActions.alert.reboot.message" = "设备将重新启动并暂时断开连接。";
 
+/* Button to turn the device off */
+"deviceActions.powerOff" = "关闭设备";
+
+/* Alert title for power off confirmation */
+"deviceActions.alert.powerOff.title" = "关闭设备？";
+
+/* Button to confirm power off */
+"deviceActions.alert.powerOff.confirm" = "关闭";
+
+/* Alert message for power off confirmation */
+"deviceActions.alert.powerOff.message" = "设备将关闭并断开连接。请用电源按钮开机，然后重新连接。";
+
 // MARK: - Danger Zone Section
 
 /* Section header for danger zone */

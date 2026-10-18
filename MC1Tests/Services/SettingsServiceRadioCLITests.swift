@@ -104,6 +104,56 @@ struct SettingsServiceRadioCLITests {
     #expect(await other.radioWiFiRebootPending == false)
   }
 
+  @Test
+  func `power off throws when the board stays on`() async {
+    let mock = MockConfigurationSession()
+    await mock.setPowerOffBehavior(.stillOn)
+    let service = SettingsService(session: mock)
+
+    do {
+      try await service.powerOff()
+      Issue.record("expected powerOffUnsupported")
+    } catch let error as SettingsServiceError {
+      guard case .powerOffUnsupported = error else {
+        Issue.record("expected powerOffUnsupported, got \(error)")
+        return
+      }
+    } catch {
+      Issue.record("expected SettingsServiceError, got \(error)")
+    }
+    #expect(await mock.powerOffCallCount == 1)
+  }
+
+  @Test
+  func `power off returns when the link drops`() async throws {
+    let ble = MockConfigurationSession()
+    await ble.setPowerOffBehavior(.bleNotConnected)
+    try await SettingsService(session: ble).powerOff()
+
+    let wifi = MockConfigurationSession()
+    await wifi.setPowerOffBehavior(.wifiNotConnected)
+    try await SettingsService(session: wifi).powerOff()
+  }
+
+  @Test
+  func `power off wraps other session errors`() async {
+    let mock = MockConfigurationSession()
+    await mock.setPowerOffBehavior(.invalidInput)
+    let service = SettingsService(session: mock)
+
+    do {
+      try await service.powerOff()
+      Issue.record("expected sessionError")
+    } catch let error as SettingsServiceError {
+      guard case let .sessionError(inner) = error, case .invalidInput = inner else {
+        Issue.record("expected sessionError invalidInput, got \(error)")
+        return
+      }
+    } catch {
+      Issue.record("expected SettingsServiceError, got \(error)")
+    }
+  }
+
   private func expectRadioCLIRejected(
     _ text: String,
     _ body: () async throws -> Void

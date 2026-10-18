@@ -18,7 +18,8 @@ struct ConnectionManagerPromotionTests {
     manager: ConnectionManager,
     services: ServiceContainer,
     connectionState: DeviceConnectionState = .connected,
-    connectionIntent: ConnectionIntent = .wantsConnection()
+    connectionIntent: ConnectionIntent = .wantsConnection(),
+    firmwareVersion: UInt8 = 9
   ) {
     let mockTransport = SimulatorMockTransport()
     let session = MeshCoreSession(transport: mockTransport)
@@ -26,7 +27,7 @@ struct ConnectionManagerPromotionTests {
       connectionState: connectionState,
       services: services,
       session: session,
-      connectedDevice: DeviceDTO.testDevice(),
+      connectedDevice: DeviceDTO.testDevice(firmwareVersion: firmwareVersion),
       connectionIntent: connectionIntent
     )
   }
@@ -247,6 +248,39 @@ struct ConnectionManagerPromotionTests {
 
     #expect(!promoted)
     #expect(manager.connectionState == .connected)
+  }
+
+  @Test
+  func `promoteToReady completes for a radio CLI device when timezone sync fails`() async throws {
+    let (manager, _) = try ConnectionManager.createForTesting()
+    let services = try await makeTestServices()
+    setupForPromotion(manager: manager, services: services, firmwareVersion: 14)
+
+    let promoted = await manager.promoteToReady(
+      syncSucceeded: true,
+      expectedServices: services,
+      transportType: .bluetooth
+    )
+
+    #expect(promoted)
+    #expect(manager.connectionState == .ready)
+  }
+
+  @Test
+  func `disconnect for power off leaves user disconnected`() async throws {
+    let (manager, _) = try ConnectionManager.createForTesting()
+    let services = try await makeTestServices()
+    setupForPromotion(
+      manager: manager,
+      services: services,
+      connectionState: .ready,
+      connectionIntent: .wantsConnection()
+    )
+
+    await manager.disconnect(reason: .powerOff)
+
+    #expect(manager.connectionIntent.isUserDisconnected)
+    #expect(manager.connectionState == .disconnected)
   }
 
   // MARK: - Post-time-sync re-validation (not unit-testable)

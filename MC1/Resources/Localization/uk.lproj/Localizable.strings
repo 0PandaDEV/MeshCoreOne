@@ -605,6 +605,9 @@
 /* Location: SettingsServiceError+UserFacingMessage.swift - Radio CLI command was rejected */
 "error.settings.radioCLIRejected" = "Радіо повернуло помилку: %@";
 
+/* Location: SettingsServiceError+UserFacingMessage.swift - The radio cannot turn itself off */
+"error.settings.powerOffUnsupported" = "Це радіо не може вимкнутися самостійно. Воно досі увімкнене і підключене.";
+
 /* Location: SettingsServiceError+UserFacingMessage.swift - Setting write-back mismatch - %1$@ is the expected value, %2$@ is the value the device reports */
 "error.settings.verificationFailed" = "Налаштування не було збережено. Очікувалося '%1$@', але пристрій повідомляє '%2$@'.";
 

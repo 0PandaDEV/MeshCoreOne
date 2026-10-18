@@ -152,6 +152,10 @@ public protocol ConfigurationSessionOps: Actor {
   /// - Throws: `MeshTransportError` if the command cannot be sent.
   func reboot() async throws
 
+  /// Asks the paired radio to cut power.
+  /// Returns false when a CLI reply arrives (the board stayed on), and true when the reply window expires.
+  func powerOff() async throws -> Bool
+
   /// Performs a factory reset, erasing all device configuration, contacts, and messages.
   ///
   /// - Warning: This operation is irreversible.

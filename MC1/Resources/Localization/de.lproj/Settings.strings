@@ -640,6 +640,18 @@
 /* Alert message for reboot confirmation */
 "deviceActions.alert.reboot.message" = "Das Gerät wird neu gestartet und vorübergehend getrennt.";
 
+/* Button to turn the device off */
+"deviceActions.powerOff" = "Gerät ausschalten";
+
+/* Alert title for power off confirmation */
+"deviceActions.alert.powerOff.title" = "Gerät ausschalten?";
+
+/* Button to confirm power off */
+"deviceActions.alert.powerOff.confirm" = "Ausschalten";
+
+/* Alert message for power off confirmation */
+"deviceActions.alert.powerOff.message" = "Das Gerät wird ausgeschaltet und getrennt. Schalte es mit der Einschalttaste ein und verbinde dich dann erneut.";
+
 // MARK: - Danger Zone Section
 
 /* Section header for danger zone */

@@ -600,6 +600,9 @@
 /* Location: SettingsServiceError+UserFacingMessage.swift - Radio CLI command was rejected */
 "error.settings.radioCLIRejected" = "기기가 오류를 반환했습니다: %@";
 
+/* Location: SettingsServiceError+UserFacingMessage.swift - The radio cannot turn itself off */
+"error.settings.powerOffUnsupported" = "이 기기는 스스로 전원을 끌 수 없습니다. 기기는 계속 켜져 있으며 연결되어 있습니다.";
+
 /* Location: SettingsServiceError+UserFacingMessage.swift - Setting write-back mismatch - %1$@ is the expected value, %2$@ is the value the device reports */
 "error.settings.verificationFailed" = "설정이 저장되지 않았습니다. 예상 값은 '%1$@'이지만 기기에서 '%2$@'(으)로 보고합니다.";
 

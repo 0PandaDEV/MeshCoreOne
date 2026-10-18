@@ -15,6 +15,7 @@ extension CLIToolViewModel {
     case .board: await runBoard()
     case let .advert(flood): await runAdvert(flood: flood)
     case .reboot: await runReboot()
+    case .powerOff: await runPowerOff()
     case let .getKey(key): await runGet(key)
     case let .setName(name): await runSetName(name)
     case let .setLatitude(latitude): await runSetLatitude(latitude)
@@ -236,6 +237,16 @@ extension CLIToolViewModel {
       try await settingsService.reboot()
       output(LocalCommandOutput.okRebooting)
     } catch { renderError(error) }
+  }
+
+  private func runPowerOff() async {
+    do {
+      try await powerOffRadio()
+      output(LocalCommandOutput.okPoweringOff)
+    } catch {
+      guard !Task.isCancelled else { return }
+      appendOutput(error.userFacingMessage, type: .error)
+    }
   }
 
   // MARK: - Output helpers

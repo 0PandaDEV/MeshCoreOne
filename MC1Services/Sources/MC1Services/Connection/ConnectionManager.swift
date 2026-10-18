@@ -968,7 +968,7 @@ public final class ConnectionManager {
   // MARK: - Ready Promotion
 
   /// Promotes connection to `.ready` if the connection is still alive and owned by the expected services.
-  /// Skips post-sync work (time sync, onDeviceSynced) when sync failed to avoid BLE pressure.
+  /// Skips post-sync work (time sync, timezone, onDeviceSynced) when sync failed to avoid BLE pressure.
   /// Returns `true` if `.ready` was set, `false` if promotion was suppressed.
   ///
   /// - Parameter additionalGuard: Caller-specific invariant checked at every guard point,
@@ -984,18 +984,22 @@ public final class ConnectionManager {
     transportType: TransportType,
     additionalGuard: (() -> Bool)? = nil
   ) async -> Bool {
-    guard connectionIntent.wantsConnection else {
-      logger.warning("Promotion suppressed: user disconnected")
-      return false
+    func canPromote(_ phase: String) -> Bool {
+      guard connectionIntent.wantsConnection else {
+        logger.warning("Promotion suppressed\(phase): user disconnected")
+        return false
+      }
+      guard services === expectedServices else {
+        logger.warning("Promotion suppressed\(phase): services replaced or nil")
+        return false
+      }
+      guard additionalGuard?() ?? true else {
+        logger.warning("Promotion suppressed\(phase): caller guard failed (e.g. reconnect generation)")
+        return false
+      }
+      return true
     }
-    guard services === expectedServices else {
-      logger.warning("Promotion suppressed: services replaced or nil")
-      return false
-    }
-    guard additionalGuard?() ?? true else {
-      logger.warning("Promotion suppressed: caller guard failed (e.g. reconnect generation)")
-      return false
-    }
+    guard canPromote("") else { return false }
 
     currentTransportType = transportType
     connectionState = syncSucceeded ? .ready : .syncing
@@ -1005,18 +1009,18 @@ public final class ConnectionManager {
     // WiFi/TCP has no such constraint, so always correct the clock there.
     if syncSucceeded || transportType == .wifi {
       await syncDeviceTimeIfNeeded()
-      guard connectionIntent.wantsConnection else {
-        logger.warning("Promotion suppressed after time sync: user disconnected")
-        return false
-      }
-      guard services === expectedServices else {
-        logger.warning("Promotion suppressed after time sync: services replaced or nil")
-        return false
-      }
-      guard additionalGuard?() ?? true else {
-        logger.warning("Promotion suppressed after time sync: caller guard failed (e.g. reconnect generation)")
-        return false
-      }
+      guard canPromote(" after time sync") else { return false }
+
+      await RadioTimezone.syncIfNeeded(
+        supportsRadioCLI: connectedDevice?.supportsRadioCLI == true,
+        secondsFromGMT: TimeZone.current.secondsFromGMT(),
+        settings: expectedServices.settingsService,
+        stillCurrent: { [weak self] in
+          guard let self else { return false }
+          return self.services === expectedServices
+        }
+      )
+      guard canPromote(" after timezone sync") else { return false }
     }
 
     if syncSucceeded { await onDeviceSynced?() }

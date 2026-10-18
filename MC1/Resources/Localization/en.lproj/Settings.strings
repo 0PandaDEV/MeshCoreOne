@@ -626,6 +626,18 @@
 /* Alert message for reboot confirmation */
 "deviceActions.alert.reboot.message" = "The device will restart and temporarily disconnect.";
 
+/* Button to turn the device off */
+"deviceActions.powerOff" = "Power Off Device";
+
+/* Alert title for power off confirmation */
+"deviceActions.alert.powerOff.title" = "Power Off Device?";
+
+/* Button to confirm power off */
+"deviceActions.alert.powerOff.confirm" = "Power Off";
+
+/* Alert message for power off confirmation */
+"deviceActions.alert.powerOff.message" = "The device will turn off and disconnect. Turn it on with its power button, then reconnect.";
+
 // MARK: - Danger Zone Section
 
 /* Section header for danger zone */

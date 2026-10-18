@@ -256,6 +256,16 @@ extension AppState {
     tearDownAppStateSessionState()
   }
 
+  /// Asks the paired radio to cut power, then disconnects.
+  /// A throw, including a board that stays on, leaves the connection as it was.
+  func powerOffRadio() async throws {
+    guard let settingsService = services?.settingsService else {
+      throw SettingsServiceError.notConnected
+    }
+    try await settingsService.powerOff()
+    await disconnect(reason: .powerOff)
+  }
+
   /// Connect to a device via WiFi/TCP
   func connectViaWiFi(host: String, port: UInt16, forceFullSync: Bool = false) async throws {
     // Hide disconnected pill when starting new connection

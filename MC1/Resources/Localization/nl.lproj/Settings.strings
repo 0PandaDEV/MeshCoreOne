@@ -640,6 +640,18 @@
 /* Alert message for reboot confirmation */
 "deviceActions.alert.reboot.message" = "Het apparaat wordt herstart en tijdelijk losgekoppeld.";
 
+/* Button to turn the device off */
+"deviceActions.powerOff" = "Apparaat uitschakelen";
+
+/* Alert title for power off confirmation */
+"deviceActions.alert.powerOff.title" = "Apparaat uitschakelen?";
+
+/* Button to confirm power off */
+"deviceActions.alert.powerOff.confirm" = "Uitschakelen";
+
+/* Alert message for power off confirmation */
+"deviceActions.alert.powerOff.message" = "Het apparaat wordt uitgeschakeld en losgekoppeld. Zet het aan met de aan/uit-knop en maak daarna opnieuw verbinding.";
+
 // MARK: - Danger Zone Section
 
 /* Section header for danger zone */

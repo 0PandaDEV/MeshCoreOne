@@ -339,6 +339,29 @@ public extension MeshCoreSession {
     )
   }
 
+  /// How long to wait for a CLI reply after `poweroff`. A board that cannot
+  /// power off replies at once. The window only covers one round trip.
+  static let powerOffReplyWindow: TimeInterval = 3
+
+  /// Asks the paired radio to cut power.
+  /// A CLI reply means the board stayed on. A timeout counts as powered off.
+  func powerOff() async throws -> Bool {
+    do {
+      let stillOn: Bool = try await sendAndWaitWithError(
+        PacketBuilder.runCliCommand(PacketBuilder.powerOffCommand),
+        matching: { event in
+          if case .cliReply = event { return false }
+          return nil
+        },
+        errorMatcher: Self.deviceErrorMatcher,
+        timeout: Self.powerOffReplyWindow
+      )
+      return stillOn
+    } catch MeshCoreError.timeout {
+      return true
+    }
+  }
+
   /// Runs a UTF-8 CLI command on the paired radio (firmware v14+).
   /// Sent verbatim. A too-short frame is unsupported on the radio, and a frame over `MAX_FRAME_SIZE` is dropped.
   func runCliCommand(_ command: String) async throws -> String {
