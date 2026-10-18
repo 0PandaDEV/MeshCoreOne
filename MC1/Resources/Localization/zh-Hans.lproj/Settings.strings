@@ -1051,6 +1051,9 @@
 /* Reboot confirmation when no network name is stored */
 "radioWiFi.alert.reboot.restart" = "无线电将重启。手机将断开连接，直到无线电重新可用。";
 
+/* Reboot confirmation when WiFi is turned off */
+"radioWiFi.alert.reboot.disabled" = "无线电将重启，并关闭 WiFi。无线电将不再接受 WiFi 连接。";
+
 // MARK: - Connection
 
 /* Settings row, page title, and phone address header */

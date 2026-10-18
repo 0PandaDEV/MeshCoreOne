@@ -452,14 +452,63 @@ struct RadioWiFiViewModelTests {
 
     let unnamed = await Harness.make()
     await unnamed.mock.setCLIReplyQueue([
-      "> 0",
+      "> 1",
       "> (not set)",
       "> (not connected)",
       "> (not connected)"
     ])
     await unnamed.viewModel.noteSessionReadiness()
     #expect(unnamed.viewModel.networkName == nil)
+    #expect(unnamed.viewModel.wifiEnabled)
     #expect(unnamed.viewModel.rebootMessage == L10n.Settings.RadioWiFi.Alert.Reboot.restart)
+
+    let disabledNamed = await Harness.make()
+    await disabledNamed.mock.setCLIReplyQueue([
+      "> 0", "> Field Net", "> (not connected)", "> (not connected)"
+    ])
+    await disabledNamed.viewModel.noteSessionReadiness()
+    #expect(disabledNamed.viewModel.networkName == "Field Net")
+    #expect(disabledNamed.viewModel.rebootMessage == L10n.Settings.RadioWiFi.Alert.Reboot.disabled)
+
+    let disabledUnset = await Harness.make()
+    await disabledUnset.mock.setCLIReplyQueue([
+      "> 0", "> (not set)", "> (not connected)", "> (not connected)"
+    ])
+    await disabledUnset.viewModel.noteSessionReadiness()
+    #expect(disabledUnset.viewModel.networkName == nil)
+    #expect(disabledUnset.viewModel.rebootMessage == L10n.Settings.RadioWiFi.Alert.Reboot.disabled)
+  }
+
+  @Test
+  func `an accepted disable keeps the stored name and the off confirmation`() async {
+    let harness = await Harness.make()
+    harness.transport.value = .wifi
+    await harness.loadNetwork(ssid: "Field Net", password: "")
+
+    await harness.viewModel.setWiFiEnabled(false)
+    #expect(harness.viewModel.showingWiFiWarning)
+    await harness.viewModel.continuePastWiFiWarning()
+
+    #expect(harness.viewModel.wifiEnabled == false)
+    #expect(harness.viewModel.networkName == "Field Net")
+    #expect(harness.viewModel.rebootPending)
+    #expect(harness.viewModel.rebootMessage == L10n.Settings.RadioWiFi.Alert.Reboot.disabled)
+    let calls = await harness.mock.runCliCommandCalls
+    #expect(calls.contains("set wifi.enabled 0"))
+  }
+
+  @Test
+  func `a rejected disable keeps the enabled confirmation`() async {
+    let harness = await Harness.make()
+    await harness.loadNetwork(ssid: "Field Net", password: "")
+    await harness.mock.setCLIReply("Error: rejected")
+
+    await harness.viewModel.setWiFiEnabled(false)
+
+    #expect(harness.viewModel.wifiEnabled)
+    #expect(harness.viewModel.networkName == "Field Net")
+    #expect(harness.viewModel.rebootPending == false)
+    #expect(harness.viewModel.rebootMessage == L10n.Settings.RadioWiFi.Alert.Reboot.join("Field Net"))
   }
 
   @Test

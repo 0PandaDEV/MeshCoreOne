@@ -1017,6 +1017,9 @@
 /* Reboot confirmation when no network name is stored */
 "radioWiFi.alert.reboot.restart" = "무선 기기가 다시 시작됩니다. 무선 기기가 다시 준비될 때까지 iPhone의 연결이 끊어집니다.";
 
+/* Reboot confirmation when WiFi is turned off */
+"radioWiFi.alert.reboot.disabled" = "무선 기기가 Wi-Fi가 꺼진 상태로 다시 시작됩니다. 무선 기기는 더 이상 Wi-Fi 연결을 수락하지 않습니다.";
+
 // MARK: - Connection
 
 /* Settings row, page title, and phone address header */

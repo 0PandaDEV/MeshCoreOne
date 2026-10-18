@@ -1016,6 +1016,9 @@
 /* Reboot confirmation when no network name is stored */
 "radioWiFi.alert.reboot.restart" = "La radio se reiniciará. El teléfono se desconectará hasta que la radio vuelva a estar disponible.";
 
+/* Reboot confirmation when WiFi is turned off */
+"radioWiFi.alert.reboot.disabled" = "La radio se reiniciará con el WiFi desactivado. Ya no aceptará conexiones WiFi.";
+
 // MARK: - Connection
 
 /* Settings row, page title, and phone address header */

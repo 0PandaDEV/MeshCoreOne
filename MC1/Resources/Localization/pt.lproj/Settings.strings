@@ -1066,6 +1066,9 @@
 /* Reboot confirmation when no network name is stored */
 "radioWiFi.alert.reboot.restart" = "O rádio irá reiniciar. A ligação do iPhone será interrompida até o rádio voltar.";
 
+/* Reboot confirmation when WiFi is turned off */
+"radioWiFi.alert.reboot.disabled" = "O rádio irá reiniciar com o Wi-Fi desligado. Já não irá aceitar ligações Wi-Fi.";
+
 // MARK: - Connection
 
 /* Settings row, page title, and phone address header */

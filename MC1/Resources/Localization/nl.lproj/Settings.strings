@@ -1016,6 +1016,9 @@
 /* Reboot confirmation when no network name is stored */
 "radioWiFi.alert.reboot.restart" = "De radio wordt herstart. Je telefoon wordt losgekoppeld totdat de radio terug is.";
 
+/* Reboot confirmation when WiFi is turned off */
+"radioWiFi.alert.reboot.disabled" = "De radio wordt herstart met Wifi uitgeschakeld. Daarna accepteert de radio geen Wifi-verbindingen meer.";
+
 // MARK: - Connection
 
 /* Settings row, page title, and phone address header */

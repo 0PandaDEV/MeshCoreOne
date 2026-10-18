@@ -5520,6 +5520,8 @@ public enum L10n {
           public static let wifiMessage = L10n.tr("Settings", "radioWiFi.alert.clear.wifiMessage", fallback: "The radio forgets the saved network name and password after it reboots. It may not be reachable at this address. If that happens, connect over Bluetooth. If its firmware has a built-in network, it joins that network instead.")
         }
         public enum Reboot {
+          /// Reboot confirmation when WiFi is turned off
+          public static let disabled = L10n.tr("Settings", "radioWiFi.alert.reboot.disabled", fallback: "The radio will restart with WiFi turned off. It will no longer accept WiFi connections.")
           /// Reboot confirmation when a network name is stored. %@ is the network name.
           public static func join(_ p1: Any) -> String {
             return L10n.tr("Settings", "radioWiFi.alert.reboot.join", String(describing: p1), fallback: "The radio will restart and then join %@. The phone disconnects until the radio is back.")

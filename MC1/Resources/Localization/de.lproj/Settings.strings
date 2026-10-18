@@ -1016,6 +1016,9 @@
 /* Reboot confirmation when no network name is stored */
 "radioWiFi.alert.reboot.restart" = "Das Funkgerät wird neu gestartet. Das iPhone wird getrennt, bis das Funkgerät wieder da ist.";
 
+/* Reboot confirmation when WiFi is turned off */
+"radioWiFi.alert.reboot.disabled" = "Das Funkgerät wird mit ausgeschaltetem WLAN neu gestartet. Es nimmt keine WLAN-Verbindungen mehr an.";
+
 // MARK: - Connection
 
 /* Settings row, page title, and phone address header */

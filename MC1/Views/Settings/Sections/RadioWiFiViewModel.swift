@@ -154,6 +154,9 @@ final class RadioWiFiViewModel {
   }
 
   var rebootMessage: String {
+    guard wifiEnabled else {
+      return L10n.Settings.RadioWiFi.Alert.Reboot.disabled
+    }
     if let networkName {
       return L10n.Settings.RadioWiFi.Alert.Reboot.join(networkName)
     }
