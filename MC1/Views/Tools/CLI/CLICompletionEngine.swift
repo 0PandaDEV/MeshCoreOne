@@ -1,4 +1,5 @@
 import Foundation
+import MC1Services
 
 @Observable
 @MainActor
@@ -132,6 +133,34 @@ final class CLICompletionEngine {
   var radioCLIEnabled = false
 
   // MARK: - Completion Logic
+
+  func applying(
+    _ suggestion: String,
+    to input: String,
+    isLocal: Bool,
+    remoteTarget: CLIRemoteTarget?
+  ) -> String {
+    var parts = input.split(separator: " ", omittingEmptySubsequences: false).dropLast().map(String.init)
+    parts.append(suggestion)
+    let completed = parts.joined(separator: " ")
+    let words = completed.split(separator: " ")
+    let command = words.first.map { $0.lowercased() } ?? ""
+    let isAppCommand = Self.builtInCommands.contains(command) || Self.sessionCommands.contains(command)
+    let isRadioCLI = (remoteTarget == .radio && !isAppCommand)
+      || (isLocal && radioCLIEnabled && RadioCLIPassthrough.shouldSend(completed))
+    guard isRadioCLI else { return completed + " " }
+
+    // Completed firmware commands must match exactly; a setter's separator is part of its value syntax.
+    let needsArgument: Bool = switch command {
+    case "get":
+      words.count == 1
+    case "set":
+      words.count == 1 || (words.count == 2 && String(words[1]) != RadioCLIKey.wifiClear)
+    default:
+      false
+    }
+    return completed + (needsArgument ? " " : "")
+  }
 
   func completions(
     for input: String,

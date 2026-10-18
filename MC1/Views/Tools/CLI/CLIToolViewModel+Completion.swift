@@ -110,15 +110,12 @@ extension CLIToolViewModel {
   }
 
   private func applyCompletion(_ suggestion: String) {
-    let parts = currentInput.split(separator: " ", omittingEmptySubsequences: false)
-
-    if parts.count <= 1 {
-      currentInput = suggestion + " "
-    } else {
-      var newParts = parts.dropLast().map(String.init)
-      newParts.append(suggestion)
-      currentInput = newParts.joined(separator: " ") + " "
-    }
+    currentInput = completionEngine.applying(
+      suggestion,
+      to: currentInput,
+      isLocal: activeSession?.isLocal ?? true,
+      remoteTarget: activeSession?.remoteTarget
+    )
     ghostText = ""
   }
 

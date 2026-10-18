@@ -278,6 +278,113 @@ struct NodeCLIViewModelTests {
   }
 
   @Test(arguments: [
+    ("get wifi.ss", "get wifi.ssid"),
+    ("set wifi.cl", "set wifi.clear"),
+    ("pow", "poweroff"),
+    ("set multi.acks 1", "set multi.acks 1")
+  ])
+  func `completed radio commands submit without an added argument`(_ input: String, _ expected: String) async throws {
+    let spy = SendSpy()
+    let viewModel = makeViewModel(spy: spy, remoteTarget: .radio)
+    viewModel.currentInput = input
+
+    viewModel.tabComplete()
+    viewModel.executeCommand(viewModel.currentInput)
+    try await waitUntil("completed command submitted") { !spy.calls.isEmpty && !viewModel.isWaitingForResponse }
+
+    #expect(spy.calls.map(\.command) == [expected])
+    #expect(viewModel.commandHistory.last == expected)
+  }
+
+  @Test
+  func `a selected radio completion submits without an added argument`() async throws {
+    let spy = SendSpy()
+    let viewModel = makeViewModel(spy: spy, remoteTarget: .radio)
+    viewModel.currentInput = "get wifi."
+    let suggestions = try #require(viewModel.tabComplete())
+    viewModel.tabSelectionIndex = try #require(suggestions.firstIndex(of: "wifi.ssid"))
+
+    #expect(viewModel.applySelectedSuggestion())
+    viewModel.executeCommand(viewModel.currentInput)
+    try await waitUntil("selected command submitted") { !spy.calls.isEmpty }
+
+    #expect(spy.calls.map(\.command) == ["get wifi.ssid"])
+  }
+
+  @Test(arguments: [
+    ("ge", "wifi.ss", "get wifi.ssid"),
+    ("set", "wifi.pw", "set wifi.pwd ")
+  ])
+  func `radio namespaces keep the separator needed to complete a key`(
+    _ verb: String,
+    _ key: String,
+    _ expected: String
+  ) async throws {
+    let spy = SendSpy()
+    let viewModel = makeViewModel(spy: spy, remoteTarget: .radio)
+    viewModel.currentInput = verb
+
+    viewModel.tabComplete()
+    viewModel.currentInput += key
+    viewModel.tabComplete()
+    viewModel.executeCommand(viewModel.currentInput)
+    try await waitUntil("completed namespace submitted") { !spy.calls.isEmpty }
+
+    #expect(spy.calls.map(\.command) == [expected])
+  }
+
+  @Test
+  func `radio app command completion keeps its separator and stays local`() async throws {
+    let spy = SendSpy()
+    let viewModel = makeViewModel(spy: spy, remoteTarget: .radio)
+    viewModel.currentInput = "hel"
+
+    viewModel.tabComplete()
+    #expect(viewModel.currentInput == "help ")
+    viewModel.executeCommand(viewModel.currentInput)
+    try await waitUntil("completed help displayed") {
+      viewModel.outputLines.contains { $0.text == L10n.RemoteNodes.RemoteNodes.NodeCli.helpHeader }
+    }
+
+    #expect(spy.calls.isEmpty)
+  }
+
+  @Test(arguments: [
+    ("set wifi.pw", "secret  ", "set wifi.pwd secret  "),
+    ("set wifi.ss", " my net  ", "set wifi.ssid  my net  ")
+  ])
+  func `completing a radio setter preserves the entered value`(
+    _ input: String,
+    _ value: String,
+    _ expected: String
+  ) async throws {
+    let spy = SendSpy()
+    let viewModel = makeViewModel(spy: spy, remoteTarget: .radio)
+    viewModel.currentInput = input
+
+    viewModel.tabComplete()
+    viewModel.currentInput += value
+    viewModel.executeCommand(viewModel.currentInput)
+    try await waitUntil("setter submitted") { !spy.calls.isEmpty }
+
+    #expect(spy.calls.map(\.command) == [expected])
+  }
+
+  @Test
+  func `repeater completion keeps its separator and trimmed forwarding`() async throws {
+    let spy = SendSpy()
+    let viewModel = makeViewModel(spy: spy, remoteTarget: .repeater)
+    viewModel.currentInput = "get af"
+
+    viewModel.tabComplete()
+    #expect(viewModel.currentInput == "get af ")
+    viewModel.executeCommand(viewModel.currentInput)
+    try await waitUntil("remote command submitted") { !spy.calls.isEmpty }
+
+    #expect(spy.calls.map(\.command) == ["get af"])
+  }
+
+  @Test(arguments: [
     "set wifi.pwd ",
     "set wifi.pwd secret  ",
     "set wifi.ssid  my net  ",

@@ -709,6 +709,46 @@ struct CLIToolViewModelLocalCommandsTests {
     #expect(viewModel.outputLines.contains { $0.text == "\(L10n.Tools.Tools.Cli.unknownCommand) poweroff" })
   }
 
+  @Test
+  func `a completed radio cli command submits without an added argument`() async {
+    let mock = MockConfigurationSession()
+    let viewModel = makeViewModel(mock: mock, device: makeDevice(firmwareVersion: 14))
+    viewModel.currentInput = "get wifi.ss"
+
+    viewModel.tabComplete()
+    await run(viewModel, viewModel.currentInput)
+
+    #expect(await mock.runCliCommandCalls == ["get wifi.ssid"])
+    #expect(viewModel.commandHistory.last == "get wifi.ssid")
+  }
+
+  @Test
+  func `a selected radio cli completion submits without an added argument`() async throws {
+    let mock = MockConfigurationSession()
+    let viewModel = makeViewModel(mock: mock, device: makeDevice(firmwareVersion: 14))
+    viewModel.currentInput = "get wifi."
+    let suggestions = try #require(viewModel.tabComplete())
+    viewModel.tabSelectionIndex = try #require(suggestions.firstIndex(of: "wifi.ssid"))
+
+    #expect(viewModel.applySelectedSuggestion())
+    await run(viewModel, viewModel.currentInput)
+
+    #expect(await mock.runCliCommandCalls == ["get wifi.ssid"])
+  }
+
+  @Test
+  func `completing a radio cli setter preserves the entered value`() async {
+    let mock = MockConfigurationSession()
+    let viewModel = makeViewModel(mock: mock, device: makeDevice(firmwareVersion: 14))
+    viewModel.currentInput = "set wifi.ss"
+
+    viewModel.tabComplete()
+    viewModel.currentInput += " my net  "
+    await run(viewModel, viewModel.currentInput)
+
+    #expect(await mock.runCliCommandCalls == ["set wifi.ssid  my net  "])
+  }
+
   @Test(arguments: [
     "set wifi.pwd ",
     "set wifi.pwd secret  ",
