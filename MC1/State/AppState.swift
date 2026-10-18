@@ -155,6 +155,9 @@ final class AppState {
     connectionManager.connectedDevice
   }
 
+  /// Checked link while a switch is running, and after a failed attempt until the next connect or an explicit disconnect.
+  var connectionLinkSwitch: ConnectionLinkSwitch?
+
   var services: ServiceContainer? {
     connectionManager.services
   }
@@ -623,6 +626,7 @@ final class AppState {
 
   /// Wire services-dependent callbacks after a successful connection.
   func wireServicesIfConnected() async {
+    reconcileConnectionLinkSwitch()
     guard let services else {
       tearDownAppStateSessionState()
       syncCoordinator = nil
@@ -665,7 +669,7 @@ final class AppState {
        let oldDeviceID = lastConnectedDeviceIDForCLI,
        newDeviceID != oldDeviceID {
       resetRadioScopedToolWorkspaces()
-      navigation.clearPerRadioSelection()
+      navigation.clearPerRadioSelection(preservingConnection: connectionLinkSwitch?.target != nil)
     }
     lastConnectedDeviceIDForCLI = connectedDevice?.id
     tracePathViewModel?.reattachIfWaiting()

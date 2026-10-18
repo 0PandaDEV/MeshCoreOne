@@ -256,12 +256,12 @@ final class NavigationCoordinator {
   /// Resets every detail selection scoped to the current radio so a stale selection cannot aim a
   /// section's detail pane at the wrong radio. Runs on disconnect and on a direct radio-to-radio
   /// switch. Line of Sight is preserved because it runs offline and is not radio-scoped.
-  func clearPerRadioSelection() {
+  func clearPerRadioSelection(preservingConnection: Bool = false) {
     selectedContact = nil
     nodesShowingDiscovery = false
     setChatsRoute(nil)
     replaceConversationIntents()
-    clearPerDeviceSelection()
+    clearPerDeviceSelection(preservingConnection: preservingConnection)
   }
 
   /// Drops pending room-auth and scroll intents so a later open cannot inherit
@@ -279,13 +279,15 @@ final class NavigationCoordinator {
   /// Clears only device-scoped selections (the radio-requiring tool and the My Device settings
   /// page), but keeps an open Chats/Nodes detail so a manual disconnect does not eject the user from
   /// an open conversation. Line of Sight and app-wide settings are radio-independent and preserved.
-  func clearPerDeviceSelection() {
+  func clearPerDeviceSelection(preservingConnection: Bool = false) {
     if selectedTool?.requiresRadio == true {
       selectedTool = nil
     }
-    if selectedSetting?.requiresDevice == true {
-      selectedSetting = nil
+    guard selectedSetting?.requiresDevice == true else { return }
+    if preservingConnection, selectedSetting == .connection {
+      return
     }
+    selectedSetting = nil
   }
 
   /// Tabs where BLEStatusIndicatorView exists and the device menu tip can anchor (Chats, Contacts, Map).

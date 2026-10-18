@@ -4731,6 +4731,26 @@ public enum L10n {
         public static let txPower = L10n.tr("Settings", "configImport.field.txPower", fallback: "TX power")
       }
     }
+    public enum Connection {
+      /// Settings row, page title, and phone address header
+      public static let header = L10n.tr("Settings", "connection.header", fallback: "Connection")
+      public enum Link {
+        /// VoiceOver label for the Bluetooth info button
+        public static let bluetoothInfo = L10n.tr("Settings", "connection.link.bluetoothInfo", fallback: "Bluetooth info")
+        /// VoiceOver value for the link that is in use
+        public static let inUse = L10n.tr("Settings", "connection.link.inUse", fallback: "In use")
+        /// Header for the radio Wi-Fi group on the Wi-Fi page
+        public static let radioWiFi = L10n.tr("Settings", "connection.link.radioWiFi", fallback: "Radio Wi-Fi")
+        /// VoiceOver hint for switching to the other link
+        public static let switchHint = L10n.tr("Settings", "connection.link.switchHint", fallback: "Switches the link to the radio")
+        /// VoiceOver value while a switch to that link is in progress
+        public static let switching = L10n.tr("Settings", "connection.link.switching", fallback: "Switching")
+        /// Spoken name of the Wi-Fi link and the Wi-Fi page title
+        public static let wifi = L10n.tr("Settings", "connection.link.wifi", fallback: "Wi-Fi")
+        /// VoiceOver label for the Wi-Fi info button
+        public static let wifiInfo = L10n.tr("Settings", "connection.link.wifiInfo", fallback: "Wi-Fi info")
+      }
+    }
     public enum DangerZone {
       /// Button to factory reset the device
       public static let factoryReset = L10n.tr("Settings", "dangerZone.factoryReset", fallback: "Factory Reset Device")
@@ -5455,6 +5475,84 @@ public enum L10n {
         }
       }
     }
+    public enum RadioWiFi {
+      /// Button that clears the radio's saved WiFi settings
+      public static let clear = L10n.tr("Settings", "radioWiFi.clear", fallback: "Clear WiFi Settings")
+      /// Toggle for the radio's WiFi radio
+      public static let enabled = L10n.tr("Settings", "radioWiFi.enabled", fallback: "WiFi")
+      /// Footer for the radio WiFi section
+      public static let footer = L10n.tr("Settings", "radioWiFi.footer", fallback: "The radio joins this network after a reboot.")
+      /// Accessibility label that hides the WiFi password
+      public static let hidePassword = L10n.tr("Settings", "radioWiFi.hidePassword", fallback: "Hide Password")
+      /// Label for the radio's IP address
+      public static let ipAddress = L10n.tr("Settings", "radioWiFi.ipAddress", fallback: "IP Address")
+      /// Label for the radio's WiFi network
+      public static let network = L10n.tr("Settings", "radioWiFi.network", fallback: "Network")
+      /// Field label for the network name
+      public static let networkName = L10n.tr("Settings", "radioWiFi.networkName", fallback: "Network Name")
+      /// Field label for the WiFi password
+      public static let password = L10n.tr("Settings", "radioWiFi.password", fallback: "Password")
+      /// Button that reboots to apply WiFi changes
+      public static let rebootToApply = L10n.tr("Settings", "radioWiFi.rebootToApply", fallback: "Reboot to Apply")
+      /// Accessibility label that reveals the WiFi password
+      public static let showPassword = L10n.tr("Settings", "radioWiFi.showPassword", fallback: "Show Password")
+      /// Label for the radio WiFi status
+      public static let status = L10n.tr("Settings", "radioWiFi.status", fallback: "Status")
+      public enum Alert {
+        public enum Clear {
+          /// Clear confirmation when the phone is connected over Bluetooth
+          public static let message = L10n.tr("Settings", "radioWiFi.alert.clear.message", fallback: "The radio forgets the saved network name and password after it reboots. If its firmware has a built-in network, it joins that network instead.")
+          /// Title for the clear WiFi confirmation
+          public static let title = L10n.tr("Settings", "radioWiFi.alert.clear.title", fallback: "Clear WiFi Settings?")
+          /// Clear confirmation when the phone is connected over WiFi
+          public static let wifiMessage = L10n.tr("Settings", "radioWiFi.alert.clear.wifiMessage", fallback: "The radio forgets the saved network name and password after it reboots. It may not be reachable at this address. If that happens, connect over Bluetooth. If its firmware has a built-in network, it joins that network instead.")
+        }
+        public enum Reboot {
+          /// Reboot confirmation when a network name is stored. %@ is the network name.
+          public static func join(_ p1: Any) -> String {
+            return L10n.tr("Settings", "radioWiFi.alert.reboot.join", String(describing: p1), fallback: "The radio will restart and then join %@. The phone disconnects until the radio is back.")
+          }
+          /// Reboot confirmation when no network name is stored
+          public static let restart = L10n.tr("Settings", "radioWiFi.alert.reboot.restart", fallback: "The radio will restart. The phone disconnects until the radio is back.")
+          /// Title for the radio WiFi reboot confirmation
+          public static let title = L10n.tr("Settings", "radioWiFi.alert.reboot.title", fallback: "Reboot the radio?")
+        }
+        public enum Save {
+          /// Title before saving a network while connected over WiFi
+          public static let title = L10n.tr("Settings", "radioWiFi.alert.save.title", fallback: "Save this network?")
+        }
+        public enum TurnOff {
+          /// Confirm button before turning WiFi off
+          public static let confirm = L10n.tr("Settings", "radioWiFi.alert.turnOff.confirm", fallback: "Turn Off")
+          /// Title before turning WiFi off while connected over WiFi
+          public static let title = L10n.tr("Settings", "radioWiFi.alert.turnOff.title", fallback: "Turn off WiFi?")
+        }
+        public enum WifiTransport {
+          /// Warning before a WiFi change while connected over WiFi
+          public static let message = L10n.tr("Settings", "radioWiFi.alert.wifiTransport.message", fallback: "After the radio reboots, it may not be reachable at this address. If that happens, connect over Bluetooth.")
+        }
+      }
+      public enum Editor {
+        /// Editor footer when the network name is empty
+        public static let emptyName = L10n.tr("Settings", "radioWiFi.editor.emptyName", fallback: "Enter a network name.")
+        /// Editor footer when the name and password are within the limits
+        public static let footer = L10n.tr("Settings", "radioWiFi.editor.footer", fallback: "The radio uses this network after it reboots. A network name can be up to 32 bytes, and a password up to 63 bytes. Leave the password blank to store no password.")
+        /// Editor footer when the network name is too long
+        public static let nameLength = L10n.tr("Settings", "radioWiFi.editor.nameLength", fallback: "A network name can be up to 32 bytes.")
+        /// Editor footer when the password is too long
+        public static let passwordLength = L10n.tr("Settings", "radioWiFi.editor.passwordLength", fallback: "A password can be up to 63 bytes.")
+      }
+      public enum Network {
+        /// Shown when the radio has no saved network name
+        public static let notSet = L10n.tr("Settings", "radioWiFi.network.notSet", fallback: "None")
+      }
+      public enum Status {
+        /// Radio WiFi status when associated
+        public static let connected = L10n.tr("Settings", "radioWiFi.status.connected", fallback: "Connected")
+        /// Radio WiFi status when not associated
+        public static let notConnected = L10n.tr("Settings", "radioWiFi.status.notConnected", fallback: "Not Connected")
+      }
+    }
     public enum RegenerateIdentity {
       /// Button to generate a new key
       public static let generate = L10n.tr("Settings", "regenerateIdentity.generate", fallback: "Generate Key")
@@ -5930,10 +6028,6 @@ public enum L10n {
       public static let address = L10n.tr("Settings", "wifi.address", fallback: "Address")
       /// Button to edit WiFi connection
       public static let editConnection = L10n.tr("Settings", "wifi.editConnection", fallback: "Edit Connection")
-      /// Footer explaining WiFi address
-      public static let footer = L10n.tr("Settings", "wifi.footer", fallback: "Your device's local network address")
-      /// Section header for WiFi settings
-      public static let header = L10n.tr("Settings", "wifi.header", fallback: "WiFi")
       /// Label for port number
       public static let port = L10n.tr("Settings", "wifi.port", fallback: "Port")
     }

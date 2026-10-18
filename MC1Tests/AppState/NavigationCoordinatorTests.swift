@@ -615,6 +615,28 @@ struct NavigationCoordinatorPendingLinkTests {
   }
 
   @Test
+  func `a link attempt keeps the connection page selected`() {
+    let coordinator = NavigationCoordinator()
+    coordinator.selectedSetting = .connection
+    coordinator.selectedTool = .cli
+
+    coordinator.clearPerDeviceSelection(preservingConnection: true)
+
+    #expect(coordinator.selectedSetting == .connection)
+    #expect(coordinator.selectedTool == nil)
+
+    for page: SettingsDetail in [.deviceInfo, .radio, .location, .advanced] {
+      coordinator.selectedSetting = page
+      coordinator.clearPerDeviceSelection(preservingConnection: true)
+      #expect(coordinator.selectedSetting == nil)
+    }
+
+    coordinator.selectedSetting = .connection
+    coordinator.clearPerDeviceSelection()
+    #expect(coordinator.selectedSetting == nil)
+  }
+
+  @Test
   func `language settings page is device-independent`() {
     let coordinator = NavigationCoordinator()
     coordinator.selectedSetting = .language

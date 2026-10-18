@@ -20,7 +20,7 @@ struct WiFiEditSheet: View {
   @FocusState private var focusedField: WiFiField?
 
   private var currentConnection: ConnectionMethod? {
-    appState.connectedDevice?.connectionMethods.first { $0.isWiFi }
+    appState.connectedDevice?.wifiConnectionMethod
   }
 
   private var originalHost: String? {

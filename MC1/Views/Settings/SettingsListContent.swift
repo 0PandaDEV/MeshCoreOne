@@ -52,6 +52,8 @@ struct SettingsListContent: View {
   private var sections: some View {
     if let device = appState.connectedDevice {
       MyDeviceSection(device: device, isSidebar: isSidebar)
+    } else if appState.connectionLinkSwitch != nil {
+      HeldConnectionSection(isSidebar: isSidebar)
     } else {
       NoDeviceSection(showingDeviceSelection: $showingDeviceSelection, isSidebar: isSidebar)
     }
@@ -177,13 +179,7 @@ private struct MyDeviceSection: View {
       }
       .accessibilityValue(locationDetailText)
 
-      SettingsDetailRow(detail: .connection) {
-        let isWiFi = appState.connectionManager.currentTransportType == .wifi
-        TintedLabel(
-          isWiFi ? L10n.Settings.Wifi.header : L10n.Settings.Bluetooth.header,
-          systemImage: isWiFi ? "wifi" : "wave.3.right"
-        )
-      }
+      ConnectionSettingsLinkRow()
 
       SettingsDetailRow(detail: .advanced) {
         TintedLabel(L10n.Settings.AdvancedSettings.title, systemImage: "gearshape.2")
@@ -212,6 +208,67 @@ private struct MyDeviceSection: View {
     device.sharesLocationPublicly
       ? L10n.Settings.Location.sharingPublicly
       : L10n.Settings.Location.notSharing
+  }
+}
+
+// MARK: - Held connection
+
+/// The Connection row alone, so a failed switch can still be opened while the radio is down.
+private struct HeldConnectionSection: View {
+  let isSidebar: Bool
+  @Environment(\.appTheme) private var theme
+
+  var body: some View {
+    Section {
+      ConnectionSettingsLinkRow()
+    } header: {
+      Text(L10n.Settings.MyDevice.header)
+    }
+    .themedRowBackground(theme, flatten: isSidebar)
+  }
+}
+
+// MARK: - Connection row
+
+private struct ConnectionSettingsLinkRow: View {
+  @Environment(\.appState) private var appState
+
+  var body: some View {
+    let detail = detailText
+    SettingsDetailRow(detail: .connection) {
+      SettingsRow(
+        L10n.Settings.Connection.header,
+        systemImage: presentation.checked == .wifi ? "wifi" : "wave.3.right",
+        detail: detail
+      )
+    }
+    .accessibilityValue(detail)
+  }
+
+  private var presentation: ConnectionLinkRows.Snapshot {
+    let device = appState.connectedDevice
+    var host: String?
+    if case let .wifi(wifiHost, _, _) = device?.wifiConnectionMethod {
+      host = wifiHost
+    }
+    return ConnectionLinkRows.make(
+      liveTransport: appState.connectionManager.currentTransportType,
+      savedPeripheralID: device?.bluetoothPeripheralID,
+      liveWiFiHost: host,
+      showsConnectOverWiFi: false,
+      activeSwitch: appState.connectionLinkSwitch
+    )
+  }
+
+  private var detailText: String {
+    switch presentation.settingsDetail {
+    case .bluetooth:
+      L10n.Settings.Bluetooth.header
+    case .wifi:
+      L10n.Settings.Connection.Link.wifi
+    case let .host(host):
+      host
+    }
   }
 }
 

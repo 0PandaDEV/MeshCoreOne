@@ -930,10 +930,126 @@
 /* Footer explaining telemetry */
 "telemetry.footer" = "Wanneer ingeschakeld kunnen andere knooppunten de telemetriegegevens van je apparaat opvragen.";
 
-// MARK: - WiFi Section
+// MARK: - Radio WiFi
 
-/* Section header for WiFi settings */
-"wifi.header" = "Wifi";
+/* Footer for the radio WiFi section */
+"radioWiFi.footer" = "De radio maakt na een herstart verbinding met dit netwerk.";
+
+/* Label for the radio WiFi status */
+"radioWiFi.status" = "Status";
+
+/* Radio WiFi status when associated */
+"radioWiFi.status.connected" = "Verbonden";
+
+/* Radio WiFi status when not associated */
+"radioWiFi.status.notConnected" = "Niet verbonden";
+
+/* Label for the radio's IP address */
+"radioWiFi.ipAddress" = "IP-adres";
+
+/* Label for the radio's WiFi network */
+"radioWiFi.network" = "Netwerk";
+
+/* Shown when the radio has no saved network name */
+"radioWiFi.network.notSet" = "Geen";
+
+/* Toggle for the radio's WiFi radio */
+"radioWiFi.enabled" = "Wifi";
+
+/* Field label for the network name */
+"radioWiFi.networkName" = "Netwerknaam";
+
+/* Field label for the WiFi password */
+"radioWiFi.password" = "Wachtwoord";
+
+/* Accessibility label that reveals the WiFi password */
+"radioWiFi.showPassword" = "Wachtwoord tonen";
+
+/* Accessibility label that hides the WiFi password */
+"radioWiFi.hidePassword" = "Wachtwoord verbergen";
+
+/* Editor footer when the name and password are within the limits */
+"radioWiFi.editor.footer" = "De radio gebruikt dit netwerk na een herstart. Een netwerknaam kan maximaal 32 bytes zijn en een wachtwoord maximaal 63 bytes. Laat het wachtwoord leeg om geen wachtwoord op te slaan.";
+
+/* Editor footer when the network name is empty */
+"radioWiFi.editor.emptyName" = "Voer een netwerknaam in.";
+
+/* Editor footer when the network name is too long */
+"radioWiFi.editor.nameLength" = "Een netwerknaam kan maximaal 32 bytes zijn.";
+
+/* Editor footer when the password is too long */
+"radioWiFi.editor.passwordLength" = "Een wachtwoord kan maximaal 63 bytes zijn.";
+
+/* Button that clears the radio's saved WiFi settings */
+"radioWiFi.clear" = "Wifi-instellingen wissen";
+
+/* Title for the clear WiFi confirmation */
+"radioWiFi.alert.clear.title" = "Wifi-instellingen wissen?";
+
+/* Clear confirmation when the phone is connected over Bluetooth */
+"radioWiFi.alert.clear.message" = "De radio vergeet de opgeslagen netwerknaam en het wachtwoord na een herstart. Als de firmware een ingebouwd netwerk heeft, maakt de radio in plaats daarvan verbinding met dat netwerk.";
+
+/* Clear confirmation when the phone is connected over WiFi */
+"radioWiFi.alert.clear.wifiMessage" = "De radio vergeet de opgeslagen netwerknaam en het wachtwoord na een herstart. Daarna is de radio misschien niet bereikbaar op dit adres. Verbind dan via Bluetooth. Als de firmware een ingebouwd netwerk heeft, maakt de radio in plaats daarvan verbinding met dat netwerk.";
+
+/* Button that reboots to apply WiFi changes */
+"radioWiFi.rebootToApply" = "Herstarten om toe te passen";
+
+/* Title before saving a network while connected over WiFi */
+"radioWiFi.alert.save.title" = "Dit netwerk opslaan?";
+
+/* Title before turning WiFi off while connected over WiFi */
+"radioWiFi.alert.turnOff.title" = "Wifi uitschakelen?";
+
+/* Confirm button before turning WiFi off */
+"radioWiFi.alert.turnOff.confirm" = "Uitschakelen";
+
+/* Warning before a WiFi change while connected over WiFi */
+"radioWiFi.alert.wifiTransport.message" = "Na de herstart is de radio misschien niet bereikbaar op dit adres. Verbind dan via Bluetooth.";
+
+/* Title for the radio WiFi reboot confirmation */
+"radioWiFi.alert.reboot.title" = "Radio herstarten?";
+
+/* Reboot confirmation when a network name is stored. %@ is the network name. */
+"radioWiFi.alert.reboot.join" = "De radio wordt herstart en maakt daarna verbinding met %@. Je telefoon wordt losgekoppeld totdat de radio terug is.";
+
+/* Reboot confirmation when no network name is stored */
+"radioWiFi.alert.reboot.restart" = "De radio wordt herstart. Je telefoon wordt losgekoppeld totdat de radio terug is.";
+
+// MARK: - Connection
+
+/* Settings row, page title, and phone address header */
+"connection.header" = "Verbinding";
+
+/* Spoken name of the Wi-Fi link and the Wi-Fi page title */
+/* TODO: translate */
+"connection.link.wifi" = "Wi-Fi";
+
+/* Header for the radio Wi-Fi group on the Wi-Fi page */
+/* TODO: translate */
+"connection.link.radioWiFi" = "Radio Wi-Fi";
+
+/* VoiceOver value for the link that is in use */
+/* TODO: translate */
+"connection.link.inUse" = "In use";
+
+/* VoiceOver value while a switch to that link is in progress */
+/* TODO: translate */
+"connection.link.switching" = "Switching";
+
+/* VoiceOver hint for switching to the other link */
+/* TODO: translate */
+"connection.link.switchHint" = "Switches the link to the radio";
+
+/* VoiceOver label for the Bluetooth info button */
+/* TODO: translate */
+"connection.link.bluetoothInfo" = "Bluetooth info";
+
+/* VoiceOver label for the Wi-Fi info button */
+/* TODO: translate */
+"connection.link.wifiInfo" = "Wi-Fi info";
+
+// MARK: - WiFi Section
 
 /* Label for IP address */
 "wifi.address" = "Adres";
@@ -943,9 +1059,6 @@
 
 /* Button to edit WiFi connection */
 "wifi.editConnection" = "Verbinding bewerken";
-
-/* Footer explaining WiFi address */
-"wifi.footer" = "Het lokale netwerkadres van je apparaat";
 
 // MARK: - WiFi Edit Sheet
 

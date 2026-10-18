@@ -128,10 +128,8 @@ struct DeviceSelectionSheet: View {
 
     var connectedElsewhere: Set<UUID> = []
     for device in result.connectable {
-      let hasBluetooth = device.connectionMethods.isEmpty ||
-        device.connectionMethods.contains { !$0.isWiFi }
-      if hasBluetooth {
-        if await appState.connectionManager.isDeviceConnectedToOtherApp(device.id) {
+      if case let .bluetooth(peripheralID) = device.savedDeviceConnectTarget {
+        if await appState.connectionManager.isDeviceConnectedToOtherApp(peripheralID) {
           connectedElsewhere.insert(device.id)
         }
       }
@@ -160,10 +158,11 @@ struct DeviceSelectionSheet: View {
     Task {
       logger.info("[UI] User tapped Connect for device: \(device.id.uuidString.prefix(8)), name: \(device.nodeName)")
       do {
-        if case let .wifi(host, port, _) = device.primaryConnectionMethod {
+        switch device.savedDeviceConnectTarget {
+        case let .wifi(host, port):
           try await appState.connectViaWiFi(host: host, port: port, forceFullSync: true)
-        } else {
-          try await appState.connectionManager.connect(to: device.id, forceFullSync: true, forceReconnect: true)
+        case let .bluetooth(peripheralID):
+          try await appState.connectionManager.connect(to: peripheralID, forceFullSync: true, forceReconnect: true)
         }
       } catch {
         appState.connectionUI.presentSavedDeviceConnectFailure(deviceID: device.id, error: error)
@@ -203,15 +202,17 @@ private struct DeviceListView: View {
     List {
       Section {
         ForEach(connectable) { device in
-          let tier = device.connectsViaWiFi ? nil : tracker.signalTier(for: device.id)
-          let isDisabledByBLE = !device.connectsViaWiFi && !tracker.isAdvertising(device.id)
+          let connectsViaWiFi = device.lastUsedConnectionMethod?.isWiFi == true
+          let advertiseID = device.bluetoothPeripheralID ?? device.id
+          let tier = connectsViaWiFi ? nil : tracker.signalTier(for: advertiseID)
+          let isDisabledByBLE = !connectsViaWiFi && !tracker.isAdvertising(advertiseID)
           Button {
             guard !isDisabledByBLE else { return }
             onConnect(device)
           } label: {
             DeviceRow(
               device: device,
-              connectsViaWiFi: device.connectsViaWiFi,
+              connectsViaWiFi: connectsViaWiFi,
               isConnectedElsewhere: devicesConnectedElsewhere.contains(device.id),
               signalTier: tier
             )
@@ -219,7 +220,7 @@ private struct DeviceListView: View {
           }
           .buttonStyle(.plain)
           .contextMenu {
-            if device.primaryConnectionMethod?.isWiFi == true {
+            if device.wifiConnectionMethod != nil {
               Button {
                 editingWiFiDevice = device
               } label: {
@@ -276,7 +277,7 @@ private struct DeviceListView: View {
       WiFiConnectionSheet()
     }
     .sheet(item: $editingWiFiDevice) { device in
-      if case let .wifi(host, port, _) = device.primaryConnectionMethod {
+      if case let .wifi(host, port, _) = device.wifiConnectionMethod {
         WiFiEditSheet(initialHost: host, initialPort: port)
       }
     }
@@ -366,21 +367,21 @@ private struct DeviceRow: View {
   }
 
   private var transportIcon: String {
-    guard let method = device.primaryConnectionMethod else {
+    guard let method = device.lastUsedConnectionMethod else {
       return "antenna.radiowaves.left.and.right"
     }
     return method.isWiFi ? "wifi" : "antenna.radiowaves.left.and.right"
   }
 
   private var transportColor: Color {
-    guard let method = device.primaryConnectionMethod else {
+    guard let method = device.lastUsedConnectionMethod else {
       return .green
     }
     return method.isWiFi ? .blue : .green
   }
 
   private var connectionDescription: String {
-    if let method = device.primaryConnectionMethod, method.isWiFi {
+    if let method = device.lastUsedConnectionMethod, method.isWiFi {
       return method.shortDescription
     }
     return L10n.Settings.DeviceSelection.bluetooth
@@ -442,15 +443,5 @@ private struct DeviceRow: View {
   private var signalDescription: String {
     guard let tier = signalTier else { return "" }
     return SignalBars.accessibilityDescription(forTier: tier)
-  }
-}
-
-private extension DeviceDTO {
-  var primaryConnectionMethod: ConnectionMethod? {
-    connectionMethods.first { $0.isWiFi } ?? connectionMethods.first
-  }
-
-  var connectsViaWiFi: Bool {
-    primaryConnectionMethod?.isWiFi == true
   }
 }

@@ -249,6 +249,7 @@ extension AppState {
   /// Disconnect from device
   /// - Parameter reason: The reason for disconnecting (for debugging)
   func disconnect(reason: DisconnectReason = .userInitiated) async {
+    connectionLinkSwitch = nil
     await connectionManager.disconnect(reason: reason)
     await liveActivityManager.endActivity()
     // Explicit disconnect does not fire onConnectionLost, so run the same
@@ -272,6 +273,104 @@ extension AppState {
     connectionUI.hideDisconnectedPill()
     try await connectionManager.connectViaWiFi(host: host, port: port, forceFullSync: forceFullSync)
     await wireServicesIfConnected()
+  }
+
+  func connectViaBluetooth(peripheralID: UUID) async throws {
+    connectionUI.hideDisconnectedPill()
+    try await connectionManager.connectViaBluetooth(peripheralID: peripheralID)
+    await wireServicesIfConnected()
+  }
+
+  /// Runs a transport switch. A throw is shown with the saved-device failure alert.
+  /// Returns whether the closure threw.
+  @discardableResult
+  func switchTransport(
+    deviceID: UUID,
+    _ connect: @MainActor () async throws -> Void
+  ) async -> Bool {
+    do {
+      try await connect()
+      return false
+    } catch {
+      connectionUI.presentSavedDeviceConnectFailure(deviceID: deviceID, error: error)
+      return true
+    }
+  }
+
+  /// Starts one link switch. A declined start does not connect and does not change the token.
+  func beginLinkSwitch(to target: TransportType, snapshotWiFiHost: String?) async {
+    let token = UUID()
+    guard let started = ConnectionLinkSwitch.start(
+      existing: connectionLinkSwitch,
+      target: target,
+      liveTransport: connectionManager.currentTransportType,
+      radioID: connectedDevice?.radioID,
+      deviceID: connectedDevice?.id,
+      bluetoothPeripheralID: connectedDevice?.bluetoothPeripheralID,
+      wifi: capturedWiFiDial(snapshotHost: snapshotWiFiHost),
+      token: token
+    ) else { return }
+
+    connectionLinkSwitch = started
+    let threw = await switchTransport(deviceID: failureAlertDeviceID(started, target: target)) {
+      try await dial(started, to: target)
+    }
+    applyConnectionLinkSwitchCompletion(token: token, threw: threw)
+  }
+
+  /// Drops a finished record once a radio is connected, and drops a record for a different radio.
+  /// An in-progress attempt for the connected radio stays.
+  func reconcileConnectionLinkSwitch() {
+    guard let device = connectedDevice, let record = connectionLinkSwitch else { return }
+    if record.radioID != device.radioID || record.target == nil {
+      connectionLinkSwitch = nil
+    }
+  }
+
+  private func applyConnectionLinkSwitchCompletion(token: UUID, threw: Bool) {
+    guard let record = connectionLinkSwitch else { return }
+    switch record.complete(
+      token: token,
+      threw: threw,
+      liveTransport: connectionManager.currentTransportType,
+      connectedRadioID: connectedDevice?.radioID
+    ) {
+    case .ignored:
+      break
+    case .cleared:
+      connectionLinkSwitch = nil
+    case let .held(updated):
+      connectionLinkSwitch = updated
+    }
+  }
+
+  private func failureAlertDeviceID(_ record: ConnectionLinkSwitch, target: TransportType) -> UUID {
+    switch target {
+    case .bluetooth:
+      record.bluetoothPeripheralID ?? record.deviceID
+    case .wifi:
+      record.deviceID
+    }
+  }
+
+  private func dial(_ record: ConnectionLinkSwitch, to target: TransportType) async throws {
+    switch target {
+    case .bluetooth:
+      guard let peripheralID = record.bluetoothPeripheralID else { return }
+      try await connectViaBluetooth(peripheralID: peripheralID)
+    case .wifi:
+      guard let wifi = record.wifi, let host = wifi.displayHost else { return }
+      try await connectViaWiFi(host: host, port: wifi.port)
+    }
+  }
+
+  /// A live Wi-Fi session keeps its own host and port. Otherwise the radio snapshot supplies the host and the default port.
+  private func capturedWiFiDial(snapshotHost: String?) -> ConnectionLinkWiFiDial? {
+    ConnectionLinkWiFiDial.capture(
+      liveTransport: connectionManager.currentTransportType,
+      savedWiFi: connectedDevice?.wifiConnectionMethod,
+      snapshotHost: snapshotHost
+    )
   }
 
   // MARK: - Advertising

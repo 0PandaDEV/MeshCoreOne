@@ -930,10 +930,126 @@
 /* Footer explaining telemetry */
 "telemetry.footer" = "Lorsqu'activé, d'autres nœuds peuvent demander les données de télémétrie de votre appareil.";
 
-// MARK: - WiFi Section
+// MARK: - Radio WiFi
 
-/* Section header for WiFi settings */
-"wifi.header" = "WiFi";
+/* Footer for the radio WiFi section */
+"radioWiFi.footer" = "La radio rejoint ce réseau après un redémarrage.";
+
+/* Label for the radio WiFi status */
+"radioWiFi.status" = "Statut";
+
+/* Radio WiFi status when associated */
+"radioWiFi.status.connected" = "Connecté";
+
+/* Radio WiFi status when not associated */
+"radioWiFi.status.notConnected" = "Non connecté";
+
+/* Label for the radio's IP address */
+"radioWiFi.ipAddress" = "Adresse IP";
+
+/* Label for the radio's WiFi network */
+"radioWiFi.network" = "Réseau";
+
+/* Shown when the radio has no saved network name */
+"radioWiFi.network.notSet" = "Aucun";
+
+/* Toggle for the radio's WiFi radio */
+"radioWiFi.enabled" = "WiFi";
+
+/* Field label for the network name */
+"radioWiFi.networkName" = "Nom du réseau";
+
+/* Field label for the WiFi password */
+"radioWiFi.password" = "Mot de passe";
+
+/* Accessibility label that reveals the WiFi password */
+"radioWiFi.showPassword" = "Afficher le mot de passe";
+
+/* Accessibility label that hides the WiFi password */
+"radioWiFi.hidePassword" = "Masquer le mot de passe";
+
+/* Editor footer when the name and password are within the limits */
+"radioWiFi.editor.footer" = "La radio utilise ce réseau après un redémarrage. Un nom de réseau peut contenir jusqu'à 32 octets et un mot de passe jusqu'à 63 octets. Laissez le mot de passe vide pour n'enregistrer aucun mot de passe.";
+
+/* Editor footer when the network name is empty */
+"radioWiFi.editor.emptyName" = "Entrez un nom de réseau.";
+
+/* Editor footer when the network name is too long */
+"radioWiFi.editor.nameLength" = "Un nom de réseau peut contenir jusqu'à 32 octets.";
+
+/* Editor footer when the password is too long */
+"radioWiFi.editor.passwordLength" = "Un mot de passe peut contenir jusqu'à 63 octets.";
+
+/* Button that clears the radio's saved WiFi settings */
+"radioWiFi.clear" = "Effacer les réglages WiFi";
+
+/* Title for the clear WiFi confirmation */
+"radioWiFi.alert.clear.title" = "Effacer les réglages WiFi ?";
+
+/* Clear confirmation when the phone is connected over Bluetooth */
+"radioWiFi.alert.clear.message" = "La radio oublie le nom du réseau et le mot de passe enregistrés après un redémarrage. Si son firmware comporte un réseau intégré, elle rejoint ce réseau à la place.";
+
+/* Clear confirmation when the phone is connected over WiFi */
+"radioWiFi.alert.clear.wifiMessage" = "La radio oublie le nom du réseau et le mot de passe enregistrés après un redémarrage. Elle peut ne plus être joignable à cette adresse. Dans ce cas, connectez-vous via Bluetooth. Si son firmware comporte un réseau intégré, elle rejoint ce réseau à la place.";
+
+/* Button that reboots to apply WiFi changes */
+"radioWiFi.rebootToApply" = "Redémarrer pour appliquer";
+
+/* Title before saving a network while connected over WiFi */
+"radioWiFi.alert.save.title" = "Enregistrer ce réseau ?";
+
+/* Title before turning WiFi off while connected over WiFi */
+"radioWiFi.alert.turnOff.title" = "Désactiver le WiFi ?";
+
+/* Confirm button before turning WiFi off */
+"radioWiFi.alert.turnOff.confirm" = "Désactiver";
+
+/* Warning before a WiFi change while connected over WiFi */
+"radioWiFi.alert.wifiTransport.message" = "Après le redémarrage de la radio, elle peut ne plus être joignable à cette adresse. Dans ce cas, connectez-vous via Bluetooth.";
+
+/* Title for the radio WiFi reboot confirmation */
+"radioWiFi.alert.reboot.title" = "Redémarrer la radio ?";
+
+/* Reboot confirmation when a network name is stored. %@ is the network name. */
+"radioWiFi.alert.reboot.join" = "La radio va redémarrer puis rejoindre %@. L'iPhone se déconnecte jusqu'au retour de la radio.";
+
+/* Reboot confirmation when no network name is stored */
+"radioWiFi.alert.reboot.restart" = "La radio va redémarrer. L'iPhone se déconnecte jusqu'au retour de la radio.";
+
+// MARK: - Connection
+
+/* Settings row, page title, and phone address header */
+"connection.header" = "Connexion";
+
+/* Spoken name of the Wi-Fi link and the Wi-Fi page title */
+/* TODO: translate */
+"connection.link.wifi" = "Wi-Fi";
+
+/* Header for the radio Wi-Fi group on the Wi-Fi page */
+/* TODO: translate */
+"connection.link.radioWiFi" = "Radio Wi-Fi";
+
+/* VoiceOver value for the link that is in use */
+/* TODO: translate */
+"connection.link.inUse" = "In use";
+
+/* VoiceOver value while a switch to that link is in progress */
+/* TODO: translate */
+"connection.link.switching" = "Switching";
+
+/* VoiceOver hint for switching to the other link */
+/* TODO: translate */
+"connection.link.switchHint" = "Switches the link to the radio";
+
+/* VoiceOver label for the Bluetooth info button */
+/* TODO: translate */
+"connection.link.bluetoothInfo" = "Bluetooth info";
+
+/* VoiceOver label for the Wi-Fi info button */
+/* TODO: translate */
+"connection.link.wifiInfo" = "Wi-Fi info";
+
+// MARK: - WiFi Section
 
 /* Label for IP address */
 "wifi.address" = "Adresse";
@@ -943,9 +1059,6 @@
 
 /* Button to edit WiFi connection */
 "wifi.editConnection" = "Modifier la connexion";
-
-/* Footer explaining WiFi address */
-"wifi.footer" = "L'adresse réseau locale de votre appareil";
 
 // MARK: - WiFi Edit Sheet
 

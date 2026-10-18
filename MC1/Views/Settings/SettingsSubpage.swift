@@ -15,9 +15,13 @@ enum SettingsSubpage: Hashable {
   case offlineMaps
   case manageRegions
   case support
+  case bluetoothLink
+  case wifiLink
 
   func isAdmitted(for detail: SettingsDetail?, device: DeviceDTO?) -> Bool {
     switch self {
+    case .bluetoothLink, .wifiLink:
+      detail == .connection
     case .publicKey:
       detail == .deviceInfo
     case .configExport, .configImport, .trustedContacts:
@@ -53,6 +57,7 @@ private enum SettingsSubpageContext {
   case standard
   case radio(PresetLocationSession)
   case advanced(RegionDiscoveryState, SettingsEditorPresentation.RegionRequest)
+  case connection(RadioWiFiViewModel)
 }
 
 extension View {
@@ -69,6 +74,10 @@ extension View {
     requestRegionAdd: @escaping SettingsEditorPresentation.RegionRequest
   ) -> some View {
     modifier(SettingsSubpageRegistration(context: .advanced(discovery, requestRegionAdd)))
+  }
+
+  func settingsSubpageDestinations(radioWiFi: RadioWiFiViewModel) -> some View {
+    modifier(SettingsSubpageRegistration(context: .connection(radioWiFi)))
   }
 }
 
@@ -117,6 +126,12 @@ private struct SettingsSubpageDestination: View {
     case .manageRegions:
       if case let .advanced(discovery, requestRegionAdd) = context {
         ManageRegionsPage(discovery: discovery, requestRegionAdd: requestRegionAdd)
+      }
+    case .bluetoothLink:
+      ConnectionBluetoothPage()
+    case .wifiLink:
+      if case let .connection(radioWiFi) = context {
+        ConnectionWiFiPage(radioWiFi: radioWiFi)
       }
     }
   }

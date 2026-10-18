@@ -116,10 +116,16 @@ extension ConnectionManager {
     }
 
     // Rate limiting: prevent rapid reconnection attempts
+    let reconnectCooldown: TimeInterval
+    #if DEBUG
+      reconnectCooldown = testWiFiReconnectCooldown ?? Self.wifiReconnectCooldown
+    #else
+      reconnectCooldown = Self.wifiReconnectCooldown
+    #endif
     if let lastStart = lastWiFiReconnectStartTime,
-       Date().timeIntervalSince(lastStart) < Self.wifiReconnectCooldown {
+       Date().timeIntervalSince(lastStart) < reconnectCooldown {
       logger.warning("Suppressing WiFi reconnection: too soon after last attempt")
-      Task { await cleanupConnection() }
+      Task { await abandonWiFiConnection() }
       return
     }
     lastWiFiReconnectStartTime = Date()
@@ -144,9 +150,15 @@ extension ConnectionManager {
       while !Task.isCancelled, connectionIntent.wantsConnection {
         // Check if we've exceeded 30 second window
         let elapsed = ContinuousClock.now - startTime
-        if elapsed > Self.wifiMaxReconnectDuration {
+        let maxReconnectDuration: Duration
+        #if DEBUG
+          maxReconnectDuration = testWiFiMaxReconnectDuration ?? Self.wifiMaxReconnectDuration
+        #else
+          maxReconnectDuration = Self.wifiMaxReconnectDuration
+        #endif
+        if elapsed > maxReconnectDuration {
           logger.info("WiFi reconnection timeout after 30s")
-          await cleanupConnection()
+          await abandonWiFiConnection()
           return
         }
 
@@ -200,7 +212,7 @@ extension ConnectionManager {
       throw ConnectionError.initializationFailed("No self info")
     }
 
-    let deviceID = DeviceIdentity.deriveUUID(from: selfInfo.publicKey)
+    let deviceID = await wifiDeviceID(publicKey: selfInfo.publicKey)
     try await completeWiFiReconnection(
       session: newSession,
       transport: newTransport,
@@ -226,6 +238,7 @@ extension ConnectionManager {
       selfInfo: selfInfo,
       capabilities: capabilities
     )
+    persistConnection(deviceID: deviceID, radioID: radioID, deviceName: selfInfo.name)
 
     // Wire disconnection handler on new transport
     await transport.setDisconnectionHandler { [weak self] error in
@@ -289,14 +302,12 @@ extension ConnectionManager {
        let lastDeviceID = lastConnectedDeviceID {
       let dataStore = persistenceStore
       if let device = try? await dataStore.fetchDevice(id: lastDeviceID),
-         let wifiMethod = device.connectionMethods.first(where: { $0.isWiFi }) {
-        if case let .wifi(host, port, _) = wifiMethod {
-          logger.info("WiFi foreground reconnect to \(host):\(port)")
-          do {
-            try await connectViaWiFi(host: host, port: port)
-          } catch {
-            logger.warning("WiFi foreground reconnect failed: \(error.localizedDescription)")
-          }
+         case let .wifi(host, port, _) = device.lastUsedConnectionMethod {
+        logger.info("WiFi foreground reconnect to \(host):\(port)")
+        do {
+          try await connectViaWiFi(host: host, port: port)
+        } catch {
+          logger.warning("WiFi foreground reconnect failed: \(error.localizedDescription)")
         }
       }
     }
@@ -318,6 +329,14 @@ extension ConnectionManager {
     }
 
     logger.info("Connecting via WiFi to \(host):\(port)")
+
+    #if DEBUG
+      testWiFiConnectAttempts.append((host, port))
+      if let testWiFiConnectHandler {
+        try await testWiFiConnectHandler(host, port)
+        return
+      }
+    #endif
 
     // Disconnect existing connection if any
     if connectionState != .disconnected {
@@ -346,8 +365,7 @@ extension ConnectionManager {
       let (meshCoreSelfInfo, deviceCapabilities) = try await initializeSession(newSession)
       detectAndStorePlatform(model: deviceCapabilities.model, transportType: .wifi)
 
-      // Derive device ID from public key (WiFi devices don't have Bluetooth UUIDs)
-      let deviceID = DeviceIdentity.deriveUUID(from: meshCoreSelfInfo.publicKey)
+      let deviceID = await wifiDeviceID(publicKey: meshCoreSelfInfo.publicKey)
 
       let wifiMethod = ConnectionMethod.wifi(host: host, port: port, displayName: nil)
       let (newServices, radioID) = try await buildServicesAndSaveDevice(
@@ -380,14 +398,29 @@ extension ConnectionManager {
       logger.info("WiFi connection complete - device ready")
 
     } catch {
-      // Cleanup on failure
-      if let wifiTransport {
-        await wifiTransport.disconnect()
-        self.wifiTransport = nil
-      }
-      currentTransportType = nil
-      await cleanupConnection()
+      await abandonWiFiConnection()
       throw error
     }
+  }
+
+  /// Drops the WiFi socket and the transport marker, then tears the session down.
+  /// `disconnect()` closes `wifiTransport` when it is set, so a give-up has to clear it.
+  private func abandonWiFiConnection() async {
+    if let wifiTransport {
+      await wifiTransport.disconnect()
+      self.wifiTransport = nil
+    }
+    currentTransportType = nil
+    await cleanupConnection()
+  }
+
+  /// Saved id for a WiFi connect: the row's Bluetooth peripheral UUID, else its id.
+  /// Derives from the public key when no row exists or the fetch fails.
+  func wifiDeviceID(publicKey: Data) async -> UUID {
+    let rows = await (try? persistenceStore.fetchDevices(publicKey: publicKey)) ?? []
+    if let row = rows.first(where: { $0.bluetoothPeripheralID != nil }) ?? rows.first {
+      return row.bluetoothPeripheralID ?? row.id
+    }
+    return DeviceIdentity.deriveUUID(from: publicKey)
   }
 }

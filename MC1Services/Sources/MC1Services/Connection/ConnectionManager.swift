@@ -21,7 +21,7 @@ import SwiftData
 ///   (`idle`, `connecting`, `discoveringServices`, `discoveryComplete`,
 ///   `connected`, `autoReconnecting`, ...). Driven by CBCentralManager
 ///   callbacks; every transition routes through `BLEStateMachine.transition(to:)`.
-///   Concerns only the BLE transport, and is undefined for WiFi-bridged radios.
+///   Concerns only the BLE transport, and does not apply to a radio connected over WiFi.
 /// - `MeshCore.ConnectionState`: the transport-link state the session publishes
 ///   (`disconnected`, `connecting`, `connected`, `reconnecting`, `failed`).
 ///   `@_exported import MeshCore` makes its bare name visible app-wide; this one
@@ -132,6 +132,44 @@ public final class ConnectionManager {
   /// when the next contention class shows up, so every site picks them up.
   public var shouldDeferOpportunisticReconnect: Bool {
     isPairingInProgress || isPairingFlowActive
+  }
+
+  /// Bluetooth radio came back while the user still wants a connection.
+  /// Stands down when the saved row's last method is WiFi.
+  func handleBluetoothPoweredOn() async {
+    #if DEBUG
+      defer { testBluetoothPoweredOnHandlerRuns += 1 }
+    #endif
+    guard connectionIntent.wantsConnection,
+          connectionState == .disconnected,
+          let deviceID = lastConnectedDeviceID else { return }
+
+    if shouldDeferOpportunisticReconnect {
+      logger.info("[BLE] Bluetooth powered on: standing down (pairing in progress)")
+      return
+    }
+
+    let blePhase = await stateMachine.linkDiagnostics.phase
+    let bleConnectedDeviceID = await stateMachine.connectedDeviceID
+    if blePhase != .idle || bleConnectedDeviceID == deviceID {
+      logger.info(
+        "[BLE] Bluetooth powered on: BLE already owns reconnect flow for \(deviceID.uuidString.prefix(8)) " +
+          "(phase: \(blePhase), bleConnectedDevice: \(bleConnectedDeviceID?.uuidString.prefix(8) ?? "none"))"
+      )
+      return
+    }
+
+    if activeReconnectDeviceID == deviceID {
+      logger.info("[BLE] Bluetooth powered on: reconnect/session rebuild already in progress for \(deviceID.uuidString.prefix(8))")
+      return
+    }
+
+    if await shouldStandDownOpportunisticBluetoothReconnect(for: deviceID) {
+      return
+    }
+
+    logger.info("[BLE] Bluetooth powered on: attempting reconnection to \(deviceID.uuidString.prefix(8))")
+    await attemptOpportunisticReconnect(deviceID: deviceID, reason: "Bluetooth powered on")
   }
 
   /// Single chokepoint for opportunistic reconnect attempts. Consults the defer
@@ -467,6 +505,27 @@ public final class ConnectionManager {
     /// tests can complete without waiting on production backoff.
     var testWatchdogInitialDelay: Duration?
 
+    /// When set, `connectViaWiFi` records the attempt and returns this result
+    /// instead of opening a TCP socket.
+    var testWiFiConnectHandler: (@MainActor (String, UInt16) async throws -> Void)?
+
+    var testWiFiConnectAttempts: [(host: String, port: UInt16)] = []
+
+    /// When set, `connectViaBluetooth` records the attempt and returns this result
+    /// instead of opening a Bluetooth connection.
+    var testBluetoothConnectHandler: (@MainActor (UUID) async throws -> Void)?
+
+    var testBluetoothConnectAttempts: [UUID] = []
+
+    /// When set, WiFi reconnect gives up after this duration instead of 30s.
+    var testWiFiMaxReconnectDuration: Duration?
+
+    /// When set, a second WiFi reconnect inside this interval is suppressed.
+    var testWiFiReconnectCooldown: TimeInterval?
+
+    /// How many times the Bluetooth powered-on handler has run.
+    var testBluetoothPoweredOnHandlerRuns = 0
+
     /// Runs after `shouldPersistBondRefresh` returns true and before the epoch
     /// check in `persistBondRefreshIfStillValid` — tests force clear in that window.
     var bondRefreshPersistAfterShouldPersistHook: (@MainActor () async -> Void)?
@@ -534,21 +593,22 @@ public final class ConnectionManager {
     await stateMachine.setAppSessionLive(deviceID: deviceID)
   }
 
-  /// Clears persisted last-connection / bond-verification state for the forgotten
-  /// device. Always clears that device's in-memory bond verification (not the
-  /// current bond-slot holder), and holder-matches the store keys so forgetting
-  /// A cannot destroy B's shield. Also clears session-live when it matches so a
-  /// queued `onBondRefreshed` hop cannot re-persist after the map clear.
-  /// Bumps `bondRefreshPersistEpoch` first so an in-flight persist hop that
-  /// already observed a true `shouldPersistBondRefresh` still no-ops.
-  func clearPersistedConnection(for deviceID: UUID) async {
+  /// Clears this device's bond verification without touching the last-connection slot.
+  /// Holder-matches the key, and bumps the epoch first, so another radio's shield stays and a queued refresh cannot write this one back.
+  func clearBondVerification(for deviceID: UUID) async {
     bondRefreshPersistEpoch &+= 1
-    let wasLastConnected = lastConnectionStore.deviceID == deviceID
     await stateMachine.clearBondVerification(deviceID: deviceID)
     if await stateMachine.isAppSessionLive(deviceID: deviceID) {
       await stateMachine.setAppSessionLive(deviceID: nil)
     }
-    lastConnectionStore.clear(for: deviceID)
+    lastConnectionStore.clearBondVerification(for: deviceID)
+  }
+
+  /// Clears bond verification and, when `deviceID` holds it, the last-connection slot.
+  func clearPersistedConnection(for deviceID: UUID) async {
+    let wasLastConnected = lastConnectionStore.deviceID == deviceID
+    await clearBondVerification(for: deviceID)
+    lastConnectionStore.clearLastConnection(for: deviceID)
     if wasLastConnected {
       onLastConnectedDeviceCleared?()
     }
@@ -777,33 +837,7 @@ public final class ConnectionManager {
     // Handle Bluetooth power-cycle recovery
     await stateMachine.setBluetoothPoweredOnHandler { [weak self] in
       Task { @MainActor in
-        guard let self,
-              self.connectionIntent.wantsConnection,
-              self.connectionState == .disconnected,
-              let deviceID = self.lastConnectedDeviceID else { return }
-
-        if self.shouldDeferOpportunisticReconnect {
-          self.logger.info("[BLE] Bluetooth powered on: standing down (pairing in progress)")
-          return
-        }
-
-        let blePhase = await self.stateMachine.linkDiagnostics.phase
-        let bleConnectedDeviceID = await self.stateMachine.connectedDeviceID
-        if blePhase != .idle || bleConnectedDeviceID == deviceID {
-          self.logger.info(
-            "[BLE] Bluetooth powered on: BLE already owns reconnect flow for \(deviceID.uuidString.prefix(8)) " +
-              "(phase: \(blePhase), bleConnectedDevice: \(bleConnectedDeviceID?.uuidString.prefix(8) ?? "none"))"
-          )
-          return
-        }
-
-        if self.activeReconnectDeviceID == deviceID {
-          self.logger.info("[BLE] Bluetooth powered on: reconnect/session rebuild already in progress for \(deviceID.uuidString.prefix(8))")
-          return
-        }
-
-        self.logger.info("[BLE] Bluetooth powered on: attempting reconnection to \(deviceID.uuidString.prefix(8))")
-        await self.attemptOpportunisticReconnect(deviceID: deviceID, reason: "Bluetooth powered on")
+        await self?.handleBluetoothPoweredOn()
       }
     }
 
@@ -1042,7 +1076,7 @@ public final class ConnectionManager {
   ///   - expectedServices: The `ServiceContainer` captured at the start of the
   ///     config-import operation. If `self.services` no longer points to it, the
   ///     reconcile is silently skipped.
-  ///   - deviceID: The BLE peripheral UUID the import was started against.
+  ///   - deviceID: The connected row's `Device.id`.
   /// - Returns: The new `radioID` if reconciliation reassigned the device,
   ///   otherwise `nil` (no publicKey change, no matching ghost, or a guard tripped).
   @discardableResult

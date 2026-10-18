@@ -965,10 +965,126 @@
 /* Footer explaining telemetry */
 "telemetry.footer" = "启用后，其他节点可以请求您的设备遥测数据。";
 
-// MARK: - WiFi Section
+// MARK: - Radio WiFi
 
-/* Section header for WiFi settings */
-"wifi.header" = "WiFi";
+/* Footer for the radio WiFi section */
+"radioWiFi.footer" = "无线电重启后会加入此网络。";
+
+/* Label for the radio WiFi status */
+"radioWiFi.status" = "状态";
+
+/* Radio WiFi status when associated */
+"radioWiFi.status.connected" = "已连接";
+
+/* Radio WiFi status when not associated */
+"radioWiFi.status.notConnected" = "未连接";
+
+/* Label for the radio's IP address */
+"radioWiFi.ipAddress" = "IP 地址";
+
+/* Label for the radio's WiFi network */
+"radioWiFi.network" = "网络";
+
+/* Shown when the radio has no saved network name */
+"radioWiFi.network.notSet" = "无";
+
+/* Toggle for the radio's WiFi radio */
+"radioWiFi.enabled" = "WiFi";
+
+/* Field label for the network name */
+"radioWiFi.networkName" = "网络名称";
+
+/* Field label for the WiFi password */
+"radioWiFi.password" = "密码";
+
+/* Accessibility label that reveals the WiFi password */
+"radioWiFi.showPassword" = "显示密码";
+
+/* Accessibility label that hides the WiFi password */
+"radioWiFi.hidePassword" = "隐藏密码";
+
+/* Editor footer when the name and password are within the limits */
+"radioWiFi.editor.footer" = "无线电重启后会使用此网络。网络名称最多为 32 字节，密码最多为 63 字节。密码留空则不保存密码。";
+
+/* Editor footer when the network name is empty */
+"radioWiFi.editor.emptyName" = "请输入网络名称。";
+
+/* Editor footer when the network name is too long */
+"radioWiFi.editor.nameLength" = "网络名称最多为 32 字节。";
+
+/* Editor footer when the password is too long */
+"radioWiFi.editor.passwordLength" = "密码最多为 63 字节。";
+
+/* Button that clears the radio's saved WiFi settings */
+"radioWiFi.clear" = "清除 WiFi 设置";
+
+/* Title for the clear WiFi confirmation */
+"radioWiFi.alert.clear.title" = "清除 WiFi 设置？";
+
+/* Clear confirmation when the phone is connected over Bluetooth */
+"radioWiFi.alert.clear.message" = "无线电重启后会忘记已保存的网络名称和密码。如果固件内置了网络，则会加入该网络。";
+
+/* Clear confirmation when the phone is connected over WiFi */
+"radioWiFi.alert.clear.wifiMessage" = "无线电重启后会忘记已保存的网络名称和密码。无线电可能无法通过此地址访问。如果发生这种情况，请通过蓝牙连接。如果固件内置了网络，则会加入该网络。";
+
+/* Button that reboots to apply WiFi changes */
+"radioWiFi.rebootToApply" = "重启以应用";
+
+/* Warning before a WiFi change while connected over WiFi */
+"radioWiFi.alert.wifiTransport.message" = "无线电重启后，可能无法通过此地址访问。如果发生这种情况，请通过蓝牙连接。";
+
+/* Title before saving a network while connected over WiFi */
+"radioWiFi.alert.save.title" = "保存此网络？";
+
+/* Title before turning WiFi off while connected over WiFi */
+"radioWiFi.alert.turnOff.title" = "关闭 WiFi？";
+
+/* Confirm button before turning WiFi off */
+"radioWiFi.alert.turnOff.confirm" = "关闭";
+
+/* Title for the radio WiFi reboot confirmation */
+"radioWiFi.alert.reboot.title" = "重启无线电？";
+
+/* Reboot confirmation when a network name is stored. %@ is the network name. */
+"radioWiFi.alert.reboot.join" = "无线电将重启，然后加入 %@。手机将断开连接，直到无线电重新可用。";
+
+/* Reboot confirmation when no network name is stored */
+"radioWiFi.alert.reboot.restart" = "无线电将重启。手机将断开连接，直到无线电重新可用。";
+
+// MARK: - Connection
+
+/* Settings row, page title, and phone address header */
+"connection.header" = "连接";
+
+/* Spoken name of the Wi-Fi link and the Wi-Fi page title */
+/* TODO: translate */
+"connection.link.wifi" = "Wi-Fi";
+
+/* Header for the radio Wi-Fi group on the Wi-Fi page */
+/* TODO: translate */
+"connection.link.radioWiFi" = "Radio Wi-Fi";
+
+/* VoiceOver value for the link that is in use */
+/* TODO: translate */
+"connection.link.inUse" = "In use";
+
+/* VoiceOver value while a switch to that link is in progress */
+/* TODO: translate */
+"connection.link.switching" = "Switching";
+
+/* VoiceOver hint for switching to the other link */
+/* TODO: translate */
+"connection.link.switchHint" = "Switches the link to the radio";
+
+/* VoiceOver label for the Bluetooth info button */
+/* TODO: translate */
+"connection.link.bluetoothInfo" = "Bluetooth info";
+
+/* VoiceOver label for the Wi-Fi info button */
+/* TODO: translate */
+"connection.link.wifiInfo" = "Wi-Fi info";
+
+// MARK: - WiFi Section
 
 /* Label for IP address */
 "wifi.address" = "地址";
@@ -978,9 +1094,6 @@
 
 /* Button to edit WiFi connection */
 "wifi.editConnection" = "编辑连接";
-
-/* Footer explaining WiFi address */
-"wifi.footer" = "您设备的本地网络地址";
 
 // MARK: - WiFi Edit Sheet
 

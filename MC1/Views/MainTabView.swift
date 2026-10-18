@@ -44,7 +44,9 @@ struct MainTabView: View {
       // Status-menu disconnect does not fire onConnectionLost; radio-to-radio
       // switches use clearPerRadioSelection instead.
       if newDevice == nil {
-        appState.navigation.clearPerDeviceSelection()
+        appState.navigation.clearPerDeviceSelection(
+          preservingConnection: appState.connectionLinkSwitch?.target != nil
+        )
       }
     }
     .sheet(isPresented: $showingDeviceSelection, onDismiss: {

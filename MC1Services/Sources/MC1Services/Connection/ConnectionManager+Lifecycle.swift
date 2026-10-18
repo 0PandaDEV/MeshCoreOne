@@ -214,111 +214,109 @@ public extension ConnectionManager {
       // Auto-reconnect to last device if available
       if let lastDeviceID = lastConnectedDeviceID {
         logger.info("Attempting auto-reconnect to last device: \(lastDeviceID)")
-
-        // Set intent before checking state
         connectionIntent = .wantsConnection()
-
-        // Check if last device was WiFi - try WiFi first
-        let dataStore = persistenceStore
-        if let device = try? await dataStore.fetchDevice(id: lastDeviceID),
-           let wifiMethod = device.connectionMethods.first(where: { $0.isWiFi }) {
-          if case let .wifi(host, port, _) = wifiMethod {
-            logger.info("Auto-reconnecting via WiFi to \(host):\(port)")
-            do {
-              try await connectViaWiFi(host: host, port: port)
-              return
-            } catch {
-              logger.warning("WiFi auto-reconnect failed: \(error.localizedDescription)")
-              // Fall through to try BLE
-            }
-          }
-        }
-
-        // Activate BLE state machine before checking BLE state restoration status.
-        // Must be after: ASK activation (line 700), explicit disconnect guard (line 709).
-        // Must be before: isAutoReconnecting check, isDeviceConnectedToSystem.
-        await stateMachine.activate()
-
-        // If state machine is already auto-reconnecting (from state restoration),
-        // let it complete rather than fighting with it
-        if await stateMachine.isAutoReconnecting {
-          let diagnostics = await stateMachine.linkDiagnostics
-          let blePhase = diagnostics.phase
-          let blePeripheralState = diagnostics.peripheralState ?? "none"
-          logger.info(
-            "State restoration in progress - blePhase: \(blePhase), blePeripheralState: \(blePeripheralState), waiting for auto-reconnect"
-          )
-          return
-        }
-
-        if await stateMachine.isConnected, await stateMachine.connectedDeviceID == lastDeviceID {
-          logger.info("State restoration complete - device already connected, waiting for session setup")
-          return
-        }
-
-        // If iOS kept the BLE link alive (common across app updates) but restoration didn't fire,
-        // adopt the system-connected peripheral rather than treating it as "connected elsewhere".
-        if await startAdoptingLastSystemConnectedPeripheralIfAvailable(
-          deviceID: lastDeviceID,
-          context: "activate"
-        ) {
-          return
-        }
-
-        // Check if device is connected to another app before auto-reconnect
-        // Silently skip per HIG: minimize interruptions on app launch
-        if await isDeviceConnectedToOtherApp(lastDeviceID) {
-          logger.info("Auto-reconnect skipped: device connected to another app")
-          let diagnostics = await stateMachine.linkDiagnostics
-          let bleState = diagnostics.centralState
-          let blePhase = diagnostics.phase
-          let blePeripheralState = diagnostics.peripheralState ?? "none"
-          persistDisconnectDiagnostic(
-            "source=activate.autoReconnectSkippedOtherApp, " +
-              "device=\(lastDeviceID.uuidString.prefix(8)), " +
-              "bleState=\(bleState), " +
-              "blePhase=\(blePhase), " +
-              "blePeripheralState=\(blePeripheralState), " +
-              "intent=\(connectionIntent)"
-          )
-
-          // Keep intent so we can retry on foreground/watchdog, but avoid
-          // fighting another app's connection on launch.
-          startReconnectionWatchdog()
-          return
-        }
-
-        do {
-          try await connect(to: lastDeviceID)
-        } catch {
-          logger.warning("Auto-reconnect failed: \(error.localizedDescription)")
-          let diagnostics = await stateMachine.linkDiagnostics
-          let bleState = diagnostics.centralState
-          let blePhase = diagnostics.phase
-          let blePeripheralState = diagnostics.peripheralState ?? "none"
-          persistDisconnectDiagnostic(
-            "source=activate.autoReconnectFailed, " +
-              "device=\(lastDeviceID.uuidString.prefix(8)), " +
-              "bleState=\(bleState), " +
-              "blePhase=\(blePhase), " +
-              "blePeripheralState=\(blePeripheralState), " +
-              "error=\(error.localizedDescription), " +
-              "intent=\(connectionIntent)"
-          )
-          // A setup-phase auth failure arrives here as a thrown error and never
-          // fires onDisconnection, so surface the guided recovery now rather than
-          // waiting for the watchdog's first tick. The latch keeps the watchdog
-          // from re-presenting it.
-          if case BLEError.authenticationFailed = error {
-            surfaceAuthenticationFailure(deviceID: lastDeviceID)
-          }
-          startReconnectionWatchdog()
-          // Don't propagate - auto-reconnect failure is not fatal
-        }
+        let device = try? await persistenceStore.fetchDevice(id: lastDeviceID)
+        await reconnectLastUsedTransport(device: device, lastDeviceID: lastDeviceID)
       } else {
         logger.info("No last connected device - skipping auto-reconnect")
       }
     #endif
+  }
+
+  /// Dials the last-used transport, then the other one when that dial throws.
+  /// A WiFi-only row stops after a WiFi failure. Restoration, an already-connected radio, adoption, and another app's link do not fall through.
+  func reconnectLastUsedTransport(device: DeviceDTO?, lastDeviceID: UUID) async {
+    if case let .wifi(host, port, _) = device?.lastUsedConnectionMethod {
+      logger.info("Auto-reconnecting via WiFi to \(host):\(port)")
+      do {
+        try await connectViaWiFi(host: host, port: port)
+        return
+      } catch {
+        logger.warning("WiFi auto-reconnect failed: \(error.localizedDescription)")
+        guard device?.bluetoothPeripheralID != nil else { return }
+      }
+    }
+    await reconnectViaBluetooth(device: device, lastDeviceID: lastDeviceID)
+  }
+
+  private func reconnectViaBluetooth(device: DeviceDTO?, lastDeviceID: UUID) async {
+    let dialID = device?.bluetoothPeripheralID ?? lastDeviceID
+
+    // Activate BLE before restoration checks. This follows ASK activation and the
+    // explicit-disconnect guard, and precedes the auto-reconnect and system-link checks.
+    await stateMachine.activate()
+
+    if await stateMachine.isAutoReconnecting {
+      let diagnostics = await stateMachine.linkDiagnostics
+      let blePhase = diagnostics.phase
+      let blePeripheralState = diagnostics.peripheralState ?? "none"
+      logger.info(
+        "State restoration in progress - blePhase: \(blePhase), blePeripheralState: \(blePeripheralState), waiting for auto-reconnect"
+      )
+      return
+    }
+
+    if await stateMachine.isConnected, await stateMachine.connectedDeviceID == dialID {
+      logger.info("State restoration complete - device already connected, waiting for session setup")
+      return
+    }
+
+    if await startAdoptingLastSystemConnectedPeripheralIfAvailable(
+      deviceID: dialID,
+      context: "activate",
+      requireLastConnected: dialID == lastDeviceID
+    ) {
+      return
+    }
+
+    if await isDeviceConnectedToOtherApp(dialID) {
+      logger.info("Auto-reconnect skipped: device connected to another app")
+      let diagnostics = await stateMachine.linkDiagnostics
+      let bleState = diagnostics.centralState
+      let blePhase = diagnostics.phase
+      let blePeripheralState = diagnostics.peripheralState ?? "none"
+      persistDisconnectDiagnostic(
+        "source=activate.autoReconnectSkippedOtherApp, " +
+          "device=\(dialID.uuidString.prefix(8)), " +
+          "bleState=\(bleState), " +
+          "blePhase=\(blePhase), " +
+          "blePeripheralState=\(blePeripheralState), " +
+          "intent=\(connectionIntent)"
+      )
+      startReconnectionWatchdog()
+      return
+    }
+
+    do {
+      try await connect(to: dialID)
+    } catch {
+      logger.warning("Auto-reconnect failed: \(error.localizedDescription)")
+      let diagnostics = await stateMachine.linkDiagnostics
+      let bleState = diagnostics.centralState
+      let blePhase = diagnostics.phase
+      let blePeripheralState = diagnostics.peripheralState ?? "none"
+      persistDisconnectDiagnostic(
+        "source=activate.autoReconnectFailed, " +
+          "device=\(dialID.uuidString.prefix(8)), " +
+          "bleState=\(bleState), " +
+          "blePhase=\(blePhase), " +
+          "blePeripheralState=\(blePeripheralState), " +
+          "error=\(error.localizedDescription), " +
+          "intent=\(connectionIntent)"
+      )
+      if case BLEError.authenticationFailed = error {
+        surfaceAuthenticationFailure(deviceID: dialID)
+      }
+      if case let .wifi(host, port, _) = device?.wifiConnectionMethod {
+        do {
+          try await connectViaWiFi(host: host, port: port)
+          return
+        } catch {
+          logger.warning("WiFi fallback after BLE auto-reconnect failed: \(error.localizedDescription)")
+        }
+      }
+      startReconnectionWatchdog()
+    }
   }
 
   // MARK: - Connection
@@ -613,7 +611,7 @@ public extension ConnectionManager {
       surfacedAuthFailureDeviceID = nil
       lastCleanChannelSync = nil
       lastAttemptedChannelSync = nil
-    case .resyncFailed, .wifiAddressChange, .wifiReconnectPrep, .pairingFailed:
+    case .resyncFailed, .wifiAddressChange, .wifiReconnectPrep, .bluetoothConnectPrep, .pairingFailed:
       // Preserve .wantsConnection so health check can retry
       break
     }

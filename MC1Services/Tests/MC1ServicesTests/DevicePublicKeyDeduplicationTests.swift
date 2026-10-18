@@ -211,6 +211,49 @@ struct DevicePublicKeyDeduplicationTests {
     // the WiFi method, and neither transport is duplicated.
     #expect(device.connectionMethods.filter(\.isWiFi).count == 1)
     #expect(device.connectionMethods.filter(\.isBluetooth).count == 1)
+    #expect(device.connectionMethods.last?.isBluetooth == true)
+  }
+
+  @Test
+  @MainActor
+  func `createDevice keeps WiFi last after a WiFi connect`() throws {
+    let (cm, _) = try ConnectionManager.createForTesting()
+    let bleUUID = UUID()
+    let existing = DeviceDTO.testDevice(publicKey: Self.testPublicKey).copy {
+      $0.connectionMethods = [.bluetooth(peripheralUUID: bleUUID, displayName: nil)]
+    }
+    let device = cm.createDevice(
+      deviceID: bleUUID,
+      radioID: existing.radioID,
+      selfInfo: Self.makeSelfInfo(),
+      capabilities: Self.testCapabilities,
+      autoAddConfig: AutoAddConfig(bitmask: 0),
+      existingDevice: existing,
+      connectionMethods: [.wifi(host: "10.0.0.2", port: 5000, displayName: nil)]
+    )
+    #expect(device.connectionMethods.last?.isWiFi == true)
+    #expect(DeviceDTO(from: device).lastUsedConnectionMethod?.isWiFi == true)
+  }
+
+  @Test
+  @MainActor
+  func `createDevice keeps Bluetooth last after a Bluetooth connect`() throws {
+    let (cm, _) = try ConnectionManager.createForTesting()
+    let bleUUID = UUID()
+    let existing = DeviceDTO.testDevice(publicKey: Self.testPublicKey).copy {
+      $0.connectionMethods = [.wifi(host: "10.0.0.2", port: 5000, displayName: nil)]
+    }
+    let device = cm.createDevice(
+      deviceID: bleUUID,
+      radioID: existing.radioID,
+      selfInfo: Self.makeSelfInfo(),
+      capabilities: Self.testCapabilities,
+      autoAddConfig: AutoAddConfig(bitmask: 0),
+      existingDevice: existing,
+      connectionMethods: [.bluetooth(peripheralUUID: bleUUID, displayName: nil)]
+    )
+    #expect(device.connectionMethods.last?.isBluetooth == true)
+    #expect(DeviceDTO(from: device).bluetoothPeripheralID == bleUUID)
   }
 
   /// Reconnecting over BLE must replace the prior Bluetooth method, not append a second one.

@@ -76,7 +76,8 @@ final class SettingsTabHarness {
         connectionState: .ready,
         services: .some(nil),
         session: .some(nil),
-        connectedDevice: .some(makeDevice(name: "Relay"))
+        connectedDevice: .some(makeDevice(name: "Relay")),
+        currentTransportType: .bluetooth
       )
     }
 

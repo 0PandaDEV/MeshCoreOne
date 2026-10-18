@@ -43,7 +43,7 @@ enum SettingsRoot: CaseIterable, Sendable, CustomTestStringConvertible {
     case .deviceInfo: L10n.Settings.DeviceInfo.title
     case .radio: L10n.Settings.Radio.header
     case .location: L10n.Settings.Location.header
-    case .connection: L10n.Settings.Bluetooth.header
+    case .connection: L10n.Settings.Connection.header
     case .advanced: L10n.Settings.AdvancedSettings.title
     case .notifications: L10n.Settings.Notifications.header
     case .chats: L10n.Settings.ChatSettings.title
@@ -65,7 +65,7 @@ enum SettingsRoot: CaseIterable, Sendable, CustomTestStringConvertible {
     case .location:
       [L10n.Settings.Location.autoUpdate]
     case .connection:
-      [L10n.Settings.Bluetooth.pinType]
+      [L10n.Settings.Bluetooth.header]
     case .advanced:
       [L10n.Chats.Chats.ChannelInfo.Region.manageRegions]
     case .notifications:

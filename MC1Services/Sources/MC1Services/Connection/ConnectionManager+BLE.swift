@@ -9,6 +9,22 @@ extension ConnectionManager {
     [.bluetooth(peripheralUUID: deviceID, displayName: nil)]
   }
 
+  /// Drops a live WiFi session first. The prep reason keeps the intent to connect.
+  public func connectViaBluetooth(peripheralID: UUID) async throws {
+    #if DEBUG
+      testBluetoothConnectAttempts.append(peripheralID)
+      if let testBluetoothConnectHandler {
+        try await testBluetoothConnectHandler(peripheralID)
+        return
+      }
+    #endif
+
+    if connectionState != .disconnected {
+      await disconnect(reason: .bluetoothConnectPrep)
+    }
+    try await connect(to: peripheralID, forceReconnect: true)
+  }
+
   // MARK: - BLE Diagnostics
 
   /// Returns a best-effort snapshot of the BLE state machine for debug exports.
@@ -320,6 +336,10 @@ extension ConnectionManager {
     guard connectionIntent.wantsConnection,
           let deviceID = lastConnectedDeviceID else { return }
 
+    if await shouldStandDownOpportunisticBluetoothReconnect(for: deviceID) {
+      return
+    }
+
     if activeReconnectDeviceID == deviceID {
       logger.info("[BLE] Skipping foreground reconnect: reconnect/session rebuild already in progress for \(deviceID.uuidString.prefix(8))")
       return
@@ -384,6 +404,21 @@ extension ConnectionManager {
 
     logger.info("[BLE] Attempting foreground reconnection to \(deviceID.uuidString.prefix(8))")
     await attemptOpportunisticReconnect(deviceID: deviceID, reason: "foreground health check")
+  }
+
+  /// True when the saved row's last method is WiFi, so a foreground check or a
+  /// Bluetooth power-on must not dial that peripheral. No saved row still dials.
+  func shouldStandDownOpportunisticBluetoothReconnect(for deviceID: UUID) async -> Bool {
+    guard let device = try? await persistenceStore.fetchDevice(id: deviceID) else {
+      return false
+    }
+    guard case .wifi = device.lastUsedConnectionMethod else {
+      return false
+    }
+    logger.info(
+      "[BLE] Opportunistic Bluetooth reconnect standing down: last-used method is WiFi for \(deviceID.uuidString.prefix(8))"
+    )
+    return true
   }
 
   private func reconcileConnectedBLEAppStack(deviceID: UUID) async {

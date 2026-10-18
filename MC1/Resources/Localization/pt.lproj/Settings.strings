@@ -980,10 +980,126 @@
 /* Footer explaining telemetry */
 "telemetry.footer" = "Quando ativado, outros nós podem pedir os dados de telemetria do dispositivo.";
 
-// MARK: - WiFi Section
+// MARK: - Radio WiFi
 
-/* Section header for WiFi settings */
-"wifi.header" = "Wi-Fi";
+/* Footer for the radio WiFi section */
+"radioWiFi.footer" = "Depois de reiniciar, o rádio liga-se a esta rede.";
+
+/* Label for the radio WiFi status */
+"radioWiFi.status" = "Estado";
+
+/* Radio WiFi status when associated */
+"radioWiFi.status.connected" = "Ligado";
+
+/* Radio WiFi status when not associated */
+"radioWiFi.status.notConnected" = "Não ligado";
+
+/* Label for the radio's IP address */
+"radioWiFi.ipAddress" = "Endereço IP";
+
+/* Label for the radio's WiFi network */
+"radioWiFi.network" = "Rede";
+
+/* Shown when the radio has no saved network name */
+"radioWiFi.network.notSet" = "Nenhuma";
+
+/* Toggle for the radio's WiFi radio */
+"radioWiFi.enabled" = "Wi-Fi";
+
+/* Field label for the network name */
+"radioWiFi.networkName" = "Nome da rede";
+
+/* Field label for the WiFi password */
+"radioWiFi.password" = "Palavra-passe";
+
+/* Accessibility label that reveals the WiFi password */
+"radioWiFi.showPassword" = "Mostrar palavra-passe";
+
+/* Accessibility label that hides the WiFi password */
+"radioWiFi.hidePassword" = "Ocultar palavra-passe";
+
+/* Editor footer when the name and password are within the limits */
+"radioWiFi.editor.footer" = "O rádio usa esta rede depois de reiniciar. Um nome de rede pode ter até 32 bytes e uma palavra-passe até 63 bytes. Deixe a palavra-passe em branco para não guardar nenhuma palavra-passe.";
+
+/* Editor footer when the network name is empty */
+"radioWiFi.editor.emptyName" = "Introduza um nome de rede.";
+
+/* Editor footer when the network name is too long */
+"radioWiFi.editor.nameLength" = "Um nome de rede pode ter até 32 bytes.";
+
+/* Editor footer when the password is too long */
+"radioWiFi.editor.passwordLength" = "Uma palavra-passe pode ter até 63 bytes.";
+
+/* Button that clears the radio's saved WiFi settings */
+"radioWiFi.clear" = "Limpar definições de Wi-Fi";
+
+/* Title for the clear WiFi confirmation */
+"radioWiFi.alert.clear.title" = "Limpar definições de Wi-Fi?";
+
+/* Message for the clear WiFi confirmation */
+"radioWiFi.alert.clear.message" = "Depois de reiniciar, o rádio esquece o nome da rede e a palavra-passe guardados. Se o firmware tiver uma rede integrada, liga-se a essa rede.";
+
+/* Clear confirmation when the phone is connected over WiFi */
+"radioWiFi.alert.clear.wifiMessage" = "Depois de reiniciar, o rádio esquece o nome da rede e a palavra-passe guardados. Pode deixar de estar acessível neste endereço. Se isso acontecer, ligue por Bluetooth. Se o firmware tiver uma rede integrada, liga-se a essa rede.";
+
+/* Button that reboots to apply WiFi changes */
+"radioWiFi.rebootToApply" = "Reiniciar para aplicar";
+
+/* Warning before changing WiFi while connected over WiFi */
+"radioWiFi.alert.wifiTransport.message" = "Depois de o rádio reiniciar, pode deixar de estar acessível neste endereço. Se isso acontecer, ligue por Bluetooth.";
+
+/* Title before saving a network while connected over WiFi */
+"radioWiFi.alert.save.title" = "Guardar esta rede?";
+
+/* Title before turning WiFi off while connected over WiFi */
+"radioWiFi.alert.turnOff.title" = "Desligar o Wi-Fi?";
+
+/* Confirm button before turning WiFi off */
+"radioWiFi.alert.turnOff.confirm" = "Desligar";
+
+/* Title for the radio WiFi reboot confirmation */
+"radioWiFi.alert.reboot.title" = "Reiniciar o rádio?";
+
+/* Reboot confirmation when a network name is stored. %@ is the network name. */
+"radioWiFi.alert.reboot.join" = "O rádio irá reiniciar e depois ligar-se a %@. A ligação do iPhone será interrompida até o rádio voltar.";
+
+/* Reboot confirmation when no network name is stored */
+"radioWiFi.alert.reboot.restart" = "O rádio irá reiniciar. A ligação do iPhone será interrompida até o rádio voltar.";
+
+// MARK: - Connection
+
+/* Settings row, page title, and phone address header */
+"connection.header" = "Ligação";
+
+/* Spoken name of the Wi-Fi link and the Wi-Fi page title */
+/* TODO: translate */
+"connection.link.wifi" = "Wi-Fi";
+
+/* Header for the radio Wi-Fi group on the Wi-Fi page */
+/* TODO: translate */
+"connection.link.radioWiFi" = "Radio Wi-Fi";
+
+/* VoiceOver value for the link that is in use */
+/* TODO: translate */
+"connection.link.inUse" = "In use";
+
+/* VoiceOver value while a switch to that link is in progress */
+/* TODO: translate */
+"connection.link.switching" = "Switching";
+
+/* VoiceOver hint for switching to the other link */
+/* TODO: translate */
+"connection.link.switchHint" = "Switches the link to the radio";
+
+/* VoiceOver label for the Bluetooth info button */
+/* TODO: translate */
+"connection.link.bluetoothInfo" = "Bluetooth info";
+
+/* VoiceOver label for the Wi-Fi info button */
+/* TODO: translate */
+"connection.link.wifiInfo" = "Wi-Fi info";
+
+// MARK: - WiFi Section
 
 /* Label for IP address */
 "wifi.address" = "Endereço";
@@ -993,9 +1109,6 @@
 
 /* Button to edit WiFi connection */
 "wifi.editConnection" = "Editar ligação";
-
-/* Footer explaining WiFi address */
-"wifi.footer" = "Endereço de rede local do dispositivo";
 
 // MARK: - WiFi Edit Sheet
 

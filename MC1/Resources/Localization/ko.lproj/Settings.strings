@@ -931,10 +931,126 @@
 /* Footer explaining telemetry */
 "telemetry.footer" = "활성화하면 다른 노드가 내 기기의 텔레메트리 데이터를 요청할 수 있습니다.";
 
-// MARK: - WiFi Section
+// MARK: - Radio WiFi
 
-/* Section header for WiFi settings */
-"wifi.header" = "Wi-Fi";
+/* Footer for the radio WiFi section */
+"radioWiFi.footer" = "재시동 후 무선 기기가 이 네트워크에 연결됩니다.";
+
+/* Label for the radio WiFi status */
+"radioWiFi.status" = "상태";
+
+/* Radio WiFi status when associated */
+"radioWiFi.status.connected" = "연결됨";
+
+/* Radio WiFi status when not associated */
+"radioWiFi.status.notConnected" = "연결 안 됨";
+
+/* Label for the radio's IP address */
+"radioWiFi.ipAddress" = "IP 주소";
+
+/* Label for the radio's WiFi network */
+"radioWiFi.network" = "네트워크";
+
+/* Shown when the radio has no saved network name */
+"radioWiFi.network.notSet" = "없음";
+
+/* Toggle for the radio's WiFi radio */
+"radioWiFi.enabled" = "Wi-Fi";
+
+/* Field label for the network name */
+"radioWiFi.networkName" = "네트워크 이름";
+
+/* Field label for the WiFi password */
+"radioWiFi.password" = "암호";
+
+/* Accessibility label that reveals the WiFi password */
+"radioWiFi.showPassword" = "암호 보기";
+
+/* Accessibility label that hides the WiFi password */
+"radioWiFi.hidePassword" = "암호 가리기";
+
+/* Editor footer when the name and password are within the limits */
+"radioWiFi.editor.footer" = "무선 기기는 재시동 후 이 네트워크를 사용합니다. 네트워크 이름은 최대 32바이트, 암호는 최대 63바이트입니다. 암호를 비워 두면 암호가 저장되지 않습니다.";
+
+/* Editor footer when the network name is empty */
+"radioWiFi.editor.emptyName" = "네트워크 이름을 입력하십시오.";
+
+/* Editor footer when the network name is too long */
+"radioWiFi.editor.nameLength" = "네트워크 이름은 최대 32바이트입니다.";
+
+/* Editor footer when the password is too long */
+"radioWiFi.editor.passwordLength" = "암호는 최대 63바이트입니다.";
+
+/* Button that clears the radio's saved WiFi settings */
+"radioWiFi.clear" = "Wi-Fi 설정 지우기";
+
+/* Title for the clear WiFi confirmation */
+"radioWiFi.alert.clear.title" = "Wi-Fi 설정을 지우겠습니까?";
+
+/* Clear confirmation when the phone is connected over Bluetooth */
+"radioWiFi.alert.clear.message" = "재시동 후 무선 기기는 저장된 네트워크 이름과 암호를 지웁니다. 펌웨어에 내장된 네트워크가 있으면 대신 그 네트워크에 연결됩니다.";
+
+/* Clear confirmation when the phone is connected over WiFi */
+"radioWiFi.alert.clear.wifiMessage" = "재시동 후 무선 기기는 저장된 네트워크 이름과 암호를 지웁니다. 이 주소로는 무선 기기에 연결하지 못할 수 있습니다. 그러면 Bluetooth로 연결하십시오. 펌웨어에 내장된 네트워크가 있으면 대신 그 네트워크에 연결됩니다.";
+
+/* Button that reboots to apply WiFi changes */
+"radioWiFi.rebootToApply" = "적용하려면 재시동";
+
+/* Title before saving a network while connected over WiFi */
+"radioWiFi.alert.save.title" = "이 네트워크를 저장하겠습니까?";
+
+/* Title before turning WiFi off while connected over WiFi */
+"radioWiFi.alert.turnOff.title" = "Wi-Fi를 끄겠습니까?";
+
+/* Confirm button before turning WiFi off */
+"radioWiFi.alert.turnOff.confirm" = "끄기";
+
+/* Warning before a WiFi change while connected over WiFi */
+"radioWiFi.alert.wifiTransport.message" = "재시동 후 이 주소로는 무선 기기에 연결하지 못할 수 있습니다. 그러면 Bluetooth로 연결하십시오.";
+
+/* Title for the radio WiFi reboot confirmation */
+"radioWiFi.alert.reboot.title" = "무선 기기를 재시동하겠습니까?";
+
+/* Reboot confirmation when a network name is stored. %@ is the network name. */
+"radioWiFi.alert.reboot.join" = "무선 기기가 다시 시작되고 %@에 연결됩니다. 무선 기기가 다시 준비될 때까지 iPhone의 연결이 끊어집니다.";
+
+/* Reboot confirmation when no network name is stored */
+"radioWiFi.alert.reboot.restart" = "무선 기기가 다시 시작됩니다. 무선 기기가 다시 준비될 때까지 iPhone의 연결이 끊어집니다.";
+
+// MARK: - Connection
+
+/* Settings row, page title, and phone address header */
+"connection.header" = "연결";
+
+/* Spoken name of the Wi-Fi link and the Wi-Fi page title */
+/* TODO: translate */
+"connection.link.wifi" = "Wi-Fi";
+
+/* Header for the radio Wi-Fi group on the Wi-Fi page */
+/* TODO: translate */
+"connection.link.radioWiFi" = "Radio Wi-Fi";
+
+/* VoiceOver value for the link that is in use */
+/* TODO: translate */
+"connection.link.inUse" = "In use";
+
+/* VoiceOver value while a switch to that link is in progress */
+/* TODO: translate */
+"connection.link.switching" = "Switching";
+
+/* VoiceOver hint for switching to the other link */
+/* TODO: translate */
+"connection.link.switchHint" = "Switches the link to the radio";
+
+/* VoiceOver label for the Bluetooth info button */
+/* TODO: translate */
+"connection.link.bluetoothInfo" = "Bluetooth info";
+
+/* VoiceOver label for the Wi-Fi info button */
+/* TODO: translate */
+"connection.link.wifiInfo" = "Wi-Fi info";
+
+// MARK: - WiFi Section
 
 /* Label for IP address */
 "wifi.address" = "주소";
@@ -944,9 +1060,6 @@
 
 /* Button to edit WiFi connection */
 "wifi.editConnection" = "연결 편집";
-
-/* Footer explaining WiFi address */
-"wifi.footer" = "기기의 로컬 네트워크 주소";
 
 // MARK: - WiFi Edit Sheet
 
