@@ -99,7 +99,7 @@ struct V115CommandsTests {
   }
 
   @Test
-  func `sendChannelData clamps payload to 163 bytes`() {
+  func `sendChannelData clamps payload to 165 bytes`() {
     let payload = Data(repeating: 0x55, count: 200)
     let packet = PacketBuilder.sendChannelData(
       channelIndex: 1,

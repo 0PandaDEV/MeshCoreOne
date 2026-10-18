@@ -712,7 +712,7 @@ struct MeshCoreSessionCommandCorrelationTests {
   }
 
   @Test
-  func `binary response matches only the latest retransmit tag`() async throws {
+  func `binary response matches any retransmit tag from the same exchange`() async throws {
     let transport = MockTransport()
     let session = MeshCoreSession(
       transport: transport,
@@ -729,6 +729,7 @@ struct MeshCoreSessionCommandCorrelationTests {
     let target = Data(repeating: 0x31, count: 32)
     let firstTag = Data([0x11, 0x22, 0x33, 0x44])
     let secondTag = Data([0x55, 0x66, 0x77, 0x88])
+    let firstPayload = Data([0xA1])
 
     let telemetryTask = Task {
       try await session.requestTelemetry(from: target)
@@ -744,15 +745,87 @@ struct MeshCoreSessionCommandCorrelationTests {
     }
     await transport.simulateReceive(makeMessageSentPacket(expectedAck: secondTag, timeoutMs: 500))
 
-    // Stale first-tag reply after retransmit must not complete the wait.
-    await transport.simulateReceive(makeBinaryTelemetryResponsePacket(tag: firstTag))
+    await transport.simulateReceive(makeBinaryTelemetryResponsePacket(tag: firstTag, lppPayload: firstPayload))
+
+    let telemetry = try await telemetryTask.value
+    #expect(telemetry.rawData == firstPayload)
+    await session.stop()
+  }
+
+  @Test
+  func `binary response with a tag this exchange never sent is ignored`() async throws {
+    let transport = MockTransport()
+    let session = MeshCoreSession(
+      transport: transport,
+      configuration: SessionConfiguration(
+        defaultTimeout: 10,
+        clientIdentifier: "MCTst",
+        binaryRequestOverallTimeout: 2.0,
+        binaryRequestRetransmitInterval: nil
+      )
+    )
+
+    try await startSession(session, transport: transport)
+
+    let target = Data(repeating: 0x31, count: 32)
+    let sentTag = Data([0x11, 0x22, 0x33, 0x44])
+    let foreignTag = Data([0x99, 0x88, 0x77, 0x66])
+    let acceptedPayload = Data([0xA1])
+
+    let telemetryTask = Task {
+      try await session.requestTelemetry(from: target)
+    }
+
+    try await waitUntil("telemetry request should be sent") {
+      await transport.sentData.count == 2
+    }
+    await transport.simulateReceive(makeMessageSentPacket(expectedAck: sentTag, timeoutMs: 500))
+    await transport.simulateReceive(makeBinaryTelemetryResponsePacket(tag: foreignTag, lppPayload: Data([0xBB])))
     try? await Task.sleep(for: .milliseconds(80))
     #expect(!telemetryTask.isCancelled)
 
-    await transport.simulateReceive(makeBinaryTelemetryResponsePacket(tag: secondTag))
+    await transport.simulateReceive(makeBinaryTelemetryResponsePacket(tag: sentTag, lppPayload: acceptedPayload))
 
     let telemetry = try await telemetryTask.value
-    #expect(telemetry.dataPoints.isEmpty)
+    #expect(telemetry.rawData == acceptedPayload)
+    await session.stop()
+  }
+
+  @Test
+  func `binary response before any messageSent is ignored`() async throws {
+    let transport = MockTransport()
+    let session = MeshCoreSession(
+      transport: transport,
+      configuration: SessionConfiguration(
+        defaultTimeout: 10,
+        clientIdentifier: "MCTst",
+        binaryRequestOverallTimeout: 2.0,
+        binaryRequestRetransmitInterval: nil
+      )
+    )
+
+    try await startSession(session, transport: transport)
+
+    let target = Data(repeating: 0x31, count: 32)
+    let tag = Data([0x11, 0x22, 0x33, 0x44])
+    let acceptedPayload = Data([0xA1])
+
+    let telemetryTask = Task {
+      try await session.requestTelemetry(from: target)
+    }
+
+    try await waitUntil("telemetry request should be sent") {
+      await transport.sentData.count == 2
+    }
+    await transport.simulateReceive(makeBinaryTelemetryResponsePacket(tag: tag, lppPayload: Data([0xBB])))
+    try? await Task.sleep(for: .milliseconds(80))
+    #expect(!telemetryTask.isCancelled)
+
+    await transport.simulateReceive(makeMessageSentPacket(expectedAck: tag, timeoutMs: 500))
+    await transport.simulateReceive(makeBinaryTelemetryResponsePacket(tag: tag, lppPayload: acceptedPayload))
+
+    let telemetry = try await telemetryTask.value
+    #expect(telemetry.rawData == acceptedPayload)
     await session.stop()
   }
 

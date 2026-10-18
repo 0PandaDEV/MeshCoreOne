@@ -38,13 +38,11 @@ public enum PacketBuilder: Sendable {
   static let publicKeySize = 32
   /// Size of an expanded private key in bytes (firmware `PRV_KEY_SIZE`).
   static let privateKeySize = 64
-  static let rawDataMaxPathBytes = 64
   static let rawDataMaxPayloadBytes = 184
   /// Flood sentinel for `path_len` fields: firmware treats `0xFF` as "route via flood".
   public static let floodPathSentinel: UInt8 = 0xFF
-  /// Command payload clamp that still fits a 172-byte companion frame.
-  /// A 176-byte frame would allow 167; this stays 163.
-  static let channelDataMaxPayloadBytes = 163
+  /// Payload clamp for `CMD_SEND_CHANNEL_DATA`, matching firmware `MAX_GROUP_DATA_LENGTH` (165).
+  static let channelDataMaxPayloadBytes = 165
   /// Host-frame cap (`MAX_FRAME_SIZE` in firmware).
   static let maxFrameSize = 176
   /// UTF-8 bytes after ``CommandCode/runCliCommand`` that still fit `maxFrameSize`.
@@ -892,7 +890,7 @@ public enum PacketBuilder: Sendable {
   /// - Offset 2 (1 byte): Encoded `pathLength` byte (`0xFF` = flood)
   /// - Offset 3 (pathBytes.count bytes, absent if flood): Path bytes, caller-supplied verbatim
   /// - Next (2 bytes): `dataType` (little-endian `UInt16`)
-  /// - Remaining: Payload bytes (clamped to 163 bytes)
+  /// - Remaining: Payload bytes (clamped to `MAX_GROUP_DATA_LENGTH`, 165)
   ///
   /// `pathLength` is the **encoded** path-length byte used by firmware's packet format
   /// (see `Packet::isValidPathLen` at `mc-ref/MeshCore/src/Packet.cpp:13-18`):
@@ -916,7 +914,7 @@ public enum PacketBuilder: Sendable {
   ///     `0x0001–0x00FF` are reserved by convention in `number_allocations.md` but are
   ///     not enforced by firmware; `0xFF00–0xFFFF` is the developer/testing namespace.
   ///     Custom apps should request an allocation in `0x0100–0xFEFF`.
-  ///   - payload: Binary payload, clamped to ``channelDataMaxPayloadBytes`` (163).
+  ///   - payload: Binary payload, clamped to ``channelDataMaxPayloadBytes`` (`MAX_GROUP_DATA_LENGTH`, 165).
   ///   - pathLength: Encoded `path_len` byte. Defaults to ``floodPathSentinel`` (`0xFF`).
   ///     When set to a non-flood value it must satisfy `Packet::isValidPathLen`.
   ///   - pathBytes: Path bytes, written verbatim after `pathLength`. Pass `Data()` (the
@@ -1118,23 +1116,19 @@ public enum PacketBuilder: Sendable {
 
   // MARK: - Raw Data and Query Commands
 
-  /// Builds a sendRawData command to send raw data through the mesh.
-  ///
-  /// - Parameters:
-  ///   - path: The routing path data.
-  ///   - payload: The raw payload to send.
-  /// - Returns: The command packet data.
-  ///
-  /// ### Binary Format
-  /// - Offset 0 (1 byte): Command code `0x19`
-  /// - Offset 1 (1 byte): Path length
-  /// - Offset 2 (N bytes): Path data
-  /// - Offset 2+N (M bytes): Payload
-  public static func sendRawData(path: Data, payload: Data) -> Data {
-    var data = Data([CommandCode.sendRawData.rawValue])
-    let clampedPath = path.prefix(rawDataMaxPathBytes)
-    data.append(UInt8(clampedPath.count))
-    data.append(clampedPath)
+  /// Writes `pathLength` verbatim, then exactly `decodePathLen` path bytes. A shorter path throws
+  /// because firmware copies that length from the frame, so missing bytes would come from the payload.
+  /// Mode 3 writes no path bytes. Firmware rejects that frame and paths longer than `PathEncoding.maxPathBytes`.
+  public static func sendRawData(pathLength: UInt8, path: Data, payload: Data) throws -> Data {
+    var data = Data([CommandCode.sendRawData.rawValue, pathLength])
+    if let decoded = decodePathLen(pathLength) {
+      guard path.count >= decoded.byteLength else {
+        throw MeshCoreError.invalidInput(
+          "path is \(path.count) bytes; encoded length needs \(decoded.byteLength)"
+        )
+      }
+      data.append(path.prefix(decoded.byteLength))
+    }
     data.append(payload.prefix(rawDataMaxPayloadBytes))
     return data
   }

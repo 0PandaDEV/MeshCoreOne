@@ -149,9 +149,9 @@ public extension MeshCoreSession {
   /// Send `request` and resolve the first matching `.binaryResponse` or
   /// `matchRoutedEvent` hit. Retransmits the same frame until a reply arrives or
   /// `binaryRequestOverallTimeout` elapses (`nil` retransmit interval disables
-  /// resends). Companion firmware keeps one pending tag per request class and
-  /// replaces it on every send, so only the latest `messageSent` tag matches
-  /// `.binaryResponse`. Routed pubkey matchers (status) ignore tags. Spacing is
+  /// resends). From firmware v14 (1.18.0) a reply to a replaced tag still arrives
+  /// as `.binaryResponse`, so the waiter accepts any tag from its own `messageSent`
+  /// events. Routed pubkey matchers (status) ignore tags. Spacing is
   /// `max(floor, suggestedTimeoutMs × binaryRetransmitRTTHeadroom)`.
   ///
   /// - Parameters:
@@ -188,8 +188,8 @@ public extension MeshCoreSession {
 
     return try await withThrowingTaskGroup(of: BinaryExchangeSignal<Response>.self) { group in
       group.addTask { [self, logger] in
-        // Firmware replaces the single pending tag on each send; track only latest.
-        var expectedTag: Data?
+        // From firmware v14 a reply to a replaced tag still arrives, so keep every tag this exchange sent.
+        var sentTags: Set<Data> = []
         var acceptedMessageSent = false
         var sendCount = 1
 
@@ -198,7 +198,7 @@ public extension MeshCoreSession {
 
           switch event {
           case let .messageSent(info):
-            expectedTag = info.expectedAck
+            sentTags.insert(info.expectedAck)
             acceptedMessageSent = true
             await cadence.applySuggestedTimeoutMs(info.suggestedTimeoutMs)
             let tagHex = info.expectedAck.map { String(format: "%02x", $0) }.joined()
@@ -219,7 +219,7 @@ public extension MeshCoreSession {
             continue
 
           case let .binaryResponse(tag, responseData):
-            guard tag == expectedTag else { continue }
+            guard sentTags.contains(tag) else { continue }
 
             guard let response = try parseResponse(responseData, tag) else {
               let preview = responseData.prefix(32).hexString

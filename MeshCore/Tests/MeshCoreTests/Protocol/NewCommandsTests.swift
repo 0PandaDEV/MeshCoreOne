@@ -5,35 +5,51 @@ import Testing
 @Suite("NewCommands")
 struct NewCommandsTests {
   @Test
-  func `sendRawData format`() {
-    let path = Data([0x11, 0x22])
+  func `sendRawData writes a 2-byte hash path of 3 hops`() throws {
+    let path = Data([0x11, 0x22, 0x33, 0x44, 0x55, 0x66])
     let payload = Data([0xAA, 0xBB, 0xCC])
 
-    let packet = PacketBuilder.sendRawData(path: path, payload: payload)
+    let packet = try PacketBuilder.sendRawData(pathLength: 0x43, path: path, payload: payload)
 
     #expect(packet[0] == 0x19, "Command code")
-    #expect(packet[1] == 0x02, "Path length")
-    #expect(Data(packet[2..<4]) == path, "Path data")
-    #expect(Data(packet[4...]) == payload, "Payload")
+    #expect(packet[1] == 0x43, "Encoded path length")
+    #expect(Data(packet[2..<8]) == path, "6 path bytes")
+    #expect(Data(packet[8...]) == payload, "Payload")
   }
 
   @Test
-  func `sendRawData empty path`() {
-    let packet = PacketBuilder.sendRawData(path: Data(), payload: Data([0xAA]))
-    #expect(packet[1] == 0x00, "Empty path length")
+  func `sendRawData writes no path bytes for zero hops`() throws {
+    let packet = try PacketBuilder.sendRawData(pathLength: 0x00, path: Data(), payload: Data([0xAA]))
+    #expect(packet[1] == 0x00, "1-byte hashes, 0 hops")
     #expect(packet.count == 3, "command + pathLen + payload")
+    #expect(packet[2] == 0xAA)
   }
 
   @Test
-  func `sendRawData clamps to firmware limits`() {
-    let path = Data(repeating: 0x11, count: 80)
+  func `sendRawData writes 63 path bytes for 3-byte hashes and 21 hops`() throws {
+    let path = Data(repeating: 0x11, count: 63)
+    let packet = try PacketBuilder.sendRawData(pathLength: 0x95, path: path, payload: Data([0xAA]))
+    #expect(packet[1] == 0x95)
+    #expect(Data(packet[2..<65]) == path)
+    #expect(packet[65] == 0xAA)
+  }
+
+  @Test
+  func `sendRawData throws when the path is shorter than the encoded length`() {
+    let error = #expect(throws: MeshCoreError.self) {
+      try PacketBuilder.sendRawData(pathLength: 0x43, path: Data(repeating: 0x11, count: 4), payload: Data([0xAA]))
+    }
+    guard case .invalidInput? = error else {
+      Issue.record("Expected invalidInput, got \(String(describing: error))")
+      return
+    }
+  }
+
+  @Test
+  func `sendRawData clamps payload to rawDataMaxPayloadBytes`() throws {
     let payload = Data(repeating: 0x22, count: 220)
-
-    let packet = PacketBuilder.sendRawData(path: path, payload: payload)
-
-    #expect(packet[1] == 64, "Path length should clamp to firmware 64-byte limit")
-    #expect(Data(packet[2..<66]) == Data(repeating: 0x11, count: 64), "Path bytes should be truncated to 64 bytes")
-    #expect(Data(packet[66...]) == Data(repeating: 0x22, count: 184), "Payload should be truncated to firmware 184-byte limit")
+    let packet = try PacketBuilder.sendRawData(pathLength: 0x00, path: Data(), payload: payload)
+    #expect(Data(packet[2...]) == Data(repeating: 0x22, count: PacketBuilder.rawDataMaxPayloadBytes))
   }
 
   @Test
