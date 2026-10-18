@@ -80,8 +80,11 @@ struct ConnectionStateTests {
     }
 
     // No selfInfo response arrives, so appStart times out.
-    await #expect(throws: MeshCoreError.self) {
+    await #expect {
       try await session.start()
+    } throws: { error in
+      guard let error = error as? MeshCoreError, case .timeout = error else { return false }
+      return true
     }
 
     try await waitUntil("a failed appStart should publish .failed") {
@@ -95,11 +98,14 @@ struct ConnectionStateTests {
     #expect(states.contains(.connected))
     #expect(await session.currentSelfInfo == nil)
 
-    // A retry must attempt the handshake again rather than silently no-op.
-    await #expect(throws: MeshCoreError.self) {
-      try await session.start()
+    let retry = Task { try await session.start() }
+    try await waitUntil("retry should send a fresh appStart") {
+      await transport.sentData.count == 2
     }
-    #expect(await transport.sentData.count == 2, "retry start() should send a fresh appStart")
+    await transport.simulateReceive(makeSelfInfoPacket())
+    try await retry.value
+    #expect(await session.currentSelfInfo?.name == "TestNode")
+    await session.stop()
 
     observerTask.cancel()
   }

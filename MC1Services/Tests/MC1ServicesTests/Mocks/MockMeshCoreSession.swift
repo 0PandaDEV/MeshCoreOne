@@ -85,6 +85,8 @@ public actor MockMeshCoreSession: MeshCoreSessionProtocol, AdvertisingSessionOps
     MessageSentInfo(route: 0, expectedAck: Data([0x01, 0x02, 0x03, 0x04]), suggestedTimeoutMs: 5000)
   )
 
+  private var sendMessageObserver: (@Sendable () async -> Void)?
+
   /// Result to return from sendChannelMessage
   public var stubbedSendChannelMessageError: Error?
 
@@ -284,6 +286,22 @@ public actor MockMeshCoreSession: MeshCoreSessionProtocol, AdvertisingSessionOps
     currentSelfInfo = selfInfo
   }
 
+  public func setSendMessageResult(_ result: Result<MessageSentInfo, Error>) {
+    stubbedSendMessageResult = result
+  }
+
+  public func setSendMessageObserver(_ observer: (@Sendable () async -> Void)?) {
+    sendMessageObserver = observer
+  }
+
+  public func setSendChannelMessageError(_ error: Error?) {
+    stubbedSendChannelMessageError = error
+  }
+
+  public func setGetChannelError(_ error: Error?) {
+    stubbedGetChannelError = error
+  }
+
   /// Sets the results returned by successive `sendLogin` calls (isolated setter).
   public func setSendLoginResults(_ results: [Result<MessageSentInfo, Error>]) {
     stubbedSendLoginResults = results
@@ -373,6 +391,7 @@ public actor MockMeshCoreSession: MeshCoreSessionProtocol, AdvertisingSessionOps
 
   public func sendMessage(to destination: Data, text: String, timestamp: Date, attempt: UInt8) async throws -> MessageSentInfo {
     sendMessageInvocations.append(SendMessageInvocation(destination: destination, text: text, timestamp: timestamp, attempt: attempt))
+    await sendMessageObserver?()
     switch stubbedSendMessageResult {
     case let .success(info):
       return info

@@ -29,8 +29,9 @@ public actor MockTransport: MeshTransport {
   /// Stores the history of all data packets sent through this transport.
   public var sentData: [Data] = []
 
-  private let dataStream: AsyncStream<Data>
-  private let dataContinuation: AsyncStream<Data>.Continuation
+  private var dataStream: AsyncStream<Data>
+  private var dataContinuation: AsyncStream<Data>.Continuation
+  private var receiveStreamNeedsReset = false
 
   /// An asynchronous stream of raw data injected via simulation.
   public var receivedData: AsyncStream<Data> {
@@ -72,6 +73,10 @@ public actor MockTransport: MeshTransport {
 
   /// Sets the transport state to connected.
   public func connect() async throws {
+    if receiveStreamNeedsReset {
+      (dataStream, dataContinuation) = AsyncStream.makeStream(of: Data.self)
+      receiveStreamNeedsReset = false
+    }
     isConnected = true
   }
 
@@ -79,6 +84,7 @@ public actor MockTransport: MeshTransport {
   public func disconnect() async {
     isConnected = false
     dataContinuation.finish()
+    receiveStreamNeedsReset = true
   }
 
   /// Records the sent data and ensures the transport is connected.
