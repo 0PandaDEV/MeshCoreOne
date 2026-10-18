@@ -6,24 +6,24 @@ extension ConnectionManager {
 
   /// Starts periodic heartbeat to detect dead WiFi connections.
   /// ESP32's TCP stack doesn't respond to TCP keepalives, so we use application-level probes.
-  private func startWiFiHeartbeat() {
+  func startWiFiHeartbeat() {
     stopWiFiHeartbeat()
 
     wifiHeartbeatTask = Task { [weak self] in
       while !Task.isCancelled {
+        guard let self else { return }
         do {
-          try await Task.sleep(for: Self.wifiHeartbeatInterval)
+          try await self.sleepForWiFiHeartbeat()
         } catch {
           break
         }
 
-        guard let self,
-              currentTransportType == .wifi,
-              connectionState.isOperational,
-              let session else { break }
+        guard self.currentTransportType == .wifi,
+              self.connectionState.isOperational,
+              let session = self.session else { break }
 
-        if shouldPauseWiFiHeartbeatProbe {
-          logger.info("WiFi heartbeat skipped while sync activity is active")
+        if self.shouldPauseWiFiHeartbeatProbe {
+          self.logger.info("WiFi heartbeat skipped while a probe would be inconclusive")
           continue
         }
 
@@ -31,12 +31,15 @@ extension ConnectionManager {
         do {
           _ = try await session.getTime()
         } catch {
-          if shouldPauseWiFiHeartbeatProbe {
-            logger.info("WiFi heartbeat timeout during sync activity treated as inconclusive")
+          if Task.isCancelled || self.session !== session {
+            break
+          }
+          if self.shouldPauseWiFiHeartbeatProbe {
+            self.logger.info("WiFi heartbeat failure treated as inconclusive")
             continue
           }
-          logger.warning("WiFi heartbeat failed: \(error.localizedDescription)")
-          await handleWiFiDisconnection(error: error, remoteLossAt: nil, isHeartbeat: true)
+          self.logger.warning("WiFi heartbeat failed: \(error.localizedDescription)")
+          await self.handleWiFiDisconnection(error: error, remoteLossAt: nil, isHeartbeat: true)
           break
         }
       }
@@ -44,7 +47,20 @@ extension ConnectionManager {
   }
 
   var shouldPauseWiFiHeartbeatProbe: Bool {
-    connectionState == .syncing || resyncTask != nil || channelRetryTask != nil
+    powerOffBlocksReconnect
+      || connectionState == .syncing
+      || resyncTask != nil
+      || channelRetryTask != nil
+  }
+
+  private func sleepForWiFiHeartbeat() async throws {
+    #if DEBUG
+      if let testWiFiHeartbeatClock {
+        try await testWiFiHeartbeatClock.sleep(for: Self.wifiHeartbeatInterval)
+        return
+      }
+    #endif
+    try await Task.sleep(for: Self.wifiHeartbeatInterval)
   }
 
   /// Stops the WiFi heartbeat loop

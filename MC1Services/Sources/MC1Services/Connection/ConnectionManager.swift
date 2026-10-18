@@ -530,6 +530,9 @@ public final class ConnectionManager {
     /// When set, a second WiFi reconnect inside this interval is suppressed.
     var testWiFiReconnectCooldown: TimeInterval?
 
+    /// When set, the WiFi heartbeat loop sleeps on this clock instead of the wall clock.
+    var testWiFiHeartbeatClock: (any Clock<Duration>)?
+
     /// How many times the Bluetooth powered-on handler has run.
     var testBluetoothPoweredOnHandlerRuns = 0
 
