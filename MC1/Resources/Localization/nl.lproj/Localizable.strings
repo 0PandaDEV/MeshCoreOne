@@ -602,6 +602,9 @@
 /* Location: SettingsServiceError+UserFacingMessage.swift - Malformed device response to a settings command */
 "error.settings.invalidResponse" = "Ongeldig antwoord van het apparaat";
 
+/* Location: SettingsServiceError+UserFacingMessage.swift - Radio CLI command was rejected */
+"error.settings.radioCLIRejected" = "De radio meldde een fout: %@";
+
 /* Location: SettingsServiceError+UserFacingMessage.swift - Setting write-back mismatch - %1$@ is the expected value, %2$@ is the value the device reports */
 "error.settings.verificationFailed" = "Instelling is niet opgeslagen. Verwacht: '%1$@', maar het apparaat meldt '%2$@'.";
 

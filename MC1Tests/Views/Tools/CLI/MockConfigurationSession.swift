@@ -27,6 +27,40 @@ actor MockConfigurationSession: ConfigurationSessionOps {
   private(set) var setOtherParamsCalls: [(manualAddContacts: Bool, multiAcks: UInt8?)] = []
   private(set) var setCustomVarCalls: [(key: String, value: String)] = []
   private(set) var runCliCommandCalls: [String] = []
+  /// The command parked by `holdNextCLIReply()`, until `releaseHeldCLIReply()`.
+  private(set) var heldCLICommand: String?
+  var cliReply = "OK"
+  var cliReplyQueue: [String] = []
+  private var cliError: (any Error & Sendable)?
+  private var holdNextCLI = false
+  private var heldCLIContinuation: CheckedContinuation<String, Never>?
+
+  func setCLIReply(_ reply: String) {
+    cliReply = reply
+  }
+
+  func setCLIReplyQueue(_ replies: [String]) {
+    cliReplyQueue = replies
+    cliReply = "OK"
+  }
+
+  /// The next `runCliCommand` records its command, throws `error` once, and does not reply.
+  func failNextCLICommand(_ error: any Error & Sendable) {
+    cliError = error
+  }
+
+  /// The next `runCliCommand` records its command and waits for `releaseHeldCLIReply()`.
+  func holdNextCLIReply() {
+    holdNextCLI = true
+  }
+
+  /// Returns the parked CLI reply. The reply is the queue head, or `cliReply`.
+  func releaseHeldCLIReply() {
+    let reply = dequeueCLIReply()
+    let continuation = heldCLIContinuation
+    heldCLIContinuation = nil
+    Task.detached { continuation?.resume(returning: reply) }
+  }
 
   init(
     name: String = "TestDevice",
@@ -220,7 +254,27 @@ actor MockConfigurationSession: ConfigurationSessionOps {
 
   func runCliCommand(_ command: String) async throws -> String {
     runCliCommandCalls.append(command)
-    return "OK"
+    if let cliError {
+      self.cliError = nil
+      throw cliError
+    }
+    if holdNextCLI {
+      holdNextCLI = false
+      heldCLICommand = command
+      let reply = await withCheckedContinuation { (continuation: CheckedContinuation<String, Never>) in
+        heldCLIContinuation = continuation
+      }
+      heldCLICommand = nil
+      return reply
+    }
+    return dequeueCLIReply()
+  }
+
+  private func dequeueCLIReply() -> String {
+    if !cliReplyQueue.isEmpty {
+      return cliReplyQueue.removeFirst()
+    }
+    return cliReply
   }
 
   // MARK: - Unused requirements

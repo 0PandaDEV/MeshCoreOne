@@ -599,6 +599,9 @@
 /* Location: SettingsServiceError+UserFacingMessage.swift - Malformed device response to a settings command */
 "error.settings.invalidResponse" = "Недопустимый ответ устройства";
 
+/* Location: SettingsServiceError+UserFacingMessage.swift - Radio CLI command was rejected */
+"error.settings.radioCLIRejected" = "Радио вернуло ошибку: %@";
+
 /* Location: SettingsServiceError+UserFacingMessage.swift - Setting write-back mismatch - %1$@ is the expected value, %2$@ is the value the device reports */
 "error.settings.verificationFailed" = "Настройка не была сохранена. Ожидалось '%1$@', но устройство сообщает '%2$@'.";
 

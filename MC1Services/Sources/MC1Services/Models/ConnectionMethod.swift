@@ -41,13 +41,16 @@ public enum ConnectionMethod: Codable, Sendable, Identifiable, Hashable {
     return false
   }
 
+  /// Companion WiFi TCP port. Firmware `TCP_PORT` defaults to this, and the CLI cannot read it.
+  public static let defaultWiFiPort: UInt16 = 5000
+
   /// Short description for display in lists.
   public var shortDescription: String {
     switch self {
     case .bluetooth:
       return "Bluetooth"
     case let .wifi(host, port, _):
-      if port == 5000 {
+      if port == Self.defaultWiFiPort {
         return host
       }
       return "\(host):\(port)"

@@ -162,7 +162,7 @@ struct V118SessionMethodsTests {
   }
 
   @Test
-  func `runCliCommand sends the trimmed line`() async throws {
+  func `runCliCommand sends the line verbatim`() async throws {
     let transport = MockTransport()
     let session = MeshCoreSession(
       transport: transport,
@@ -170,19 +170,26 @@ struct V118SessionMethodsTests {
     )
     try await startSession(session, transport: transport)
 
-    let task = Task {
-      try await session.runCliCommand("  get cad  ")
-    }
-    try await waitUntil("command should be sent") {
-      await transport.sentData.count == 2
-    }
-    let sent = await transport.sentData[1]
-    #expect(Data(sent.dropFirst()) == Data("get cad".utf8))
+    let commands = ["set wifi.pwd ", "set wifi.ssid Field Net "]
+    for (offset, command) in commands.enumerated() {
+      let task = Task {
+        try await session.runCliCommand(command)
+      }
+      let sentIndex = offset + 1
+      try await waitUntil("command should be sent") {
+        await transport.sentData.count == sentIndex + 1
+      }
+      let sent = await transport.sentData[sentIndex]
+      #expect(Data(sent.dropFirst()) == Data(command.utf8))
+      if offset == 0 {
+        #expect(sent.last == 0x20)
+      }
 
-    var reply = Data([0x1D])
-    reply.append(contentsOf: "OK".utf8)
-    await transport.simulateReceive(reply)
-    _ = try await task.value
+      var reply = Data([0x1D])
+      reply.append(contentsOf: "OK".utf8)
+      await transport.simulateReceive(reply)
+      _ = try await task.value
+    }
     await session.stop()
   }
 }

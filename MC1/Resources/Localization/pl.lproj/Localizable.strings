@@ -600,6 +600,9 @@
 /* Location: SettingsServiceError+UserFacingMessage.swift - Malformed device response to a settings command */
 "error.settings.invalidResponse" = "Nieprawidłowa odpowiedź urządzenia";
 
+/* Location: SettingsServiceError+UserFacingMessage.swift - Radio CLI command was rejected */
+"error.settings.radioCLIRejected" = "Radio zwróciło błąd: %@";
+
 /* Location: SettingsServiceError+UserFacingMessage.swift - Setting write-back mismatch - %1$@ is the expected value, %2$@ is the value the device reports */
 "error.settings.verificationFailed" = "Ustawienie nie zostało zapisane. Oczekiwano '%1$@', ale urządzenie zgłasza '%2$@'.";
 

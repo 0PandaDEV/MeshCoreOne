@@ -11,6 +11,8 @@ extension SettingsServiceError {
       L10n.Localizable.Error.Settings.sendFailed
     case .invalidResponse:
       L10n.Localizable.Error.Settings.invalidResponse
+    case let .radioCLIRejected(text):
+      L10n.Localizable.Error.Settings.radioCLIRejected(text)
     case let .sessionError(error):
       error.userFacingMessage
     case let .verificationFailed(expected, actual):

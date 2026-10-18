@@ -1,4 +1,4 @@
-import Foundation
+import MC1Services
 
 /// Decides whether a local Tools CLI line should go to `CMD_RUN_CLI_COMMAND`
 /// instead of opcode-mapped verbs or custom vars.
@@ -6,11 +6,11 @@ enum RadioCLIPassthrough {
   static let getSetKeys: Set<String> = [
     "af", "dutycycle", "int.thresh", "cad", "radio.rxgain", "rxdelay",
     "agc.reset.interval", "txdelay", "direct.txdelay",
-    "tz.offset", "wifi.ssid", "wifi.pwd", "wifi.enabled",
+    RadioCLIKey.timezoneOffset, RadioCLIKey.wifiSSID, RadioCLIKey.wifiPassword, RadioCLIKey.wifiEnabled,
     "radio.fem.rxgain", "radio.fem.txgain", "fan",
   ]
-  static let getOnlyKeys: Set<String> = ["wifi.status", "wifi.ip"]
-  static let setOnlyKeys: Set<String> = ["pin", "wifi.clear", "fan.lo", "fan.hi"]
+  static let getOnlyKeys: Set<String> = [RadioCLIKey.wifiStatus, RadioCLIKey.wifiIP]
+  static let setOnlyKeys: Set<String> = ["pin", RadioCLIKey.wifiClear, "fan.lo", "fan.hi"]
   /// The radio powers off without sending `RESP_CODE_CLI_REPLY`, so a reply waiter would time out.
   static let noReplyCommands: Set<String> = ["poweroff", "shutdown"]
 

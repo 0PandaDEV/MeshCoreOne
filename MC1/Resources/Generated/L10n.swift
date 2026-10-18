@@ -2687,6 +2687,10 @@ public enum L10n {
         public static let invalidResponse = L10n.tr("Localizable", "error.settings.invalidResponse", fallback: "Invalid response from device")
         /// Location: SettingsServiceError+UserFacingMessage.swift - No active connection to the radio
         public static let notConnected = L10n.tr("Localizable", "error.settings.notConnected", fallback: "Device not connected")
+        /// Location: SettingsServiceError+UserFacingMessage.swift - Radio CLI command was rejected
+        public static func radioCLIRejected(_ p1: Any) -> String {
+          return L10n.tr("Localizable", "error.settings.radioCLIRejected", String(describing: p1), fallback: "The radio returned an error: %@")
+        }
         /// Location: SettingsServiceError+UserFacingMessage.swift - Sending a settings command failed
         public static let sendFailed = L10n.tr("Localizable", "error.settings.sendFailed", fallback: "Failed to send command")
         /// Location: SettingsServiceError+UserFacingMessage.swift - Setting write-back mismatch - %1$@ is the expected value, %2$@ is the value the device reports

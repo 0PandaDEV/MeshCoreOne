@@ -5,6 +5,7 @@ public enum SettingsServiceError: Error, LocalizedError, Sendable {
   case notConnected
   case sendFailed
   case invalidResponse
+  case radioCLIRejected(String)
   case sessionError(MeshCoreError)
   case verificationFailed(expected: String, actual: String)
   case deviceGPSVerificationFailed(expectedEnabled: Bool, actualEnabled: Bool)
@@ -14,6 +15,7 @@ public enum SettingsServiceError: Error, LocalizedError, Sendable {
     case .notConnected: return "Device not connected"
     case .sendFailed: return "Failed to send command"
     case .invalidResponse: return "Invalid response from device"
+    case let .radioCLIRejected(text): return "The radio returned an error: \(text)"
     case let .sessionError(error): return error.localizedDescription
     case let .verificationFailed(expected, actual):
       return "Setting was not saved. Expected '\(expected)' but device reports '\(actual)'."
