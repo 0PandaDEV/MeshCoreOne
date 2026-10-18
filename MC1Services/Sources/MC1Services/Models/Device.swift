@@ -391,9 +391,9 @@ public struct DeviceDTO: Sendable, Equatable, Identifiable, Codable {
   public var customOCVArrayString: String?
   public var connectionMethods: [ConnectionMethod]
 
-  /// The method from the most recent connect. The saved list keeps that method last.
+  /// The method from the most recent connect. Duplicate rows for the same transport are ignored.
   public var lastUsedConnectionMethod: ConnectionMethod? {
-    connectionMethods.last
+    ConnectionMethod.canonicalized(connectionMethods).last
   }
 
   /// Peripheral UUID stored on the Bluetooth method.
@@ -406,7 +406,7 @@ public struct DeviceDTO: Sendable, Equatable, Identifiable, Codable {
     return nil
   }
 
-  /// Saved WiFi method. There is at most one, and it is not necessarily last.
+  /// The first saved WiFi method. Later WiFi rows are duplicates.
   public var wifiConnectionMethod: ConnectionMethod? {
     for method in connectionMethods where method.isWiFi {
       return method

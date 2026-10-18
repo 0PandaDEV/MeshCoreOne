@@ -160,6 +160,34 @@ struct DevicePublicKeyDeduplicationTests {
 
   // MARK: - Bluetooth connection method persistence
 
+  @Test
+  @MainActor
+  func `createDevice removes appended legacy WiFi methods when reconnecting over Bluetooth`() throws {
+    let (manager, _) = try ConnectionManager.createForTesting()
+    let wifi = ConnectionMethod.wifi(host: "10.0.0.4", port: 5000, displayName: nil)
+    let backupWiFi = ConnectionMethod.wifi(host: "10.0.0.99", port: 5000, displayName: nil)
+    let existing = DeviceDTO.testDevice(publicKey: Self.testPublicKey).copy {
+      $0.connectionMethods = [wifi, .bluetooth(peripheralUUID: UUID(), displayName: nil), backupWiFi]
+    }
+    let peripheralID = UUID()
+    let bluetooth = ConnectionMethod.bluetooth(peripheralUUID: peripheralID, displayName: nil)
+
+    let device = manager.createDevice(
+      deviceID: peripheralID,
+      radioID: existing.radioID,
+      selfInfo: Self.makeSelfInfo(),
+      capabilities: Self.testCapabilities,
+      autoAddConfig: AutoAddConfig(bitmask: 0),
+      existingDevice: existing,
+      connectionMethods: [bluetooth]
+    )
+
+    #expect(device.connectionMethods == [wifi, bluetooth])
+    #expect(device.id == peripheralID)
+    #expect(device.radioID == existing.radioID)
+    #expect(device.publicKey == existing.publicKey)
+  }
+
   /// The BLE connect ceremony passes a `.bluetooth` method so the saved row is
   /// reachable on macOS, where there is no AccessorySetupKit registry to validate
   /// against and `DeviceSelectionFilter` treats the method itself as the signal.

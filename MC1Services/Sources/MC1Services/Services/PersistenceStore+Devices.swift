@@ -282,7 +282,7 @@ public extension PersistenceStore {
   /// `ConnectionMethod`. SwiftData `#Predicate` cannot reliably introspect array
   /// elements, so the BLE check happens post-fetch in code.
   ///
-  /// Adopts the ghost's WiFi methods only when the current list is non-empty and has none, putting them first.
+  /// Adopts the ghost's first WiFi method only when the current list is non-empty and has none, putting it first.
   /// An empty list stays empty. This row's WiFi method, last-used method, and Bluetooth peripheral id stay put.
   ///
   /// - Parameters:
@@ -316,13 +316,11 @@ public extension PersistenceStore {
     let newRadioID = ghost.radioID
     current.radioID = newRadioID
     current.publicKey = newPublicKey
+    current.connectionMethods = ConnectionMethod.canonicalized(current.connectionMethods)
     if !current.connectionMethods.isEmpty,
-       !current.connectionMethods.contains(where: \.isWiFi) {
-      for method in ghost.connectionMethods.reversed() where method.isWiFi {
-        if !current.connectionMethods.contains(where: { $0.id == method.id }) {
-          current.connectionMethods.insert(method, at: 0)
-        }
-      }
+       !current.connectionMethods.contains(where: \.isWiFi),
+       let wifi = ConnectionMethod.canonicalized(ghost.connectionMethods).first(where: \.isWiFi) {
+      current.connectionMethods.insert(wifi, at: 0)
     }
 
     modelContext.delete(ghost)

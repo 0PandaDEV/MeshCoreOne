@@ -9,6 +9,73 @@ import Testing
 @Suite("BackupIntegration")
 struct BackupIntegrationTests {
   @Test
+  @MainActor
+  func `legacy WiFi ordering survives backup round trip without changing the selected endpoint`() async throws {
+    let container = try PersistenceStore.createContainer(inMemory: true)
+    let context = ModelContext(container)
+    let wifi = ConnectionMethod.wifi(host: "10.0.0.4", port: 5000, displayName: "Local")
+    let backupWiFi = ConnectionMethod.wifi(host: "10.0.0.99", port: 5000, displayName: "Backup")
+    let original = DeviceDTO.testDevice().copy {
+      $0.connectionMethods = [wifi, .bluetooth(peripheralUUID: $0.id, displayName: nil), backupWiFi]
+    }
+    context.insert(Device(dto: original))
+    try context.save()
+    let source = PersistenceStore(modelContainer: container)
+    let service = AppBackupService()
+
+    let exported = try await service.export(persistenceStore: source)
+    let envelope = try parseBackup(data: exported.data)
+    let exportedDevice = try #require(envelope.devices.first)
+    #expect(exportedDevice.connectionMethods == [wifi, backupWiFi])
+    #expect(exportedDevice.wifiConnectionMethod == wifi)
+    #expect(exportedDevice.savedDeviceConnectTarget == .wifi(host: "10.0.0.4", port: 5000))
+    let destination = try PersistenceStore(modelContainer: PersistenceStore.createContainer(inMemory: true))
+
+    _ = try await service.importBackup(envelope: envelope, into: destination)
+
+    let restored = try #require(await destination.fetchDevice(publicKey: original.publicKey))
+    #expect(restored.connectionMethods == [wifi, backupWiFi])
+    #expect(restored.savedDeviceConnectTarget == .wifi(host: "10.0.0.4", port: 5000))
+    #expect(restored.id != original.id)
+    #expect(restored.id != exportedDevice.id)
+    #expect(restored.radioID == original.radioID)
+    #expect(restored.publicKey == original.publicKey)
+  }
+
+  @Test
+  func `legacy envelope decodes appended WiFi methods verbatim before selecting its connection target`() async throws {
+    let peripheralID = try #require(UUID(uuidString: "E621E1F8-C36C-495A-93FC-0C247A3E6E5F"))
+    let original = DeviceDTO.testDevice(id: peripheralID)
+    let encoded = try makeBackupJSONEncoder().encode(AppBackupEnvelope.test(devices: [original]))
+    var json = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+    var devices = try #require(json["devices"] as? [[String: Any]])
+    let legacyMethods = #"[{"wifi":{"host":"10.0.0.4","port":5000}},"#
+      + #"{"bluetooth":{"peripheralUUID":"E621E1F8-C36C-495A-93FC-0C247A3E6E5F"}},"#
+      + #"{"wifi":{"host":"10.0.0.99","port":5000}}]"#
+    devices[0]["connectionMethods"] = try JSONSerialization.jsonObject(with: Data(legacyMethods.utf8))
+    json["devices"] = devices
+
+    let legacyData = try JSONSerialization.data(withJSONObject: json).zlibCompressed()
+    let envelope = try parseBackup(data: legacyData)
+
+    let decoded = try #require(envelope.devices.first)
+    let wifi = ConnectionMethod.wifi(host: "10.0.0.4", port: 5000, displayName: nil)
+    let bluetooth = ConnectionMethod.bluetooth(peripheralUUID: peripheralID, displayName: nil)
+    let backupWiFi = ConnectionMethod.wifi(host: "10.0.0.99", port: 5000, displayName: nil)
+    #expect(decoded.connectionMethods == [wifi, bluetooth, backupWiFi])
+    #expect(Device(dto: decoded).connectionMethods == decoded.connectionMethods)
+    #expect(decoded.savedDeviceConnectTarget == .bluetooth(peripheralID: peripheralID))
+    let store = try PersistenceStore(modelContainer: PersistenceStore.createContainer(inMemory: true))
+
+    _ = try await AppBackupService().importBackup(envelope: envelope, into: store)
+
+    let restored = try #require(await store.fetchDevice(publicKey: original.publicKey))
+    #expect(restored.connectionMethods == [wifi, backupWiFi])
+    #expect(restored.savedDeviceConnectTarget == .wifi(host: "10.0.0.4", port: 5000))
+    #expect(restored.radioID == original.radioID)
+  }
+
+  @Test
   func `manual conversation read state survives backup round trip`() async throws {
     let radioID = UUID()
     let store = try await PersistenceStore.createTestDataStore(radioID: radioID)

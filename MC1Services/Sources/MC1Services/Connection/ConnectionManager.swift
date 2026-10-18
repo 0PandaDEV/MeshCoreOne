@@ -1256,7 +1256,7 @@ public final class ConnectionManager {
     connectionMethods: [ConnectionMethod] = []
   ) -> Device {
     // Merge new connection methods with existing ones, replacing by transport type
-    var mergedMethods = existingDevice?.connectionMethods ?? []
+    var mergedMethods = ConnectionMethod.canonicalized(existingDevice?.connectionMethods ?? [])
     for method in connectionMethods {
       if method.isWiFi {
         mergedMethods.removeAll { $0.isWiFi }

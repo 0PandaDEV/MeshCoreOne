@@ -4051,6 +4051,44 @@ struct PersistenceStoreTests {
     #expect(updated.connectionMethods.isEmpty)
   }
 
+  @Test(arguments: [false, true])
+  @MainActor
+  func `reconcileGhostIdentity canonicalizes legacy methods while preserving the local WiFi`(
+    currentHadWiFi: Bool
+  ) async throws {
+    let container = try PersistenceStore.createContainer(inMemory: true)
+    let context = ModelContext(container)
+    let wifi = ConnectionMethod.wifi(host: "10.0.0.4", port: 5000, displayName: nil)
+    let ghostWiFi = ConnectionMethod.wifi(host: "10.0.0.7", port: 5000, displayName: nil)
+    let staleWiFi = ConnectionMethod.wifi(host: "10.0.0.99", port: 5000, displayName: nil)
+    let ghost = createTestDevice().copy {
+      $0.publicKey = Data(repeating: 0xAB, count: 32)
+      $0.isActive = false
+      $0.connectionMethods = [ghostWiFi, staleWiFi]
+    }
+    let peripheralID = UUID()
+    let bluetooth = ConnectionMethod.bluetooth(peripheralUUID: peripheralID, displayName: nil)
+    let current = createTestDevice().copy {
+      $0.publicKey = Data(repeating: 0xCD, count: 32)
+      $0.connectionMethods = currentHadWiFi ? [wifi, bluetooth, staleWiFi] : [bluetooth]
+    }
+    context.insert(Device(dto: ghost))
+    context.insert(Device(dto: current))
+    try context.save()
+    let store = PersistenceStore(modelContainer: container)
+
+    let radioID = try await store.reconcileGhostIdentity(currentDeviceID: current.id, newPublicKey: ghost.publicKey)
+
+    let updated = try #require(await store.fetchDevice(id: current.id))
+    #expect(radioID == ghost.radioID)
+    #expect(updated.id == current.id)
+    #expect(updated.radioID == ghost.radioID)
+    #expect(updated.publicKey == ghost.publicKey)
+    #expect(updated.connectionMethods == [currentHadWiFi ? wifi : ghostWiFi, bluetooth])
+    #expect(updated.savedDeviceConnectTarget == .bluetooth(peripheralID: peripheralID))
+    #expect(try await store.fetchDevice(id: ghost.id) == nil)
+  }
+
   // MARK: - Terminal-State Guards (DM ACK machine)
 
   @Test
