@@ -52,9 +52,8 @@ public final class Contact {
   /// Last modification timestamp (for sync watermarking)
   public var lastModified: UInt32
 
-  /// Phone-clock epoch seconds of the last mesh liveness evidence this phone
-  /// recorded for the contact (advert receive, inbound DM, successful ping,
-  /// path-discovery response). Monotonic; 0 means never heard by this phone.
+  /// Epoch seconds of the latest phone-observed liveness or plausible synced advert.
+  /// Monotonic; 0 means no recorded evidence.
   public var lastHeardTimestamp: UInt32 = 0
 
   /// Local nickname override (optional)
@@ -312,7 +311,7 @@ public struct ContactDTO: Sendable, Equatable, Identifiable, Hashable, Codable, 
   public let latitude: Double
   public let longitude: Double
   public let lastModified: UInt32
-  /// Phone-clock epoch seconds; nil in legacy backup envelopes means never heard.
+  /// Liveness epoch seconds, including plausible synced adverts; nil in legacy backups means unavailable.
   public let lastHeardTimestamp: UInt32?
   public let nickname: String?
   public let isBlocked: Bool
@@ -634,7 +633,7 @@ public struct ContactDTO: Sendable, Equatable, Identifiable, Hashable, Codable, 
 
   // MARK: - RepeaterResolvable
 
-  /// Max of radio `lastModified` and phone-clock `lastHeardTimestamp`.
+  /// Max of radio `lastModified` and latest liveness evidence in `lastHeardTimestamp`.
   /// Legacy rows with a nil/0 heard stamp keep `lastModified` behavior.
   public var recencyTimestamp: UInt32 {
     max(lastModified, lastHeardTimestamp ?? 0)

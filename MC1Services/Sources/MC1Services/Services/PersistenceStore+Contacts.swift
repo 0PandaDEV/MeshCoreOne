@@ -136,14 +136,13 @@ public extension PersistenceStore {
     return (id: contact.id, isNew: isNew)
   }
 
-  /// Upserts contacts from frames in a single transaction, matching local rows by
-  /// `(radioID, publicKey)`. Commits once for the whole batch instead of once per contact,
-  /// which is the dominant cost of a full contact sync over BLE. Returns the number of
-  /// frames persisted.
+  /// Upserts synced contacts in one transaction and returns the number of frames persisted.
+  /// Plausible synced adverts advance Last Heard without changing Discover reception.
   @discardableResult
   func batchSaveContacts(radioID: UUID, from frames: [ContactFrame]) throws -> Int {
     guard !frames.isEmpty else { return 0 }
 
+    let referenceDate = Date()
     let targetRadioID = radioID
     let predicate = #Predicate<Contact> { contact in
       contact.radioID == targetRadioID
@@ -152,12 +151,17 @@ public extension PersistenceStore {
     var byKey = Dictionary(existing.map { ($0.publicKey, $0) }, uniquingKeysWith: { current, _ in current })
 
     for frame in frames {
+      let contact: Contact
       if let row = byKey[frame.publicKey] {
         row.update(from: frame)
+        contact = row
       } else {
-        let contact = Contact(radioID: radioID, from: frame)
+        contact = Contact(radioID: radioID, from: frame)
         modelContext.insert(contact)
         byKey[frame.publicKey] = contact
+      }
+      if AdvertTimestamp.isPlausible(frame.lastAdvertTimestamp, relativeTo: referenceDate) {
+        contact.lastHeardTimestamp = max(contact.lastHeardTimestamp, frame.lastAdvertTimestamp)
       }
     }
 
