@@ -765,6 +765,35 @@ struct MeshCoreSessionCommandCorrelationTests {
     await session.stop()
   }
 
+  @Test(arguments: ["", "  KD7ABC\nch 31\n"], [Data(), Data(repeating: 0, count: 8)])
+  func `owner info stops at the null terminator and preserves text`(ownerInfo: String, padding: Data) async throws {
+    let transport = MockTransport()
+    let session = MeshCoreSession(
+      transport: transport,
+      configuration: SessionConfiguration(defaultTimeout: 10, clientIdentifier: "MCTst")
+    )
+    try await startSession(session, transport: transport)
+
+    let tag = Data([0x11, 0x22, 0x33, 0x44])
+    let request = Task { try await session.requestOwnerInfo(from: Data(repeating: 0x31, count: 32)) }
+    try await waitUntil("owner info request should be sent") {
+      await transport.sentData.count == 2
+    }
+    await transport.simulateReceive(makeMessageSentPacket(expectedAck: tag))
+
+    var response = Data([ResponseCode.binaryResponse.rawValue, 0x00])
+    response.append(tag)
+    response.append(contentsOf: "v1.18.0\nRepeater AB\n\(ownerInfo)".utf8)
+    response.append(padding)
+    await transport.simulateReceive(response)
+
+    let info = try await request.value
+    #expect(info.firmwareVersion == "v1.18.0")
+    #expect(info.nodeName == "Repeater AB")
+    #expect(info.ownerInfo == ownerInfo)
+    await session.stop()
+  }
+
   @Test
   func `binary response matches any retransmit tag from the same exchange`() async throws {
     let transport = MockTransport()

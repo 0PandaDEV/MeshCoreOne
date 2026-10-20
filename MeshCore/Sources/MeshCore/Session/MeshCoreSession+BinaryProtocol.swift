@@ -369,8 +369,9 @@ public extension MeshCoreSession {
       to: publicKey,
       operation: "Owner info"
     ) { payload, _ in
-      // Response is UTF-8: "<firmware_ver>\n<node_name>\n<owner_info>"
-      let text = String(data: payload, encoding: .utf8) ?? ""
+      // Response is UTF-8: "<firmware_ver>\n<node_name>\n<owner_info>".
+      // Stop at the first NUL so encryption padding stays out of the text.
+      let text = String(data: payload.prefix { $0 != 0 }, encoding: .utf8) ?? ""
       let components = text.split(separator: "\n", maxSplits: 2, omittingEmptySubsequences: false)
       return OwnerInfoResponse(
         firmwareVersion: components.count >= 1 ? String(components[0]) : "",
