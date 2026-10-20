@@ -243,13 +243,11 @@
 /* Fallback connection type description */
 "deviceSelection.bluetooth" = "Bluetooth";
 
-/* TODO: translate */
 /* Accessibility label for the connection menu on a radio with Bluetooth and Wi-Fi */
-"deviceSelection.changeConnection" = "Change connection";
+"deviceSelection.changeConnection" = "Verbinding wijzigen";
 
-/* TODO: translate */
 /* Menu title for the saved Wi-Fi link */
-"deviceSelection.wifi" = "Wi-Fi";
+"deviceSelection.wifi" = "Wifi";
 
 // MARK: - Location Picker View
 
@@ -304,8 +302,7 @@
 "remoteCLI.manage" = "Toegestane contacten";
 
 /* Footer explaining remote CLI permission */
-/* TODO: translate */
-"remoteCLI.footer" = "These contacts can run any CLI command on this radio over the mesh, including changing radio settings and the Bluetooth PIN, reading the WiFi password, and rebooting or powering off the radio. The app is not told when a command runs.";
+"remoteCLI.footer" = "Deze contacten kunnen via het mesh elk Remote CLI-commando op deze radio uitvoeren, inclusief het wijzigen van radio-instellingen en de Bluetooth-PIN, het lezen van het Wifi-wachtwoord en het herstarten of uitschakelen van de radio. De app krijgt geen melding wanneer een commando wordt uitgevoerd.";
 
 /* Navigation title for remote CLI contacts picker */
 "remoteCLIContacts.title" = "Remote CLI";
@@ -322,11 +319,9 @@
 /* Description for empty state when search returns no results */
 "remoteCLIContacts.noResultsDescription" = "Geen contacten komen overeen met \"%@\"";
 
-/* TODO: translate */
-"remoteCLIContacts.noFavorites" = "No Favorites";
+"remoteCLIContacts.noFavorites" = "Geen favorieten";
 
-/* TODO: translate */
-"remoteCLIContacts.noFavoritesDescription" = "No favorite contacts to show";
+"remoteCLIContacts.noFavoritesDescription" = "Geen favoriete contacten om te tonen";
 
 /* Search prompt for remote CLI contacts list */
 "remoteCLIContacts.searchPrompt" = "Zoek contacten";
@@ -1033,32 +1028,25 @@
 "connection.header" = "Verbinding";
 
 /* Spoken name of the Wi-Fi link and the Wi-Fi page title */
-/* TODO: translate */
-"connection.link.wifi" = "Wi-Fi";
+"connection.link.wifi" = "Wifi";
 
 /* Header for the radio Wi-Fi group on the Wi-Fi page */
-/* TODO: translate */
-"connection.link.radioWiFi" = "Radio Wi-Fi";
+"connection.link.radioWiFi" = "Wifi van de radio";
 
 /* VoiceOver value for the link that is in use */
-/* TODO: translate */
-"connection.link.inUse" = "In use";
+"connection.link.inUse" = "In gebruik";
 
 /* VoiceOver value while a switch to that link is in progress */
-/* TODO: translate */
-"connection.link.switching" = "Switching";
+"connection.link.switching" = "Bezig met overschakelen";
 
 /* VoiceOver hint for switching to the other link */
-/* TODO: translate */
-"connection.link.switchHint" = "Switches the link to the radio";
+"connection.link.switchHint" = "Schakelt over naar de verbinding met de radio";
 
 /* VoiceOver label for the Bluetooth info button */
-/* TODO: translate */
-"connection.link.bluetoothInfo" = "Bluetooth info";
+"connection.link.bluetoothInfo" = "Bluetooth-info";
 
 /* VoiceOver label for the Wi-Fi info button */
-/* TODO: translate */
-"connection.link.wifiInfo" = "Wi-Fi info";
+"connection.link.wifiInfo" = "Wifi-info";
 
 // MARK: - WiFi Section
 

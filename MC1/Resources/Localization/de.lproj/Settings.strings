@@ -243,13 +243,11 @@
 /* Fallback connection type description */
 "deviceSelection.bluetooth" = "Bluetooth";
 
-/* TODO: translate */
 /* Accessibility label for the connection menu on a radio with Bluetooth and Wi-Fi */
-"deviceSelection.changeConnection" = "Change connection";
+"deviceSelection.changeConnection" = "Verbindung ändern";
 
-/* TODO: translate */
 /* Menu title for the saved Wi-Fi link */
-"deviceSelection.wifi" = "Wi-Fi";
+"deviceSelection.wifi" = "WLAN";
 
 // MARK: - Location Picker View
 
@@ -304,8 +302,7 @@
 "remoteCLI.manage" = "Erlaubte Kontakte";
 
 /* Footer explaining remote CLI permission */
-/* TODO: translate */
-"remoteCLI.footer" = "These contacts can run any CLI command on this radio over the mesh, including changing radio settings and the Bluetooth PIN, reading the WiFi password, and rebooting or powering off the radio. The app is not told when a command runs.";
+"remoteCLI.footer" = "Diese Kontakte können über das Mesh jeden Befehl von Remote CLI auf diesem Funkgerät ausführen, auch die Funkeinstellungen und die Bluetooth-PIN ändern, das WLAN-Passwort lesen und das Funkgerät neu starten oder ausschalten. Die App erfährt nicht, wenn ein Befehl ausgeführt wird.";
 
 /* Navigation title for remote CLI contacts picker */
 "remoteCLIContacts.title" = "Remote CLI";
@@ -322,11 +319,9 @@
 /* Description for empty state when search returns no results */
 "remoteCLIContacts.noResultsDescription" = "Keine Kontakte stimmen mit \"%@\" überein";
 
-/* TODO: translate */
-"remoteCLIContacts.noFavorites" = "No Favorites";
+"remoteCLIContacts.noFavorites" = "Keine Favoriten";
 
-/* TODO: translate */
-"remoteCLIContacts.noFavoritesDescription" = "No favorite contacts to show";
+"remoteCLIContacts.noFavoritesDescription" = "Keine favorisierten Kontakte zum Anzeigen";
 
 /* Search prompt for remote CLI contacts list */
 "remoteCLIContacts.searchPrompt" = "Kontakte suchen";
@@ -1033,32 +1028,25 @@
 "connection.header" = "Verbindung";
 
 /* Spoken name of the Wi-Fi link and the Wi-Fi page title */
-/* TODO: translate */
-"connection.link.wifi" = "Wi-Fi";
+"connection.link.wifi" = "WLAN";
 
 /* Header for the radio Wi-Fi group on the Wi-Fi page */
-/* TODO: translate */
-"connection.link.radioWiFi" = "Radio Wi-Fi";
+"connection.link.radioWiFi" = "WLAN des Funkgeräts";
 
 /* VoiceOver value for the link that is in use */
-/* TODO: translate */
-"connection.link.inUse" = "In use";
+"connection.link.inUse" = "In Verwendung";
 
 /* VoiceOver value while a switch to that link is in progress */
-/* TODO: translate */
-"connection.link.switching" = "Switching";
+"connection.link.switching" = "Wird gewechselt";
 
 /* VoiceOver hint for switching to the other link */
-/* TODO: translate */
-"connection.link.switchHint" = "Switches the link to the radio";
+"connection.link.switchHint" = "Wechselt die Verbindung zum Funkgerät";
 
 /* VoiceOver label for the Bluetooth info button */
-/* TODO: translate */
-"connection.link.bluetoothInfo" = "Bluetooth info";
+"connection.link.bluetoothInfo" = "Bluetooth-Info";
 
 /* VoiceOver label for the Wi-Fi info button */
-/* TODO: translate */
-"connection.link.wifiInfo" = "Wi-Fi info";
+"connection.link.wifiInfo" = "WLAN-Info";
 
 // MARK: - WiFi Section
 

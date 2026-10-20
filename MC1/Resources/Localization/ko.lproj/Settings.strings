@@ -231,11 +231,9 @@
 /* Fallback connection type description */
 "deviceSelection.bluetooth" = "Bluetooth";
 
-/* TODO: translate */
 /* Accessibility label for the connection menu on a radio with Bluetooth and Wi-Fi */
-"deviceSelection.changeConnection" = "Change connection";
+"deviceSelection.changeConnection" = "연결 변경";
 
-/* TODO: translate */
 /* Menu title for the saved Wi-Fi link */
 "deviceSelection.wifi" = "Wi-Fi";
 
@@ -285,8 +283,44 @@
 
 // MARK: - Remote CLI
 
-/* TODO: translate - Footer explaining remote CLI permission */
-"remoteCLI.footer" = "These contacts can run any CLI command on this radio over the mesh, including changing radio settings and the Bluetooth PIN, reading the WiFi password, and rebooting or powering off the radio. The app is not told when a command runs.";
+/* Section header for remote CLI permission */
+"remoteCLI.header" = "원격 CLI";
+
+/* Navigation row to manage contacts allowed to send remote CLI */
+"remoteCLI.manage" = "허용된 연락처";
+
+/* Footer explaining remote CLI permission */
+"remoteCLI.footer" = "이 연락처는 메시를 통해 이 무선 기기에서 모든 원격 CLI 명령을 실행할 수 있으며, 무선 기기 설정과 Bluetooth PIN을 변경하고, Wi-Fi 암호를 읽고, 무선 기기를 재시동하거나 전원을 끌 수 있습니다. 명령이 실행될 때 앱에는 알려지지 않습니다.";
+
+/* Navigation title for remote CLI contacts picker */
+"remoteCLIContacts.title" = "원격 CLI";
+
+/* Title for empty state when no contacts exist */
+"remoteCLIContacts.noContacts" = "연락처 없음";
+
+/* Description for empty state */
+"remoteCLIContacts.noContactsDescription" = "원격 CLI를 허용하려면 연락처를 추가하십시오";
+
+/* Title for empty state when search returns no results */
+"remoteCLIContacts.noResults" = "결과 없음";
+
+/* Description for empty state when search returns no results */
+"remoteCLIContacts.noResultsDescription" = "\"%@\"와(과) 일치하는 연락처 없음";
+
+/* Title for empty state when Favorites Only has no matches */
+"remoteCLIContacts.noFavorites" = "즐겨찾기 없음";
+
+/* Description for empty state when Favorites Only has no matches */
+"remoteCLIContacts.noFavoritesDescription" = "표시할 즐겨찾기 연락처가 없습니다";
+
+/* Search prompt for remote CLI contacts list */
+"remoteCLIContacts.searchPrompt" = "연락처 검색";
+
+/* Toggle label for showing only favorite contacts */
+"remoteCLIContacts.favoritesOnly" = "즐겨찾기만";
+
+/* Apply button label */
+"remoteCLIContacts.apply" = "적용";
 
 // MARK: - About Section
 
@@ -1034,32 +1068,25 @@
 "connection.header" = "연결";
 
 /* Spoken name of the Wi-Fi link and the Wi-Fi page title */
-/* TODO: translate */
 "connection.link.wifi" = "Wi-Fi";
 
 /* Header for the radio Wi-Fi group on the Wi-Fi page */
-/* TODO: translate */
-"connection.link.radioWiFi" = "Radio Wi-Fi";
+"connection.link.radioWiFi" = "무선 기기의 Wi-Fi";
 
 /* VoiceOver value for the link that is in use */
-/* TODO: translate */
-"connection.link.inUse" = "In use";
+"connection.link.inUse" = "사용 중";
 
 /* VoiceOver value while a switch to that link is in progress */
-/* TODO: translate */
-"connection.link.switching" = "Switching";
+"connection.link.switching" = "전환 중";
 
 /* VoiceOver hint for switching to the other link */
-/* TODO: translate */
-"connection.link.switchHint" = "Switches the link to the radio";
+"connection.link.switchHint" = "무선 기기로 연결을 전환합니다";
 
 /* VoiceOver label for the Bluetooth info button */
-/* TODO: translate */
-"connection.link.bluetoothInfo" = "Bluetooth info";
+"connection.link.bluetoothInfo" = "Bluetooth 정보";
 
 /* VoiceOver label for the Wi-Fi info button */
-/* TODO: translate */
-"connection.link.wifiInfo" = "Wi-Fi info";
+"connection.link.wifiInfo" = "Wi-Fi 정보";
 
 // MARK: - WiFi Section
 

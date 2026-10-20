@@ -243,13 +243,11 @@
 /* Fallback connection type description */
 "deviceSelection.bluetooth" = "蓝牙";
 
-/* TODO: translate */
 /* Accessibility label for the connection menu on a radio with Bluetooth and Wi-Fi */
-"deviceSelection.changeConnection" = "Change connection";
+"deviceSelection.changeConnection" = "更改连接";
 
-/* TODO: translate */
 /* Menu title for the saved Wi-Fi link */
-"deviceSelection.wifi" = "Wi-Fi";
+"deviceSelection.wifi" = "WiFi";
 
 // MARK: - Location Picker View
 
@@ -304,8 +302,7 @@
 "remoteCLI.manage" = "允许的联系人";
 
 /* Footer explaining remote CLI permission */
-/* TODO: translate */
-"remoteCLI.footer" = "These contacts can run any CLI command on this radio over the mesh, including changing radio settings and the Bluetooth PIN, reading the WiFi password, and rebooting or powering off the radio. The app is not told when a command runs.";
+"remoteCLI.footer" = "这些联系人可以通过 mesh 网络在此无线电上运行任何远程 CLI 命令，包括更改无线电设置和蓝牙 PIN、读取 WiFi 密码，以及重启或关闭无线电。应用不会在命令运行时收到通知。";
 
 /* Navigation title for remote CLI contacts picker */
 "remoteCLIContacts.title" = "远程 CLI";
@@ -322,11 +319,9 @@
 /* Description for empty state when search returns no results */
 "remoteCLIContacts.noResultsDescription" = "没有联系人匹配\"%@\"";
 
-/* TODO: translate */
-"remoteCLIContacts.noFavorites" = "No Favorites";
+"remoteCLIContacts.noFavorites" = "无收藏";
 
-/* TODO: translate */
-"remoteCLIContacts.noFavoritesDescription" = "No favorite contacts to show";
+"remoteCLIContacts.noFavoritesDescription" = "没有可显示的收藏联系人";
 
 /* Search prompt for remote CLI contacts list */
 "remoteCLIContacts.searchPrompt" = "搜索联系人";
@@ -1068,32 +1063,25 @@
 "connection.header" = "连接";
 
 /* Spoken name of the Wi-Fi link and the Wi-Fi page title */
-/* TODO: translate */
-"connection.link.wifi" = "Wi-Fi";
+"connection.link.wifi" = "WiFi";
 
 /* Header for the radio Wi-Fi group on the Wi-Fi page */
-/* TODO: translate */
-"connection.link.radioWiFi" = "Radio Wi-Fi";
+"connection.link.radioWiFi" = "无线电 WiFi";
 
 /* VoiceOver value for the link that is in use */
-/* TODO: translate */
-"connection.link.inUse" = "In use";
+"connection.link.inUse" = "使用中";
 
 /* VoiceOver value while a switch to that link is in progress */
-/* TODO: translate */
-"connection.link.switching" = "Switching";
+"connection.link.switching" = "正在切换";
 
 /* VoiceOver hint for switching to the other link */
-/* TODO: translate */
-"connection.link.switchHint" = "Switches the link to the radio";
+"connection.link.switchHint" = "将连接切换到无线电";
 
 /* VoiceOver label for the Bluetooth info button */
-/* TODO: translate */
-"connection.link.bluetoothInfo" = "Bluetooth info";
+"connection.link.bluetoothInfo" = "蓝牙信息";
 
 /* VoiceOver label for the Wi-Fi info button */
-/* TODO: translate */
-"connection.link.wifiInfo" = "Wi-Fi info";
+"connection.link.wifiInfo" = "WiFi 信息";
 
 // MARK: - WiFi Section
 
