@@ -10,7 +10,7 @@ extension ConnectionManager {
   }
 
   /// Drops a live WiFi session first. The prep reason keeps the intent to connect.
-  public func connectViaBluetooth(peripheralID: UUID) async throws {
+  public func connectViaBluetooth(peripheralID: UUID, forceFullSync: Bool = false) async throws {
     try Task.checkCancellation()
     invalidatePowerOffForConnectionChange()
     try await waitForConnectionTeardown()
@@ -25,7 +25,7 @@ extension ConnectionManager {
     if connectionState != .disconnected {
       await disconnect(reason: .bluetoothConnectPrep)
     }
-    try await connect(to: peripheralID, forceReconnect: true)
+    try await connect(to: peripheralID, forceFullSync: forceFullSync, forceReconnect: true)
   }
 
   // MARK: - BLE Diagnostics
@@ -113,19 +113,8 @@ extension ConnectionManager {
     return false
   }
 
-  /// Attempts to adopt a system-connected BLE link.
-  ///
-  /// iOS can keep a BLE link alive across app termination (notably after app updates) while state
-  /// restoration does not fire for the new process. In that case, CoreBluetooth may report the
-  /// radio as system-connected even though our state machine is `.idle`.
-  ///
-  /// Rather than treating this as "connected elsewhere" and blocking reconnect, we can adopt the
-  /// existing link by running the restoration discovery chain against the connected peripheral.
-  ///
-  /// - Parameter requireLastConnected: Health check and activate pass `true` so they
-  ///   only adopt the last radio. User-initiated connect passes `false` after
-  ///   `isOwnedSystemConnectedLink`.
-  /// - Returns: `true` if an adoption attempt was started.
+  /// Adopts a system-connected BLE link that survived app termination without state restoration.
+  /// - Returns: `true` if adoption started or a newer connection flow superseded the attempt.
   func startAdoptingLastSystemConnectedPeripheralIfAvailable(
     deviceID: UUID,
     context: String,
@@ -163,11 +152,13 @@ extension ConnectionManager {
         "blePeripheralState=\(blePeripheralState)"
     )
 
-    // Prepare session layer + UI timeout window before starting adoption.
-    await reconnectionCoordinator.handleEnteringAutoReconnect(deviceID: deviceID)
+    // A newer flow owns the link after supersession; returning true prevents fallback.
+    guard let generation = await reconnectionCoordinator.handleEnteringAutoReconnect(deviceID: deviceID),
+          reconnectionCoordinator.reconnectGeneration == generation else { return true }
 
     let started = await stateMachine.startAdoptingSystemConnectedPeripheral(deviceID)
     guard started else {
+      guard reconnectionCoordinator.reconnectGeneration == generation else { return true }
       logger.warning("[BLE] \(context): startAdoptingSystemConnectedPeripheral returned false after system-connected preflight")
       // Undo UI timeout + state changes so downstream health checks remain accurate.
       reconnectionCoordinator.cancelTimeout()

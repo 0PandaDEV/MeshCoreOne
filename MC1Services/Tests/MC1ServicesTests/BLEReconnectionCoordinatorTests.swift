@@ -95,6 +95,25 @@ struct BLEReconnectionCoordinatorTests {
 
   // MARK: - handleReconnectionComplete Tests
 
+  @Test
+  func `completion during reconnect notification prevents stale session teardown`() async {
+    let (coordinator, delegate) = createCoordinator()
+    let deviceID = UUID()
+    delegate.connectionIntent = .wantsConnection()
+    delegate.onNotifyAutoReconnectStarted = {
+      await coordinator.handleReconnectionComplete(deviceID: deviceID)
+    }
+
+    let generation = await coordinator.handleEnteringAutoReconnect(deviceID: deviceID)
+
+    #expect(generation == 1)
+    #expect(coordinator.reconnectGeneration == 2)
+    #expect(delegate.rebuildSessionCalls == [deviceID])
+    #expect(delegate.teardownSessionCallCount == 0)
+    #expect(coordinator.reconnectingDeviceID == nil)
+    coordinator.cancelTimeout()
+  }
+
   //
   // The coordinator only accepts a completion for a cycle it explicitly claimed
   // via handleEnteringAutoReconnect. Each happy-path test below claims first to
@@ -380,7 +399,7 @@ struct BLEReconnectionCoordinatorTests {
     // Complete reconnection before timeout (same device)
     await coordinator.handleReconnectionComplete(deviceID: deviceID)
 
-    // Fixed sleep: negative assertion — confirm timeout did NOT fire
+    // Wait past the timeout to verify it did not fire.
     try await Task.sleep(for: .milliseconds(250))
 
     // Should be .connecting from reconnection complete, not .disconnected from timeout
@@ -680,6 +699,7 @@ private final class MockReconnectionDelegate: BLEReconnectionDelegate {
   var onIsTransportAutoReconnecting: (@MainActor () async -> Void)?
   var onHandleReconnectionFailure: (@MainActor () async -> Void)?
   var onRebuildSession: (@MainActor () async -> Void)?
+  var onNotifyAutoReconnectStarted: (@MainActor () async -> Void)?
 
   func setConnectionState(_ state: DeviceConnectionState) {
     connectionState = state
@@ -699,6 +719,7 @@ private final class MockReconnectionDelegate: BLEReconnectionDelegate {
   func notifyAutoReconnectStarted() async {
     notifyAutoReconnectStartedCallCount += 1
     callOrder.append("notifyAutoReconnectStarted")
+    await onNotifyAutoReconnectStarted?()
   }
 
   func rebuildSession(deviceID: UUID) async throws {

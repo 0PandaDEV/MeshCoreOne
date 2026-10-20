@@ -231,6 +231,14 @@
 /* Fallback connection type description */
 "deviceSelection.bluetooth" = "Bluetooth";
 
+/* TODO: translate */
+/* Accessibility label for the connection menu on a radio with Bluetooth and Wi-Fi */
+"deviceSelection.changeConnection" = "Change connection";
+
+/* TODO: translate */
+/* Menu title for the saved Wi-Fi link */
+"deviceSelection.wifi" = "Wi-Fi";
+
 // MARK: - Location Picker View
 
 /* Navigation title for location picker */

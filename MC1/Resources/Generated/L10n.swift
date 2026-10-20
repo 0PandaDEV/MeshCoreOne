@@ -4944,6 +4944,8 @@ public enum L10n {
     public enum DeviceSelection {
       /// Fallback connection type description
       public static let bluetooth = L10n.tr("Settings", "deviceSelection.bluetooth", fallback: "Bluetooth")
+      /// Accessibility label for the connection menu on a radio with Bluetooth and Wi-Fi
+      public static let changeConnection = L10n.tr("Settings", "deviceSelection.changeConnection", fallback: "Change connection")
       /// Label shown when device is connected to another app
       public static let connectedElsewhere = L10n.tr("Settings", "deviceSelection.connectedElsewhere", fallback: "Connected elsewhere")
       /// Button to connect via WiFi
@@ -4982,6 +4984,8 @@ public enum L10n {
       public static let setupTitleGeneric = L10n.tr("Settings", "deviceSelection.setupTitleGeneric", fallback: "Set Up")
       /// Navigation title for device selection
       public static let title = L10n.tr("Settings", "deviceSelection.title", fallback: "Connect Device")
+      /// Menu title for the saved Wi-Fi link
+      public static let wifi = L10n.tr("Settings", "deviceSelection.wifi", fallback: "Wi-Fi")
       public enum Accessibility {
         /// Accessibility hint for a device connected to another app
         public static let connectedElsewhereHint = L10n.tr("Settings", "deviceSelection.accessibility.connectedElsewhereHint", fallback: "This device is in use by another app. Connecting may cause communication issues.")

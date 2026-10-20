@@ -42,24 +42,6 @@ extension AppState {
     }
   }
 
-  func handleDeviceSelectionSheetDismissed() {
-    if connectionUI.queuedDeviceScanAfterSelectionDismiss {
-      connectionUI.queuedDeviceScanAfterSelectionDismiss = false
-      connectionUI.queuedSystemPairingSetup = nil
-      connectionManager.isPairingFlowActive = true
-      Task {
-        await connectionManager.stopBLEScanning()
-        startDeviceScan()
-      }
-      return
-    }
-    guard let queued = connectionUI.queuedSystemPairingSetup else { return }
-    connectionUI.queuedSystemPairingSetup = nil
-    guard connectionUI.pendingSystemPairingSetup == nil else { return }
-    connectionManager.isPairingFlowActive = true
-    connectionUI.pendingSystemPairingSetup = queued
-  }
-
   func cancelSystemPairingSetup() {
     connectionUI.pendingSystemPairingSetup = nil
     connectionUI.queuedSystemPairingSetup = nil
@@ -291,9 +273,9 @@ extension AppState {
     await wireServicesIfConnected()
   }
 
-  func connectViaBluetooth(peripheralID: UUID) async throws {
+  func connectViaBluetooth(peripheralID: UUID, forceFullSync: Bool = false) async throws {
     connectionUI.hideDisconnectedPill()
-    try await connectionManager.connectViaBluetooth(peripheralID: peripheralID)
+    try await connectionManager.connectViaBluetooth(peripheralID: peripheralID, forceFullSync: forceFullSync)
     await wireServicesIfConnected()
   }
 

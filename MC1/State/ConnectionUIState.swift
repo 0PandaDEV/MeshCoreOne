@@ -107,12 +107,35 @@ final class ConnectionUIState {
   /// ASK leftovers to present after `DeviceSelectionSheet` has left the hierarchy.
   var queuedSystemPairingSetup: SystemPairingSetupPrompt?
 
+  /// Saved connection to start after device selection leaves the hierarchy.
+  var queuedSavedDeviceConnection: (device: DeviceDTO, target: SavedDeviceConnectTarget)?
+
   /// When true, dismissing device selection starts a fresh scan instead of presenting queued setup.
   var queuedDeviceScanAfterSelectionDismiss = false
 
   /// When false, the app cannot drop the OS Bluetooth bond, so auth-failure
   /// copy tells the user to forget the radio in System Settings.
   var hasSystemPairingRegistry = true
+
+  // MARK: - Device Selection Handoff
+
+  func queueSavedDeviceConnection(_ device: DeviceDTO, target: SavedDeviceConnectTarget) {
+    queuedDeviceScanAfterSelectionDismiss = false
+    queuedSystemPairingSetup = nil
+    queuedSavedDeviceConnection = (device, target)
+  }
+
+  func queueDeviceScan() {
+    queuedSavedDeviceConnection = nil
+    queuedSystemPairingSetup = nil
+    queuedDeviceScanAfterSelectionDismiss = true
+  }
+
+  func queueSystemPairingSetup(_ prompt: SystemPairingSetupPrompt) {
+    queuedSavedDeviceConnection = nil
+    queuedDeviceScanAfterSelectionDismiss = false
+    queuedSystemPairingSetup = prompt
+  }
 
   // MARK: - Ready Toast Methods
 
