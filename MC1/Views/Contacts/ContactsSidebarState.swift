@@ -137,6 +137,11 @@ final class ContactsSidebarState {
     scrollPositionID = id
   }
 
+  func clearScrollPosition(rendererRevision: Int) {
+    guard !isEnded, self.rendererRevision == rendererRevision else { return }
+    scrollPositionID = nil
+  }
+
   func end() {
     isEnded = true
     loadTask?.cancel()

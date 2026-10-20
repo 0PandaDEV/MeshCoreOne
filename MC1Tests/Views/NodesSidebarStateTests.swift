@@ -37,6 +37,22 @@ struct NodesSidebarStateTests {
   }
 
   @Test
+  func `top clearing accepts only the current active renderer`() {
+    let state = ContactsSidebarState()
+    let visibleID = UUID()
+    state.scrollPositionID = visibleID
+    state.prepareRenderer(revision: 1)
+    state.clearScrollPosition(rendererRevision: 0)
+    #expect(state.scrollPositionID == visibleID)
+    state.clearScrollPosition(rendererRevision: 1)
+    #expect(state.scrollPositionID == nil)
+    state.updateScrollPosition(visibleID, rendererRevision: 1)
+    state.end()
+    state.clearScrollPosition(rendererRevision: 1)
+    #expect(state.scrollPositionID == visibleID)
+  }
+
+  @Test
   func `Discovery ignores outgoing renderer and ended entry updates`() {
     let state = DiscoveryState()
     defer { state.end() }

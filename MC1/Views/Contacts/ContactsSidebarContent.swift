@@ -36,6 +36,12 @@ struct ContactsSidebarContent: View {
         state.scrollPositionID = nil
       }
     )
+    .onScrollGeometryChange(for: Bool.self) { geometry in
+      geometry.contentOffset.y <= -geometry.contentInsets.top
+    } action: { wasAtTop, isAtTop in
+      guard !wasAtTop, isAtTop, isMounted else { return }
+      state.clearScrollPosition(rendererRevision: rendererRevision)
+    }
     .navigationTitle(L10n.Contacts.Contacts.List.title)
     .navigationDestination(for: ContactRoute.self) { route in
       switch route {
