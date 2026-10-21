@@ -372,14 +372,8 @@ public extension MeshCoreSession {
 
   /// Adds a contact to the device's contact list.
   ///
-  /// Encodes via ``PacketBuilder/updateContact(_:)``, which forwards the raw
-  /// ``MeshContact/typeRawValue`` byte and uses the saturating coordinate/timestamp
-  /// encoders, so a contact carrying a type byte not modeled by ``ContactType``
-  /// (e.g. from an imported config) reaches the device verbatim instead of being
-  /// coerced. The 147-byte frame is wire-equivalent to the prior 144-byte frame:
-  /// firmware applies the gps_lat/gps_lon coordinates in `[136, 144)` when the
-  /// payload length is at least 144, and intentionally omits last_mod in `[144, 148)`
-  /// (147 is below the 148-byte threshold), so the device restamps it from its RTC.
+  /// Preserves the raw contact type in a 144-byte frame that includes coordinates.
+  /// Omits last_mod so the radio timestamps the change with its own clock.
   ///
   /// - Parameter contact: The contact to add.
   /// - Throws: ``MeshCoreError/timeout`` or ``MeshCoreError/deviceError(code:)`` on failure.

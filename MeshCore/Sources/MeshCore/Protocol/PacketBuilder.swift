@@ -616,13 +616,13 @@ public enum PacketBuilder: Sendable {
 
   // MARK: - Additional Commands (from Python reference)
 
-  /// Builds an updateContact command to sync a full contact record to firmware.
+  /// Builds a contact update command with coordinates and no modification timestamp.
   ///
   /// - Parameter contact: The contact to update.
-  /// - Returns: The command packet data (147 bytes).
+  /// - Returns: The command packet data (144 bytes).
   ///
   /// ### Binary Format
-  /// (Per firmware MyMesh.cpp updateContactFromFrame and Python meshcore_py)
+  ///
   /// - Offset 0 (1 byte): Command code `0x09`
   /// - Offset 1 (32 bytes): Public key
   /// - Offset 33 (1 byte): Type
@@ -633,32 +633,25 @@ public enum PacketBuilder: Sendable {
   /// - Offset 132 (4 bytes): Last advert timestamp (UInt32 LE)
   /// - Offset 136 (4 bytes): Latitude (Int32 LE, scaled by 1,000,000)
   /// - Offset 140 (4 bytes): Longitude (Int32 LE, scaled by 1,000,000)
-  /// - Offset 144 (3 bytes): Reserved/padding (zeros)
-  ///
-  /// Total: 147 bytes
   public static func updateContact(_ contact: MeshContact) -> Data {
-    var data = Data([CommandCode.updateContact.rawValue]) // 1 byte
-    data.append(contact.publicKey.paddedOrTruncated(to: 32)) // 32 bytes
-    data.append(contact.typeRawValue) // 1 byte
-    data.append(contact.flags.rawValue) // 1 byte
-    data.append(contact.outPathLength) // 1 byte
-    data.append(contact.outPath.paddedOrTruncated(to: 64)) // 64 bytes
-    data.append(contact.advertisedName.utf8PaddedOrTruncated(to: 32)) // 32 bytes
+    var data = Data([CommandCode.updateContact.rawValue])
+    data.append(contact.publicKey.paddedOrTruncated(to: 32))
+    data.append(contact.typeRawValue)
+    data.append(contact.flags.rawValue)
+    data.append(contact.outPathLength)
+    data.append(contact.outPath.paddedOrTruncated(to: 64))
+    data.append(contact.advertisedName.utf8PaddedOrTruncated(to: 32))
 
     let timestamp = epochSeconds32(contact.lastAdvertisement)
-    data.appendLittleEndian(timestamp) // 4 bytes
+    data.appendLittleEndian(timestamp)
 
     let lat = scaledCoordinate(contact.latitude, in: latitudeRange)
-    data.appendLittleEndian(lat) // 4 bytes
+    data.appendLittleEndian(lat)
 
     let lon = scaledCoordinate(contact.longitude, in: longitudeRange)
-    data.appendLittleEndian(lon) // 4 bytes
+    data.appendLittleEndian(lon)
 
-    // Subtotal so far: 1 + 32 + 1 + 1 + 1 + 64 + 32 + 4 + 4 + 4 = 144 bytes.
-    // Firmware expects a 147-byte frame, so pad with 3 reserved bytes.
-    data.append(contentsOf: [0x00, 0x00, 0x00]) // 3 bytes
-
-    return data // 144 + 3 = 147 bytes
+    return data
   }
 
   /// Builds a setTuning command to adjust low-level radio timing.
