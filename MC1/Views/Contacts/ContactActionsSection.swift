@@ -78,13 +78,6 @@ struct ContactActionsSection: View {
         .radioDisabled(for: appState.connectionState)
         .modifier(ContactDetailRowPosition(section: .actions, onPosition: showsSendMessage ? nil : onRowPosition))
 
-        if currentContact.showsRemoteCLI(localRadioSupportsCLI: appState.connectedDevice?.supportsRadioCLI == true) {
-          Button(action: onShowRemoteCLI) {
-            Label(L10n.Contacts.Contacts.Detail.remoteCLI, systemImage: "terminal")
-          }
-          .radioDisabled(for: appState.connectionState)
-        }
-
         ContactSavedHistoryLink(
           route: ContactRoute.TelemetryHistory(
             publicKey: currentContact.publicKey,
@@ -93,6 +86,13 @@ struct ContactActionsSection: View {
           ),
           nodesRoute: historyRoute
         )
+
+        if currentContact.showsRemoteCLI(localRadioSupportsCLI: appState.connectedDevice?.supportsRadioCLI == true) {
+          Button(action: onShowRemoteCLI) {
+            Label(L10n.Contacts.Contacts.Detail.remoteCLI, systemImage: "terminal")
+          }
+          .radioDisabled(for: appState.connectionState)
+        }
       }
 
       Button(action: onShareQR) {
