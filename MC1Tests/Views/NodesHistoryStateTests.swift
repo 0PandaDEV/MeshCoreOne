@@ -151,6 +151,24 @@ struct NodesHistoryStateTests {
   }
 
   @Test
+  func `first user camera movement is captured without a region command`() {
+    let coordinator = MC1MapView.Coordinator()
+    var captured: MapViewportSnapshot?
+    coordinator.viewportSnapshotProvider = { nil }
+    coordinator.onViewportCapture = { captured = $0 }
+    coordinator.mapView(coordinator.mapView, regionDidChangeWith: [], animated: false)
+    #expect(captured == nil)
+    coordinator.mapView(coordinator.mapView, regionDidChangeWith: .gesturePan, animated: false)
+    #expect(captured == nil)
+
+    coordinator.isStyleLoaded = true
+    coordinator.mapView(coordinator.mapView, regionDidChangeWith: .gesturePan, animated: false)
+    #expect(captured != nil)
+    #expect(captured?.appliedCameraCommandVersion == 0)
+    coordinator.pendingRegionTask?.cancel()
+  }
+
+  @Test
   func `Retained viewport restores only after style readiness and consumes prior region command`() {
     let coordinator = MC1MapView.Coordinator()
     let saved = MapViewportSnapshot(

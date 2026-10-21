@@ -152,11 +152,15 @@ final class LineOfSightViewModel {
   private(set) var cameraRegionVersion = 0
   private(set) var hasAppliedInitialCameraFit = false
   private var hasUserAdjustedCamera = false
+  @ObservationIgnored private(set) var viewport: MapViewportSnapshot?
+  @ObservationIgnored private var mapRenderers: [UUID] = []
+  @ObservationIgnored private var viewportRendererID: UUID?
 
   // MARK: - RF Parameters
 
   /// Operating frequency in MHz - call `commitFrequencyChange()` after editing
   var frequencyMHz: Double = 906.0
+  var frequencyInputText: String?
   private var hasSeededFrequency = false
 
   /// Refraction k-factor - auto-triggers re-analysis on change
@@ -517,10 +521,23 @@ final class LineOfSightViewModel {
     setCameraRegion(fitting: coordinates)
   }
 
-  /// Bumps the camera version so a recreated map reapplies the retained region.
-  func restoreCameraAfterMapRecreation() {
-    guard cameraRegion != nil else { return }
-    cameraRegionVersion += 1
+  func mountMapRenderer(_ id: UUID) {
+    mapRenderers.removeAll { $0 == id }
+    mapRenderers.append(id)
+  }
+
+  func unmountMapRenderer(_ id: UUID) {
+    mapRenderers.removeAll { $0 == id }
+  }
+
+  func viewportReady(renderer id: UUID) {
+    guard mapRenderers.last == id else { return }
+    viewportRendererID = id
+  }
+
+  func captureViewport(_ snapshot: MapViewportSnapshot, renderer id: UUID) {
+    guard viewportRendererID == id else { return }
+    viewport = snapshot
   }
 
   private func setCameraRegion(fitting coordinates: [CLLocationCoordinate2D]) {

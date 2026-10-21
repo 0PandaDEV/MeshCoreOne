@@ -2184,6 +2184,19 @@ struct AnalysisTaskHygieneTests {
 @Suite("Line of Sight workspace configuration")
 @MainActor
 struct LineOfSightWorkspaceConfigurationTests {
+  @Test(arguments: ["916.", ""])
+  func `pending frequency text survives late device configuration`(text: String) {
+    let viewModel = LineOfSightViewModel(elevationService: MockElevationService())
+    viewModel.configure(dataStore: { nil }, radioID: { nil }, deviceFrequencyKHz: nil)
+    viewModel.frequencyInputText = text
+
+    viewModel.configure(dataStore: { nil }, radioID: { nil }, deviceFrequencyKHz: 915_000)
+    viewModel.configure(dataStore: { nil }, radioID: { nil }, deviceFrequencyKHz: 433_000)
+
+    #expect(viewModel.frequencyInputText == text)
+    #expect(viewModel.frequencyMHz == 915)
+  }
+
   @Test
   func `device frequency is seeded once and later edits survive reconfigure`() {
     let viewModel = LineOfSightViewModel(elevationService: MockElevationService())
@@ -2266,18 +2279,27 @@ struct LineOfSightWorkspaceConfigurationTests {
   }
 
   @Test
-  func `recreated map reapplies the retained camera region`() {
+  func `replacement map retains exact viewport and rejects stale captures`() {
     let viewModel = LineOfSightViewModel(elevationService: MockElevationService())
-    let region = MKCoordinateRegion(
-      center: sanFrancisco,
-      span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+    let first = UUID()
+    let replacement = UUID()
+    let original = MapViewportSnapshot(
+      latitude: 37.8, longitude: -122.3, zoom: 12, bearing: 40, pitch: 30
     )
-    viewModel.setCameraRegion(region)
-    let version = viewModel.cameraRegionVersion
+    viewModel.mountMapRenderer(first)
+    viewModel.viewportReady(renderer: first)
+    viewModel.captureViewport(original, renderer: first)
+    viewModel.mountMapRenderer(replacement)
+    viewModel.viewportReady(renderer: first)
+    #expect(viewModel.viewport == original)
 
-    viewModel.restoreCameraAfterMapRecreation()
-    #expect(viewModel.cameraRegion?.center.latitude == sanFrancisco.latitude)
-    #expect(viewModel.cameraRegionVersion == version + 1)
+    viewModel.viewportReady(renderer: replacement)
+    let moved = MapViewportSnapshot(latitude: 38, longitude: -122, zoom: 13, bearing: 50, pitch: 20)
+    viewModel.captureViewport(moved, renderer: replacement)
+    viewModel.captureViewport(original, renderer: first)
+    viewModel.unmountMapRenderer(first)
+    #expect(viewModel.viewport == moved)
+    #expect(viewModel.cameraRegionVersion == 0)
   }
 
   @Test
@@ -2335,30 +2357,6 @@ struct LineOfSightWorkspaceConfigurationTests {
     viewModel.applyInitialRepeaterCameraFitIfNeeded()
 
     #expect(viewModel.cameraRegionVersion > version)
-    #expect(viewModel.hasAppliedInitialCameraFit)
-  }
-
-  @Test
-  func `restore with no camera region leaves the version`() async {
-    let radioID = UUID()
-    let mockDataStore = MockPersistenceStore()
-    let viewModel = LineOfSightViewModel(elevationService: MockElevationService())
-    viewModel.restoreCameraAfterMapRecreation()
-    #expect(viewModel.cameraRegionVersion == 0)
-
-    let repeater = createTestContact(
-      name: "Repeater 1",
-      latitude: sanFrancisco.latitude,
-      longitude: sanFrancisco.longitude,
-      type: .repeater,
-      radioID: radioID
-    )
-    await mockDataStore.addContact(repeater)
-    viewModel.configure(dataStore: { mockDataStore }, radioID: { radioID }, deviceFrequencyKHz: nil)
-    await viewModel.loadRepeaters()
-    viewModel.applyInitialRepeaterCameraFitIfNeeded()
-
-    #expect(viewModel.cameraRegionVersion > 0)
     #expect(viewModel.hasAppliedInitialCameraFit)
   }
 

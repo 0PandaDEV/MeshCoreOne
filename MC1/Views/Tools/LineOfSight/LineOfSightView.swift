@@ -246,15 +246,11 @@ struct LineOfSightView: View {
     guard size.width > 0, size.height > 0 else { return }
     workspaceSize = size
     let newMode = LineOfSightLayoutMode.preferred(in: size)
-    let modeChanged = newMode != layoutMode
     layoutMode = newMode
     if newMode == .paired {
       showAnalysisSheet = false
     } else if !isNavigatingBack {
       showAnalysisSheet = true
-    }
-    if modeChanged {
-      viewModel.restoreCameraAfterMapRecreation()
     }
   }
 

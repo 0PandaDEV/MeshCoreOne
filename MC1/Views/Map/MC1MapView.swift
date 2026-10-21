@@ -483,10 +483,13 @@ extension MC1MapView {
 
     func mapView(_ mapView: MLNMapView, regionDidChangeWith reason: MLNCameraChangeReason, animated: Bool) {
       isUserInteracting = false
+      let isUserGesture = !reason.isDisjoint(with: Self.userGestureReasons)
+      if isUserGesture, viewportSnapshotProvider != nil, isStyleLoaded {
+        hasInitializedViewport = true
+      }
       captureViewport()
       guard !isUpdatingFromSwiftUI else { return }
 
-      let isUserGesture = !reason.isDisjoint(with: Self.userGestureReasons)
       guard isUserGesture else { return }
 
       // Debounce: cancel previous pending write-back

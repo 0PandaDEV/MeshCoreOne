@@ -22,6 +22,7 @@ struct LineOfSightMapView: View {
   @AppStorage(AppStorageKey.mapNorthLocked.rawValue) private var isNorthLocked = AppStorageKey.defaultMapNorthLocked
 
   @State private var isCenteredOnUser = false
+  @State private var rendererID = UUID()
 
   var body: some View {
     ZStack {
@@ -39,6 +40,9 @@ struct LineOfSightMapView: View {
         cameraRegion: $viewModel.cameraRegion,
         cameraRegionVersion: viewModel.cameraRegionVersion,
         cameraBottomSheetFraction: cameraBottomSheetFraction,
+        viewportSnapshotProvider: { viewModel.viewport },
+        onViewportReady: { viewModel.viewportReady(renderer: rendererID) },
+        onViewportCapture: { viewModel.captureViewport($0, renderer: rendererID) },
         onPointTap: { point, _ in
           if let repeater = viewModel.repeatersWithLocation.first(where: { $0.id == point.id }) {
             onRepeaterTap(repeater)
@@ -83,7 +87,11 @@ struct LineOfSightMapView: View {
       .padding(.bottom, mapOverlayBottomPadding)
     }
     .onAppear {
+      viewModel.mountMapRenderer(rendererID)
       viewModel.showLabels = showLabels
+    }
+    .onDisappear {
+      viewModel.unmountMapRenderer(rendererID)
     }
     .onChange(of: showLabels) { _, newValue in
       viewModel.showLabels = newValue
