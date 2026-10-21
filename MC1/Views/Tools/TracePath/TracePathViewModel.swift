@@ -930,6 +930,7 @@ final class TracePathViewModel {
 
       currentTraceIndex = traceIndex
       await executeSingleTrace(ticket: ticket)
+      guard isCurrent(ticket) else { return }
 
       if let latestResult = completedResults.last, latestResult.success {
         if successCount == 1 {

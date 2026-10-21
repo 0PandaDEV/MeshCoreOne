@@ -529,15 +529,19 @@ struct TracePathExecutionCancellationTests {
     #expect(viewModel.isRunning)
   }
 
-  @Test
-  func `visible result-sheet dismiss cancels the remainder and does not present again`() async throws {
+  @Test(arguments: [false, true])
+  func `cancelling an acknowledged batch wait does not republish its result`(dismissSheet: Bool) async throws {
     let send = ControllableTraceSend()
     let viewModel = makeViewModel(send: send)
     viewModel.responseTimeoutSecondsForTesting = 30
     viewModel.batchEnabled = true
     viewModel.batchSize = 3
     viewModel.setWorkspaceVisible(true)
-    viewModel.startTrace()
+    let batchTask = Task { await viewModel.runBatchTrace() }
+    defer {
+      viewModel.cancelExecution()
+      batchTask.cancel()
+    }
 
     try await waitUntil(timeout: .seconds(1), "first send should start") {
       send.sendCount == 1
@@ -551,14 +555,33 @@ struct TracePathExecutionCancellationTests {
     try await waitUntil(timeout: .seconds(2), "second send should start") {
       send.sendCount == 2
     }
+    send.completeOldest()
+    try await waitUntil(timeout: .seconds(1), "second member should be waiting for its response") {
+      viewModel.hasActiveTimeoutTaskForTesting
+    }
+    let cancelledTag = try #require(viewModel.pendingTagForTesting)
+    let resultID = try #require(viewModel.resultID)
 
     let shown = viewModel.consumeStoredResultForPresentation()
     #expect(shown != nil)
-    viewModel.noteResultSheetDismissed()
+    if dismissSheet {
+      viewModel.noteResultSheetDismissed()
+    } else {
+      viewModel.cancelExecution()
+    }
 
     #expect(viewModel.isRunning == false)
     #expect(viewModel.consumeStoredResultForPresentation() == nil)
-    try await Task.sleep(for: .milliseconds(40))
+    await batchTask.value
+    #expect(viewModel.resultID == resultID)
+    #expect(viewModel.consumeStoredResultForPresentation() == nil)
+    #expect(viewModel.completedResults.count == 1)
+    #expect(viewModel.pendingTagForTesting == nil)
     #expect(send.sendCount == 2)
+
+    viewModel.handleTraceResponse(traceInfo(tag: cancelledTag), radioID: nil)
+    #expect(viewModel.resultID == resultID)
+    #expect(viewModel.completedResults.count == 1)
+    #expect(viewModel.consumeStoredResultForPresentation() == nil)
   }
 }
