@@ -1029,7 +1029,7 @@ private struct ChatNativeSplitHarness: View {
         composingText: $model.composingText,
         focusRequest: $model.inputFocusRequest,
         nodeNameByteCount: 0,
-        onSend: { _ in },
+        onSend: { _ in true },
         onWillSend: { model.scrollToBottomRequest += 1 }
       )
       .background {

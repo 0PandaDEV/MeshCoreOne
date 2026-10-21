@@ -140,12 +140,15 @@ extension ChatViewModel {
 
   // MARK: - Channel Actions
 
-  /// Send a channel message optimistically — shows immediately, sends in background.
-  func sendChannelMessage(text: String) async {
+  /// Creates a pending channel Message for the service-owned send queue.
+  /// Missing connection context returns false so the composer can restore the Draft.
+  @discardableResult
+  func sendChannelMessage(text: String) async -> Bool {
+    guard !text.isEmpty else { return true }
     guard let channel = currentChannel,
-          let messageService,
-          !text.isEmpty else {
-      return
+          let messageService else {
+      sendErrorMessage = L10n.Chats.Chats.Alert.UnableToSend.message
+      return false
     }
 
     errorMessage = nil
@@ -161,7 +164,7 @@ extension ChatViewModel {
       schedulePrefetchForMessage(message, isChannelMessage: true)
     } catch {
       errorMessage = error.userFacingMessage
-      return
+      return true
     }
 
     let envelope = ChannelMessageEnvelope(
@@ -177,6 +180,7 @@ extension ChatViewModel {
     } catch {
       await recordLocalEnqueueFailure(messageID: message.id, error: error)
     }
+    return true
   }
 
   /// Retry sending a failed channel message in place. The drain stamps a

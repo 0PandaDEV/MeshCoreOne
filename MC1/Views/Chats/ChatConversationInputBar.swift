@@ -7,7 +7,7 @@ struct ChatConversationInputBar: View {
   @Binding var composingText: String
   @Binding var focusRequest: Int
   let nodeNameByteCount: Int
-  let onSend: (String) async -> Void
+  let onSend: (String) async -> Bool
   let onWillSend: () -> Void
 
   var body: some View {
@@ -19,11 +19,9 @@ struct ChatConversationInputBar: View {
         placeholder: L10n.Chats.Chats.Input.Placeholder.directMessage,
         maxBytes: ProtocolLimits.maxDirectMessageLength,
         isEncrypted: true,
-        leading: { ChatShareMenu(onInsert: insertShared) }
-      ) { text in
-        onWillSend()
-        Task { await onSend(text) }
-      }
+        leading: { ChatShareMenu(onInsert: insertShared) },
+        onSend: send
+      )
 
     case let .channel(channel):
       let maxBytes = ProtocolLimits.maxChannelMessageLength(
@@ -37,11 +35,19 @@ struct ChatConversationInputBar: View {
           : L10n.Chats.Chats.Channel.typePrivate,
         maxBytes: maxBytes,
         isEncrypted: channel.isEncryptedChannel,
-        leading: { ChatShareMenu(onInsert: insertShared) }
-      ) { text in
-        onWillSend()
-        Task { await onSend(text) }
-      }
+        leading: { ChatShareMenu(onInsert: insertShared) },
+        onSend: send
+      )
+    }
+  }
+
+  private func send(_ text: String) {
+    let draft = $composingText
+    onWillSend()
+    Task {
+      guard await !onSend(text) else { return }
+      let newerText = draft.wrappedValue
+      draft.wrappedValue = newerText.isEmpty ? text : text + "\n" + newerText
     }
   }
 

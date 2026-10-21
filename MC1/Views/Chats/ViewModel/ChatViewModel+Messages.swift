@@ -146,13 +146,15 @@ extension ChatViewModel {
 
   // MARK: - Sending
 
-  /// Send a message to the current contact
-  /// This is non-blocking - message is created and shown immediately, sent in background
-  func sendMessage(text: String) async {
+  /// Creates a pending DM for the service-owned send queue.
+  /// Missing connection context returns false so the composer can restore the Draft.
+  @discardableResult
+  func sendMessage(text: String) async -> Bool {
+    guard !text.isEmpty else { return true }
     guard let contact = currentContact,
-          let messageService,
-          !text.isEmpty else {
-      return
+          let messageService else {
+      sendErrorMessage = L10n.Chats.Chats.Alert.UnableToSend.message
+      return false
     }
 
     errorMessage = nil
@@ -165,7 +167,7 @@ extension ChatViewModel {
       syncCoordinator?.notifyConversationsChanged()
     } catch {
       errorMessage = error.userFacingMessage
-      return
+      return true
     }
 
     let envelope = DirectMessageEnvelope(messageID: message.id, contactID: contact.id)
@@ -174,6 +176,7 @@ extension ChatViewModel {
     } catch {
       await recordLocalEnqueueFailure(messageID: message.id, error: error)
     }
+    return true
   }
 }
 
