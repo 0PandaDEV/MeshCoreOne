@@ -52,6 +52,7 @@ struct ContactDetailContent: View {
           historyRoute: historyRoute,
           onRowPosition: recordRowPosition
         )
+        .themedRowBackground(theme)
 
         ContactDetailInfoSection(
           state: state, rendererID: rendererID, rendererRevision: rendererRevision,
