@@ -1359,6 +1359,8 @@ public enum L10n {
         public static let publicKey = L10n.tr("Contacts", "contacts.detail.publicKey", fallback: "Public Key")
         /// Location: ContactDetailView.swift - Purpose: Remote CLI button
         public static let remoteCLI = L10n.tr("Contacts", "contacts.detail.remoteCLI", fallback: "Remote CLI")
+        /// Location: ContactActionsSection.swift - Purpose: Footer under Remote CLI on a companion contact
+        public static let remoteCLIFooter = L10n.tr("Contacts", "contacts.detail.remoteCLIFooter", fallback: "Commands run only if this contact allowed Remote CLI. Otherwise the command arrives as a direct message.")
         /// Location: ContactDetailView.swift - Purpose: Remove from favorites button
         public static let removeFromFavorites = L10n.tr("Contacts", "contacts.detail.removeFromFavorites", fallback: "Remove from Favorites")
         /// Location: ContactDetailView.swift - Purpose: Reset path button

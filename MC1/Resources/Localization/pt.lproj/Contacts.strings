@@ -234,6 +234,9 @@
 /* Location: ContactDetailView.swift - Purpose: Remote CLI button */
 "contacts.detail.remoteCLI" = "CLI remota";
 
+/* Location: ContactActionsSection.swift - Purpose: Footer under Remote CLI on a companion contact */
+"contacts.detail.remoteCLIFooter" = "Os comandos só são executados se este contacto tiver permitido o acesso à CLI remota. Caso contrário, o comando chega como uma mensagem direta.";
+
 /* Location: ContactDetailView.swift - Purpose: Add to favorites button */
 "contacts.detail.addToFavorites" = "Adicionar aos favoritos";
 
