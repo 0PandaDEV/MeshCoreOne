@@ -2,6 +2,8 @@ import Foundation
 import MeshCore
 
 extension RemoteNodeService {
+  private static let cliIgnoredSpace: UInt8 = 0x20
+
   // MARK: - CLI Commands
 
   /// Send a CLI command to a remote node and wait for its response (admin only).
@@ -150,6 +152,7 @@ extension RemoteNodeService {
     requestID: UUID,
     textType: MeshCore.TextType
   ) async throws -> String {
+    let command = String(decoding: command.utf8.drop(while: { $0 == Self.cliIgnoredSpace }), as: UTF8.self)
     let wirePrefix = makeCLIWirePrefix()
     return try await withTaskCancellationHandler {
       try await withCheckedThrowingContinuation { continuation in

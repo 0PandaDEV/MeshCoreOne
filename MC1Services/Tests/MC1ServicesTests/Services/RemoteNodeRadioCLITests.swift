@@ -73,6 +73,35 @@ struct RemoteNodeRadioCLITests {
     _ = try? await commandTask.value
   }
 
+  @Test(arguments: [
+    ("  get name", "get name"),
+    ("  set name Peer  ", "set name Peer  "),
+  ])
+  func `removes only leading ASCII spaces before adding the wire prefix`(
+    command: String,
+    expectedBody: String
+  ) async throws {
+    let harness = try await makeHarness()
+
+    let commandTask = Task {
+      try await harness.service.sendRadioCLICommand(
+        to: Self.publicKey,
+        command: command,
+        timeout: .seconds(2)
+      )
+    }
+    try await waitUntil("command was never sent") {
+      await harness.session.sendCommandInvocations.count == 1
+    }
+
+    let sent = try #require(await harness.session.sendCommandInvocations.last)
+    let split = try #require(CLIResponse.splitEchoedPrefix(sent.command))
+    #expect(split.body == expectedBody)
+
+    await yieldReply(split.prefix + "OK", to: harness.session)
+    _ = try await commandTask.value
+  }
+
   @Test
   func `resolves on the echoed prefix and strips it`() async throws {
     let harness = try await makeHarness()

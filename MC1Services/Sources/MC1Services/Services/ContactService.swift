@@ -65,8 +65,8 @@ public struct ContactSyncResult: Sendable {
 public actor ContactService {
   // MARK: - Properties
 
-  private let session: any MeshCoreSessionProtocol
-  private let dataStore: any PersistenceStoreProtocol
+  let session: any MeshCoreSessionProtocol
+  let dataStore: any PersistenceStoreProtocol
   private let logger = PersistentLogger(subsystem: "com.mc1", category: "ContactService")
 
   static let deletionUpdateBatchSize = 20
@@ -145,7 +145,7 @@ public actor ContactService {
 
       // Persist every received contact in a single transaction rather than one
       // commit per contact; the per-item save was redundant overhead on every sync.
-      let frames = meshContacts.map { $0.toContactFrame() }
+      let frames = try await reconcileBlockedRemoteCLI(radioID: radioID, contacts: meshContacts)
       let receivedCount = try await dataStore.batchSaveContacts(radioID: radioID, from: frames)
 
       let lastTimestamp = meshContacts
