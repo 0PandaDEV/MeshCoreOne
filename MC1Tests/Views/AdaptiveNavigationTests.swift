@@ -28,6 +28,8 @@ struct AdaptiveNavigationTests {
   func `collapsed compact detail hides tabs`() {
     let visibility = SectionSplitPresentation.tabBarVisibility(
       sizeClass: .compact,
+      columnVisibility: .all,
+      tabBarPlacement: .bottomBar,
       preferredColumn: .detail,
       hasSelection: true
     )
@@ -38,20 +40,30 @@ struct AdaptiveNavigationTests {
   func `compact sidebar leaves the tab bar automatic`() {
     let visibility = SectionSplitPresentation.tabBarVisibility(
       sizeClass: .compact,
+      columnVisibility: .all,
+      tabBarPlacement: .bottomBar,
       preferredColumn: .sidebar,
       hasSelection: false
     )
     #expect(visibility == .automatic)
   }
 
-  @Test
-  func `regular width leaves the tab bar automatic with a selection`() {
-    let visibility = SectionSplitPresentation.tabBarVisibility(
-      sizeClass: .regular,
-      preferredColumn: .detail,
-      hasSelection: true
-    )
-    #expect(visibility == .automatic)
+  @Test(arguments: [NavigationSplitViewVisibility.all, .detailOnly], [false, true])
+  func `regular chat hides only bottom tabs when the selected detail is alone`(
+    columnVisibility: NavigationSplitViewVisibility,
+    hasSelection: Bool
+  ) {
+    for placement: TabBarPlacement? in [.bottomBar, .topBar, .sidebar, nil] {
+      let visibility = SectionSplitPresentation.tabBarVisibility(
+        sizeClass: .regular,
+        columnVisibility: columnVisibility,
+        tabBarPlacement: placement,
+        preferredColumn: .sidebar,
+        hasSelection: hasSelection
+      )
+      let hidesBottomTabs = placement == .bottomBar && columnVisibility == .detailOnly && hasSelection
+      #expect(visibility == (hidesBottomTabs ? .hidden : .automatic))
+    }
   }
 
   @Test

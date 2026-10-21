@@ -4,6 +4,7 @@ import SwiftUI
 struct ChatsView: View {
   @Environment(\.appState) private var appState
   @Environment(\.horizontalSizeClass) private var sizeClass
+  @Environment(\.tabBarPlacement) private var tabBarPlacement
 
   @State private var viewModel = ChatViewModel()
   @State private var columnVisibility = NavigationSplitViewVisibility.all
@@ -13,6 +14,8 @@ struct ChatsView: View {
   private var tabBarVisibility: Visibility {
     SectionSplitPresentation.tabBarVisibility(
       sizeClass: sizeClass,
+      columnVisibility: columnVisibility,
+      tabBarPlacement: tabBarPlacement,
       preferredColumn: preferredCompactColumn,
       hasSelection: appState.navigation.chatsSelectedRoute != nil
     )

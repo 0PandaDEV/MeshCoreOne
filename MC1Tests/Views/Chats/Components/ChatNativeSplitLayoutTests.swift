@@ -97,7 +97,6 @@ struct ChatNativeSplitLayoutTests {
     #expect(cell.minX >= snapshot.detailFrame.minX - Layout.geometrySlop)
     #expect(cell.maxX <= snapshot.detailFrame.maxX + Layout.geometrySlop)
     #expect(fixture.model.selectedRoute != nil, "hiding the list must not clear the route")
-    #expect(fixture.model.tabBarVisibility == .automatic, "regular overlay must not hide tabs")
   }
 
   @Test
@@ -891,9 +890,11 @@ private final class ChatNativeSplitHarnessModel {
     }
   }
 
-  var tabBarVisibility: Visibility {
+  func tabBarVisibility(placement: TabBarPlacement?) -> Visibility {
     SectionSplitPresentation.tabBarVisibility(
       sizeClass: horizontalSizeClass,
+      columnVisibility: columnVisibility,
+      tabBarPlacement: placement,
       preferredColumn: preferredCompactColumn,
       hasSelection: selectedRoute != nil
     )
@@ -921,12 +922,12 @@ private struct ChatNativeSplitHarness: View {
     TabView(selection: $model.selectedTab) {
       Tab("Chats", systemImage: "message.fill", value: AppTab.chats.rawValue) {
         chatsSplit
+          .modifier(ChatNativeSplitTabChrome(model: model))
       }
       Tab("Nodes", systemImage: "flipphone", value: AppTab.nodes.rawValue) {
         Text("Nodes")
       }
     }
-    .toolbarVisibility(model.tabBarVisibility, for: .tabBar)
     .environment(\.appState, model.appState)
     .themedChrome(.default)
     .onAppear { syncTraits() }
@@ -1095,6 +1096,15 @@ private struct ChatNativeSplitHarness: View {
     if let column = presentation.preferredColumn {
       model.preferredCompactColumn = column
     }
+  }
+}
+
+private struct ChatNativeSplitTabChrome: ViewModifier {
+  @Environment(\.tabBarPlacement) private var placement
+  let model: ChatNativeSplitHarnessModel
+
+  func body(content: Content) -> some View {
+    content.toolbarVisibility(model.tabBarVisibility(placement: placement), for: .tabBar)
   }
 }
 

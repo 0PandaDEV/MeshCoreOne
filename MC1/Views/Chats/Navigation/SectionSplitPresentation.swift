@@ -17,13 +17,16 @@ enum SectionSplitPresentation {
 
   static func tabBarVisibility(
     sizeClass: UserInterfaceSizeClass?,
+    columnVisibility: NavigationSplitViewVisibility,
+    tabBarPlacement: TabBarPlacement?,
     preferredColumn: NavigationSplitViewColumn,
     hasSelection: Bool
   ) -> Visibility {
     let collapsedDetail = sizeClass == .compact
       && preferredColumn == .detail
       && hasSelection
-    return collapsedDetail ? .hidden : .automatic
+    let detailOnly = tabBarPlacement == .bottomBar && columnVisibility == .detailOnly && hasSelection
+    return collapsedDetail || detailOnly ? .hidden : .automatic
   }
 
   static func preferredColumnAction(
