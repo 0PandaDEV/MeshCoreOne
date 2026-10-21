@@ -174,4 +174,39 @@ struct RemoteNodeRadioCLITests {
     await yieldReply(prefix + "Heltec", to: harness.session)
     #expect(try await commandTask.value == "Heltec")
   }
+
+  @Test
+  func `cancelling a sent radio command releases the CLI slot`() async throws {
+    let harness = try await makeHarness()
+    let first = Task {
+      try await harness.service.sendRadioCLICommand(
+        to: Self.publicKey,
+        command: "get name",
+        timeout: .seconds(30)
+      )
+    }
+    try await waitUntil("command was never sent") {
+      await harness.session.sendCommandInvocations.count == 1
+    }
+
+    first.cancel()
+    do {
+      _ = try await first.value
+      Issue.record("expected cancellation")
+    } catch is CancellationError {}
+
+    let second = Task {
+      try await harness.service.sendRadioCLICommand(
+        to: Self.publicKey,
+        command: "board",
+        timeout: .seconds(2)
+      )
+    }
+    try await waitUntil("later command was never sent") {
+      await harness.session.sendCommandInvocations.count == 2
+    }
+    let prefix = try await sentWirePrefix(of: harness.session)
+    await yieldReply(prefix + "Heltec", to: harness.session)
+    #expect(try await second.value == "Heltec")
+  }
 }

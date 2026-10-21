@@ -23,6 +23,31 @@ struct NodeCLIViewModelTests {
     }
   }
 
+  @MainActor
+  private final class HeldSend {
+    private(set) var commands: [String] = []
+    private(set) var finishedCommands: [String] = []
+    private var continuations: [String: CheckedContinuation<String, Error>] = [:]
+
+    func send(_ command: String, timeout: Duration) async throws -> String {
+      commands.append(command)
+      defer { finishedCommands.append(command) }
+      return try await withCheckedThrowingContinuation { continuations[command] = $0 }
+    }
+
+    func finish(_ command: String, with result: Result<String, Error>) {
+      continuations.removeValue(forKey: command)?.resume(with: result)
+    }
+
+    func finishAll() {
+      let pending = continuations.values
+      continuations.removeAll()
+      for continuation in pending {
+        continuation.resume(throwing: CancellationError())
+      }
+    }
+  }
+
   private func makeViewModel(
     spy: SendSpy,
     sessionName: String = "TestNode",
@@ -64,7 +89,10 @@ struct NodeCLIViewModelTests {
     let spy = SendSpy()
     let viewModel = makeViewModel(spy: spy)
     viewModel.executeCommand("help")
-    try await waitUntil("help output appears") { !viewModel.outputLines.isEmpty }
+    try await waitUntil("help output appears") {
+      viewModel.outputLines.contains { $0.text == L10n.RemoteNodes.RemoteNodes.NodeCli.helpHeader }
+        && !viewModel.isWaitingForResponse
+    }
     viewModel.executeCommand("clear")
     try await waitUntil("output cleared") { viewModel.outputLines.isEmpty }
     #expect(spy.calls.isEmpty)
@@ -176,10 +204,11 @@ struct NodeCLIViewModelTests {
   }
 
   @Test
-  func `History is capped at 100 entries`() {
+  func `History is capped at 100 entries`() async throws {
     let viewModel = makeViewModel(spy: SendSpy())
     for i in 0..<150 {
       viewModel.executeCommand("command\(i)")
+      try await waitUntil("command completed") { !viewModel.isWaitingForResponse }
     }
     for _ in 0..<100 {
       viewModel.historyUp()
@@ -509,6 +538,92 @@ struct NodeCLIViewModelTests {
     if let sent = sample.kind.sentText {
       #expect(!viewModel.outputLines.contains { $0.text == sent })
     }
+  }
+
+  @Test(arguments: ["get name", "reboot"])
+  func `cancelled command cleanup preserves the next command ownership`(_ command: String) async throws {
+    let heldSend = HeldSend()
+    let viewModel = NodeCLIViewModel()
+    viewModel.configure(sessionName: "TestNode", remoteTarget: .radio, sendRawCommand: heldSend.send)
+    defer {
+      viewModel.reset()
+      heldSend.finishAll()
+    }
+
+    viewModel.executeCommand(command)
+    try await waitUntil("first command started") { heldSend.commands == [command] }
+    viewModel.cancelCurrentCommand()
+    viewModel.executeCommand("board")
+    try await waitUntil("next command started") { heldSend.commands == [command, "board"] }
+
+    heldSend.finish(command, with: .failure(CancellationError()))
+    try await waitUntil("cancelled send returned") { heldSend.finishedCommands == [command] }
+    #expect(viewModel.isWaitingForResponse)
+
+    viewModel.executeCommand("ver")
+    #expect(viewModel.commandHistory == [command, "board"])
+    viewModel.cancelCurrentCommand()
+    #expect(!viewModel.isWaitingForResponse)
+    let cancelled = L10n.RemoteNodes.RemoteNodes.NodeCli.cancelled
+    #expect(viewModel.outputLines.filter { $0.text == cancelled && $0.type == .error }.count == 2)
+
+    heldSend.finish("board", with: .failure(CancellationError()))
+    try await waitUntil("next cancelled send returned") { heldSend.finishedCommands.count == 2 }
+    #expect(heldSend.commands == [command, "board"])
+  }
+
+  @Test
+  func `same-turn duplicate submit is rejected and immediate cancel prevents sending`() async throws {
+    let spy = SendSpy()
+    let viewModel = makeViewModel(spy: spy, remoteTarget: .radio)
+    let command = "get name"
+
+    viewModel.executeCommand(command)
+    #expect(viewModel.isWaitingForResponse)
+    viewModel.executeCommand("board")
+    #expect(viewModel.commandHistory == [command])
+    viewModel.cancelCurrentCommand()
+    viewModel.cancelCurrentCommand()
+    #expect(!viewModel.isWaitingForResponse)
+    let cancelled = L10n.RemoteNodes.RemoteNodes.NodeCli.cancelled
+    #expect(viewModel.outputLines.filter { $0.text == cancelled && $0.type == .error }.count == 1)
+
+    viewModel.executeCommand("ver")
+    try await waitUntil("next command completed") {
+      spy.calls.contains { $0.command == "ver" } && !viewModel.isWaitingForResponse
+    }
+    #expect(spy.calls.map(\.command) == ["ver"])
+    #expect(viewModel.commandHistory == [command, "ver"])
+  }
+
+  @Test(arguments: ["get name", "reboot"], [
+    Result<String, RemoteNodeError>.success(""),
+    .success("stale reply"),
+    .failure(.timeout),
+    .failure(.permissionDenied)
+  ])
+  func `cancelled commands suppress late responses and errors`(
+    _ command: String,
+    _ result: Result<String, RemoteNodeError>
+  ) async throws {
+    let heldSend = HeldSend()
+    let viewModel = NodeCLIViewModel()
+    viewModel.configure(sessionName: "TestNode", remoteTarget: .radio, sendRawCommand: heldSend.send)
+    defer {
+      viewModel.reset()
+      heldSend.finishAll()
+    }
+
+    viewModel.executeCommand(command)
+    try await waitUntil("command started") { heldSend.commands == [command] }
+    viewModel.cancelCurrentCommand()
+    let linesAfterCancellation = viewModel.outputLines.map(\.text)
+
+    heldSend.finish(command, with: result.mapError { $0 as Error })
+    try await waitUntil("cancelled send returned") { heldSend.finishedCommands == [command] }
+
+    #expect(viewModel.outputLines.map(\.text) == linesAfterCancellation)
+    #expect(!viewModel.isWaitingForResponse)
   }
 }
 

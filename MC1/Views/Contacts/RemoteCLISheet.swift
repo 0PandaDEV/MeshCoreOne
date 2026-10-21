@@ -32,5 +32,7 @@ struct RemoteCLISheet: View {
           }
         )
       }
+      // `NodeCLIView` does not cancel, so repeater and room CLI keep a command when their screen leaves.
+      .onDisappear { viewModel.cancelCurrentCommand() }
   }
 }

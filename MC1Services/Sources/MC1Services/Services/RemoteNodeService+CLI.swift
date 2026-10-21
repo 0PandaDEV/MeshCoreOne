@@ -81,6 +81,7 @@ extension RemoteNodeService {
 
     try await acquireCLISlot(for: destinationPrefix, waiterID: requestID)
     defer { releaseCLISlot(for: destinationPrefix) }
+    try Task.checkCancellation()
 
     // A no-reply command is sent once. Path reset and resend would repeat it.
     if RemoteCLINoReplyCommand(command) != nil {
@@ -125,6 +126,7 @@ extension RemoteNodeService {
 
     try await acquireCLISlot(for: destinationPrefix, waiterID: requestID)
     defer { releaseCLISlot(for: destinationPrefix) }
+    try Task.checkCancellation()
 
     return try await performCLIExchange(
       publicKey: publicKey,
@@ -151,6 +153,10 @@ extension RemoteNodeService {
     let wirePrefix = makeCLIWirePrefix()
     return try await withTaskCancellationHandler {
       try await withCheckedThrowingContinuation { continuation in
+        guard !Task.isCancelled else {
+          continuation.resume(throwing: CancellationError())
+          return
+        }
         pendingCLIRequests[destinationPrefix] = PendingCLIRequest(
           id: requestID,
           command: command,
@@ -159,9 +165,10 @@ extension RemoteNodeService {
           continuation: continuation
         )
 
-        Task { [self] in
+        pendingCLIRequests[destinationPrefix]?.workerTask = Task { [self] in
           let sentInfo: MessageSentInfo
           do {
+            try Task.checkCancellation()
             sentInfo = try await session.sendCommand(
               to: publicKey,
               command: wirePrefix + command,
@@ -217,6 +224,8 @@ extension RemoteNodeService {
   func takePendingCLIRequest(for prefix: Data, requestID: UUID) -> PendingCLIRequest? {
     guard let pending = pendingCLIRequests[prefix], pending.id == requestID else { return nil }
     pendingCLIRequests[prefix] = nil
+    // Taken first, so the worker's cancellation path does not resume this continuation.
+    pending.workerTask?.cancel()
     return pending
   }
 
@@ -225,6 +234,7 @@ extension RemoteNodeService {
   /// Wait for the node's CLI slot (FIFO). Throws `CancellationError` if the
   /// calling task is cancelled while waiting.
   private func acquireCLISlot(for prefix: Data, waiterID: UUID) async throws {
+    try Task.checkCancellation()
     guard cliSlotBusy.contains(prefix) else {
       cliSlotBusy.insert(prefix)
       return
@@ -232,6 +242,10 @@ extension RemoteNodeService {
 
     try await withTaskCancellationHandler {
       try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+        guard !Task.isCancelled else {
+          continuation.resume(throwing: CancellationError())
+          return
+        }
         cliSlotWaiters[prefix, default: []].append(CLISlotWaiter(id: waiterID, continuation: continuation))
       }
     } onCancel: { [weak self] in

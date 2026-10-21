@@ -95,7 +95,15 @@ final class NodeCLIViewModel {
     let cmd = parts[0].lowercased()
     let args = parts.count > 1 ? parts[1] : ""
 
-    currentCommandTask = Task { await handleCommand(cmd, args: args, raw: transmitted) }
+    isWaitingForResponse = true
+    // Compared with `currentCommandTask` so a newer command stays waiting.
+    var task: Task<Void, Never>!
+    task = Task {
+      defer { clearWaitingIfCurrent(task) }
+      guard !Task.isCancelled else { return }
+      await handleCommand(cmd, args: args, raw: transmitted)
+    }
+    currentCommandTask = task
     currentInput = ""
   }
 
@@ -112,12 +120,20 @@ final class NodeCLIViewModel {
   }
 
   func cancelCurrentCommand() {
+    // A reply already in hand must not print after cancel.
+    commandEpoch.bump()
     currentCommandTask?.cancel()
     currentCommandTask = nil
     if isWaitingForResponse {
       isWaitingForResponse = false
       appendOutput(L10n.RemoteNodes.RemoteNodes.NodeCli.cancelled, type: .error)
     }
+  }
+
+  private func clearWaitingIfCurrent(_ task: Task<Void, Never>) {
+    guard currentCommandTask == task else { return }
+    currentCommandTask = nil
+    isWaitingForResponse = false
   }
 
   private func handleCommand(_ cmd: String, args: String, raw: String) async {
@@ -134,8 +150,6 @@ final class NodeCLIViewModel {
 
     // These verbs often get no reply. A real reply is still shown.
     if let sentLine = noReplySentLine(for: command) {
-      isWaitingForResponse = true
-      defer { isWaitingForResponse = false }
       do {
         let response = try await sendRawCommand(command, Self.rebootTimeout)
         guard ticket.isCurrent(in: commandEpoch) else { return }
@@ -155,8 +169,6 @@ final class NodeCLIViewModel {
       return
     }
 
-    isWaitingForResponse = true
-    defer { isWaitingForResponse = false }
     do {
       let response = try await sendRawCommand(command, Self.defaultCommandTimeout)
       guard ticket.isCurrent(in: commandEpoch), !Task.isCancelled else { return }

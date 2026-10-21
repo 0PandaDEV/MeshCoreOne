@@ -46,6 +46,7 @@ public actor RemoteNodeService {
     let wirePrefix: String
     let acceptsAnyResponse: Bool
     let continuation: CheckedContinuation<String, Error>
+    var workerTask: Task<Void, Never>?
   }
 
   /// The single in-flight CLI request per node, keyed by 6-byte public key
@@ -234,7 +235,7 @@ public actor RemoteNodeService {
       responseText = message.text
     }
 
-    pendingCLIRequests[prefix] = nil
+    _ = takePendingCLIRequest(for: prefix, requestID: pending.id)
     pending.continuation.resume(returning: responseText)
   }
 
