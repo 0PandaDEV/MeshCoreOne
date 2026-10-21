@@ -6,6 +6,7 @@ struct ContactActionsSection: View {
 
   let currentContact: ContactDTO
   @Binding var isFavorite: Bool
+  let isSettingFavorite: Bool
   let showFromDirectChat: Bool
   let isPinging: Bool
   let pingResult: PingResult?
@@ -114,7 +115,7 @@ struct ContactActionsSection: View {
         Label(L10n.Contacts.Contacts.Detail.favorite, systemImage: "star")
           .foregroundStyle(isRadioReady ? .primary : .secondary)
       }
-      .disabled(!isRadioReady)
+      .disabled(!isRadioReady || isSettingFavorite)
       .accessibilityHint(
         L10n.Localizable.Accessibility.requiresRadioConnection,
         isEnabled: !isRadioReady

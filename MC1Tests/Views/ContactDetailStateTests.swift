@@ -218,7 +218,7 @@ struct ContactDetailStateTests {
   }
 
   @Test(arguments: [
-    ContactDetailState.BusyOperation.nickname, .share, .ping, .clearMessages, .avatar
+    ContactDetailState.BusyOperation.nickname, .share, .ping, .clearMessages, .avatar, .favorite
   ])
   func `context retirement permits retry and old cleanup cannot retire the newer command`(
     operation: ContactDetailState.BusyOperation
@@ -265,6 +265,7 @@ struct ContactDetailStateTests {
     case .ping: state.perform(.ping)
     case .clearMessages: state.perform(.clearMessages)
     case .avatar: state.removeAvatarPhoto()
+    case .favorite: state.isFavorite = !state.isFavorite
     }
   }
 
@@ -275,6 +276,7 @@ struct ContactDetailStateTests {
     case .ping: state.isPinging
     case .clearMessages: state.isClearingMessages
     case .avatar: state.isSavingAvatar
+    case .favorite: state.isSettingFavorite
     }
   }
 
@@ -285,6 +287,7 @@ struct ContactDetailStateTests {
     case .ping: state.commandTaskForTesting(.ping)
     case .clearMessages: state.commandTaskForTesting(.clearMessages)
     case .avatar: state.avatarTask
+    case .favorite: state.favoriteTask
     }
   }
 

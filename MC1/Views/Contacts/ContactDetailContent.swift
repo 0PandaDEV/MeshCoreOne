@@ -37,6 +37,7 @@ struct ContactDetailContent: View {
         ContactActionsSection(
           currentContact: state.currentContact,
           isFavorite: $state.isFavorite,
+          isSettingFavorite: state.isSettingFavorite,
           showFromDirectChat: state.showFromDirectChat,
           isPinging: state.isPinging,
           pingResult: state.pingResult,

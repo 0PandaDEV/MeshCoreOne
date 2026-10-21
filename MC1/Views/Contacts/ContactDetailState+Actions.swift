@@ -38,10 +38,41 @@ extension ContactDetailState {
     showRepeaterAdminAuth = true
   }
 
-  func setFavorite(_ favorite: Bool) async {
+  func requestFavorite(_ favorite: Bool) {
+    reconcileOperationContext()
+    guard hasPresentationOwnership, !isSettingFavorite, favorite != isFavorite else { return }
     let context = operationContext
+    isSettingFavorite = true
+    favoriteTask = Task { [weak self] in
+      guard let self else { return }
+      defer {
+        if accepts(context) {
+          isSettingFavorite = false
+          favoriteTask = nil
+        }
+      }
+      guard accepts(context) else { return }
+      await setFavorite(favorite)
+    }
+  }
+
+  func setFavorite(_ favorite: Bool) async {
+    let service = contactService
+    guard service != nil || hasCommandOverrideForTesting else {
+      errorMessage = L10n.Contacts.Contacts.Detail.Error.servicesUnavailable
+      return
+    }
+    let context = operationContext
+    errorMessage = nil
     do {
-      try await contactService?.setContactFavorite(currentContact.id, isFavorite: favorite)
+      var updated = currentContact.with(isFavorite: favorite)
+      try await runWriteCommand(.favorite) {
+        if let service {
+          updated = try await service.setContactFavorite(currentContact.id, isFavorite: favorite)
+        }
+      }
+      guard accepts(context) else { return }
+      updateContact(updated)
     } catch {
       guard accepts(context) else { return }
       errorMessage = error.userFacingMessage

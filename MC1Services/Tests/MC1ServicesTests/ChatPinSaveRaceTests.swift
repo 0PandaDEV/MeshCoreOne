@@ -59,12 +59,15 @@ struct ChatPinSaveRaceTests {
       try await store.setContactPinned(contactID, isPinned: true)
     }
 
-    try await service.setContactFavorite(contact.id, isFavorite: true)
+    let confirmed = ContactDTO.testContact(publicKey: contact.publicKey, flags: ContactFlags.favorite.rawValue)
+    await session.setStubbedContact(confirmed.toContactFrame().toMeshContact(), for: contact.publicKey)
+    let updated = try await service.setContactFavorite(contact.id, isFavorite: true)
 
     let stored = try await store.fetchContact(id: contact.id)
     #expect(stored?.isPinned == true)
     #expect(stored?.isFavorite == true)
     #expect((stored?.flags ?? 0) & 0x01 == 0x01)
+    #expect(updated.isPinned == stored?.isPinned)
   }
 
   @Test

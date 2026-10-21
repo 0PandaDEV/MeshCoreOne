@@ -56,6 +56,8 @@ struct ContactServiceRemoteCLITests {
     let decoded = try JSONDecoder().decode(ContactDTO.self, from: encoded)
     #expect(decoded.flags == 0x10)
 
+    let confirmed = ContactDTO.testContact(publicKey: inserted.publicKey, flags: ContactFlags.favorite.rawValue)
+    await session.setStubbedContact(confirmed.toContactFrame().toMeshContact(), for: inserted.publicKey)
     try await service.setContactFavorite(inserted.id, isFavorite: true)
     #expect(await session.changeContactFlagsCalls.last?.flags.contains(.remoteCLIAllowed) == false)
 

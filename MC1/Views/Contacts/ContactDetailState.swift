@@ -18,16 +18,10 @@ final class ContactDetailState {
   var showingClearMessagesAlert = false
   var isClearingMessages = false
   var isSaving = false
+  var isSettingFavorite = false
   var isFavorite: Bool {
-    didSet {
-      guard oldValue != isFavorite, hasPresentationOwnership else { return }
-      favoriteTask?.cancel()
-      let favorite = isFavorite
-      favoriteTask = Task { [weak self] in
-        guard let self, hasPresentationOwnership, !Task.isCancelled else { return }
-        await setFavorite(favorite)
-      }
-    }
+    get { currentContact.isFavorite }
+    set { requestFavorite(newValue) }
   }
 
   var errorMessage: String?
@@ -129,7 +123,6 @@ final class ContactDetailState {
   init(contact: ContactDTO) {
     currentContact = contact
     nickname = contact.nickname ?? ""
-    isFavorite = contact.isFavorite
     showFromDirectChat = false
     onClearMessages = {}
   }
@@ -137,7 +130,6 @@ final class ContactDetailState {
   init(contact: ContactDTO, showFromDirectChat: Bool, onClearMessages: @escaping () -> Void) {
     currentContact = contact
     nickname = contact.nickname ?? ""
-    isFavorite = contact.isFavorite
     self.showFromDirectChat = showFromDirectChat
     self.onClearMessages = onClearMessages
   }

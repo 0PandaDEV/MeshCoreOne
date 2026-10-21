@@ -2,7 +2,7 @@ import Foundation
 
 extension ContactDetailState {
   enum BusyOperation: Hashable, Sendable {
-    case nickname, share, ping, clearMessages, avatar
+    case nickname, share, ping, clearMessages, avatar, favorite
   }
 
   func perform(_ action: Action) {
@@ -61,6 +61,7 @@ extension ContactDetailState {
   func retireOperations() {
     favoriteTask?.cancel()
     favoriteTask = nil
+    isSettingFavorite = false
     for task in actionTasks.values {
       task.cancel()
     }

@@ -767,6 +767,8 @@ struct ContactServiceTests {
     let imageData = Data([0xDE, 0xAD, 0xBE, 0xEF])
     try await service.updateContactAvatar(contactID: contactID, imageData: imageData)
 
+    let confirmed = ContactDTO.testContact(publicKey: testPublicKey, flags: ContactFlags.favorite.rawValue)
+    await mockSession.setStubbedContact(confirmed.toContactFrame().toMeshContact(), for: testPublicKey)
     try await service.setContactFavorite(contactID, isFavorite: true)
 
     let updated = await mockStore.contacts[contactID]

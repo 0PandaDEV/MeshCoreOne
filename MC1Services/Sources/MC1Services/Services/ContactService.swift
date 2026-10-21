@@ -733,15 +733,16 @@ public actor ContactService {
   ///   - contactID: The contact's UUID.
   ///   - isFavorite: Whether to mark the contact as a favorite.
   /// - Throws: `ContactServiceError` if the device update fails.
-  public func setContactFavorite(_ contactID: UUID, isFavorite: Bool) async throws {
+  @discardableResult
+  public func setContactFavorite(_ contactID: UUID, isFavorite: Bool) async throws -> ContactDTO {
     guard let existing = try await dataStore.fetchContact(id: contactID) else {
       throw ContactServiceError.contactNotFound
     }
 
     // Calculate new flags: set or clear bit 0
     let newFlags: UInt8 = isFavorite
-      ? existing.flags | 0x01
-      : existing.flags & ~0x01
+      ? existing.flags | ContactFlags.favorite.rawValue
+      : existing.flags & ~ContactFlags.favorite.rawValue
 
     // Build MeshContact for device update
     let meshContact = MeshContact(
@@ -761,6 +762,12 @@ public actor ContactService {
     // Push to device and wait for confirmation
     do {
       try await session.changeContactFlags(meshContact, flags: ContactFlags(rawValue: newFlags))
+      guard let confirmed = try await session.getContact(publicKey: existing.publicKey) else {
+        throw ContactServiceError.contactNotFound
+      }
+      guard confirmed.flags.contains(.favorite) == isFavorite else {
+        throw ContactServiceError.invalidResponse
+      }
     } catch let error as MeshCoreError {
       throw ContactServiceError.sessionError(error)
     }
@@ -795,6 +802,10 @@ public actor ContactService {
     )
 
     try await dataStore.saveContact(updated)
+    guard let saved = try await dataStore.fetchContact(id: contactID) else {
+      throw ContactServiceError.contactNotFound
+    }
+    return saved
   }
 
   // MARK: - Telemetry Permissions
