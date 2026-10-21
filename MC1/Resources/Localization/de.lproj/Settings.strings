@@ -302,7 +302,7 @@
 "remoteCLI.manage" = "Erlaubte Kontakte";
 
 /* Footer explaining remote CLI permission */
-"remoteCLI.footer" = "Diese Kontakte können über das Mesh jeden Befehl von Remote CLI auf diesem Funkgerät ausführen, auch die Funkeinstellungen und die Bluetooth-PIN ändern, das WLAN-Passwort lesen und das Funkgerät neu starten oder ausschalten. Die App erfährt nicht, wenn ein Befehl ausgeführt wird.";
+"remoteCLI.footer" = "Erlaubte Kontakte können dieses Funkgerät über das Mesh steuern. Die App warnt dich nicht, wenn sie das tun.";
 
 /* Navigation title for remote CLI contacts picker */
 "remoteCLIContacts.title" = "Remote CLI";

@@ -302,7 +302,7 @@
 "remoteCLI.manage" = "Dozwolone kontakty";
 
 /* Footer explaining remote CLI permission */
-"remoteCLI.footer" = "Te kontakty mogą wykonać dowolne polecenie zdalnego CLI na tym radiu przez sieć mesh, w tym zmianę ustawień radia i PIN Bluetooth, odczytanie hasła WiFi oraz ponowne uruchomienie lub wyłączenie radia. Aplikacja nie jest informowana, gdy polecenie zostanie wykonane.";
+"remoteCLI.footer" = "Dozwolone kontakty mogą sterować tym radiem przez sieć mesh. Aplikacja nie powiadomi Cię, gdy to zrobią.";
 
 /* Navigation title for remote CLI contacts picker */
 "remoteCLIContacts.title" = "Zdalne CLI";

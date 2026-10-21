@@ -302,7 +302,7 @@
 "remoteCLI.manage" = "允许的联系人";
 
 /* Footer explaining remote CLI permission */
-"remoteCLI.footer" = "这些联系人可以通过 mesh 网络在此无线电上运行任何远程 CLI 命令，包括更改无线电设置和蓝牙 PIN、读取 WiFi 密码，以及重启或关闭无线电。应用不会在命令运行时收到通知。";
+"remoteCLI.footer" = "允许的联系人可以通过 mesh 网络控制此无线电。应用不会在他们这样做时提醒您。";
 
 /* Navigation title for remote CLI contacts picker */
 "remoteCLIContacts.title" = "远程 CLI";

@@ -302,7 +302,7 @@
 "remoteCLI.manage" = "Contactos permitidos";
 
 /* Footer explaining remote CLI permission */
-"remoteCLI.footer" = "Estos contactos pueden ejecutar cualquier comando de la CLI remota en esta radio a través de la malla, incluyendo cambiar los ajustes de la radio y el PIN de Bluetooth, leer la contraseña de WiFi y reiniciar o apagar la radio. La app no recibe aviso cuando se ejecuta un comando.";
+"remoteCLI.footer" = "Los contactos permitidos pueden controlar esta radio a través de la malla. La app no te avisará cuando lo hagan.";
 
 /* Navigation title for remote CLI contacts picker */
 "remoteCLIContacts.title" = "CLI remota";
