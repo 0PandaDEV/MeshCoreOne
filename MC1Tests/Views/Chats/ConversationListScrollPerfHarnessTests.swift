@@ -196,6 +196,7 @@ private struct HostedConversationList: View {
       pinnedConversations: viewModel.pinnedConversations,
       otherConversations: viewModel.unpinnedConversations,
       selectedFilter: $selectedFilter,
+      searchText: "",
       hasLoadedOnce: true,
       emptyStateMessage: ("None", "None", "message"),
       selectedRoute: nil,

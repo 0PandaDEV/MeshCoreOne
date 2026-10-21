@@ -264,6 +264,52 @@ struct ContactsViewModelTests {
     #expect(result.isEmpty)
   }
 
+  @Test
+  func `filteredContacts search returns every segment while another segment stays selected`() {
+    let viewModel = ContactsViewModel()
+    let deviceID = UUID()
+    viewModel.contacts = [
+      createContact(radioID: deviceID, name: "Ada", type: .chat, isFavorite: true),
+      createContact(radioID: deviceID, name: "Adage", type: .repeater),
+      createContact(radioID: deviceID, name: "Adapter", type: .room),
+      createContact(radioID: deviceID, name: "General", type: .chat)
+    ]
+
+    let names = viewModel.filteredContacts(
+      searchText: "Ada",
+      segment: .rooms,
+      sortOrder: .name,
+      userLocation: nil
+    ).map(\.name)
+
+    #expect(names == ["Ada", "Adage", "Adapter"])
+  }
+
+  @Test
+  func `filteredContacts whitespace query does not fall back to the selected segment`() {
+    let viewModel = ContactsViewModel()
+    viewModel.contacts = [
+      createContact(name: "Ada", type: .chat),
+      createContact(name: "Adapter", type: .room)
+    ]
+
+    let whitespace = viewModel.filteredContacts(
+      searchText: "   ",
+      segment: .rooms,
+      sortOrder: .name,
+      userLocation: nil
+    )
+    let resumed = viewModel.filteredContacts(
+      searchText: "",
+      segment: .rooms,
+      sortOrder: .name,
+      userLocation: nil
+    )
+
+    #expect(whitespace.isEmpty)
+    #expect(resumed.map(\.name) == ["Adapter"])
+  }
+
   // MARK: - Sorting
 
   @Test

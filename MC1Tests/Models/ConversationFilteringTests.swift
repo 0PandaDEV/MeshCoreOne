@@ -243,4 +243,27 @@ struct ConversationFilteringTests {
     #expect(conversations.filtered(by: .unread, searchText: "Bob").map(\.displayName) == ["Bob"])
     #expect(conversations.filtered(by: .unread, searchText: "Alp").map(\.displayName) == ["Alpine"])
   }
+
+  @Test func `search returns every category while another category stays selected`() {
+    let conversations: [Conversation] = [
+      .direct(makeContact(name: "Ada")),
+      .channel(makeChannel(name: "Adage")),
+      .room(makeRoom(name: "Adapter")),
+      .channel(makeChannel(name: "General"))
+    ]
+
+    let names = conversations.filtered(by: .channels, searchText: "Ada").map(\.displayName)
+
+    #expect(names == ["Ada", "Adage", "Adapter"])
+  }
+
+  @Test func `whitespace query does not fall back to the selected category`() {
+    let conversations: [Conversation] = [
+      .direct(makeContact(name: "Ada")),
+      .room(makeRoom(name: "Adapter"))
+    ]
+
+    #expect(conversations.filtered(by: .rooms, searchText: "   ").isEmpty)
+    #expect(conversations.filtered(by: .rooms, searchText: "").map(\.displayName) == ["Adapter"])
+  }
 }

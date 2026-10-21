@@ -16,6 +16,7 @@ struct ConversationListContent: View {
   private let selectedRoute: ChatRoute?
   private let onSelect: (ChatRoute) -> Void
   private let hasLoadedOnce: Bool
+  private let searchText: String
   private let emptyStateMessage: (title: String, description: String, systemImage: String)
   private let onDeleteConversation: (Conversation) -> Void
   @Binding private var selectedFilter: ChatFilter
@@ -25,12 +26,16 @@ struct ConversationListContent: View {
   private static let rowSeparatorLeadingInset: CGFloat = 72
   private static let sectionHeaderHorizontalPadding: CGFloat = 16
   private static let sectionHeaderVerticalPadding: CGFloat = 12
+  /// `topScrollAnchor` is zero height, and scroll spacing separates it from the Nodes filter.
+  /// Chats has no anchor, so the filter keeps that room itself.
+  private static let filterHeaderTopMargin: CGFloat = 8
 
   init(
     viewModel: ChatViewModel,
     pinnedConversations: [Conversation],
     otherConversations: [Conversation],
     selectedFilter: Binding<ChatFilter>,
+    searchText: String,
     hasLoadedOnce: Bool,
     emptyStateMessage: (title: String, description: String, systemImage: String),
     selectedRoute: ChatRoute?,
@@ -43,6 +48,7 @@ struct ConversationListContent: View {
     self.selectedRoute = selectedRoute
     self.onSelect = onSelect
     _selectedFilter = selectedFilter
+    self.searchText = searchText
     self.hasLoadedOnce = hasLoadedOnce
     self.emptyStateMessage = emptyStateMessage
     self.onDeleteConversation = onDeleteConversation
@@ -101,8 +107,9 @@ struct ConversationListContent: View {
   }
 
   private var filterHeader: some View {
-    ChatFilterPicker(selection: $selectedFilter)
+    ChatFilterPicker(selection: $selectedFilter, isSearching: !searchText.isEmpty)
       .frame(maxWidth: .infinity)
+      .padding(.top, Self.filterHeaderTopMargin)
       .pinnedFilterHeaderBackground(theme)
   }
 
@@ -111,14 +118,20 @@ struct ConversationListContent: View {
   }
 
   private var emptyState: some View {
-    ContentUnavailableView {
-      Label(emptyStateMessage.title, systemImage: emptyStateMessage.systemImage)
-    } description: {
-      Text(emptyStateMessage.description)
-    } actions: {
-      if selectedFilter != .all {
-        Button(L10n.Chats.Chats.Filter.clear) {
-          selectedFilter = .all
+    Group {
+      if !searchText.isEmpty {
+        ContentUnavailableView.search(text: searchText)
+      } else {
+        ContentUnavailableView {
+          Label(emptyStateMessage.title, systemImage: emptyStateMessage.systemImage)
+        } description: {
+          Text(emptyStateMessage.description)
+        } actions: {
+          if selectedFilter != .all {
+            Button(L10n.Chats.Chats.Filter.clear) {
+              selectedFilter = .all
+            }
+          }
         }
       }
     }

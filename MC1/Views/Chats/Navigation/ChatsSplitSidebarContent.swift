@@ -24,6 +24,7 @@ struct ChatsSplitSidebarContent: View {
       pinnedConversations: filteredPinned,
       otherConversations: filteredOthers,
       selectedFilter: $selectedFilter,
+      searchText: searchText,
       hasLoadedOnce: hasLoadedOnce,
       emptyStateMessage: emptyStateMessage,
       selectedRoute: selectedRoute,
