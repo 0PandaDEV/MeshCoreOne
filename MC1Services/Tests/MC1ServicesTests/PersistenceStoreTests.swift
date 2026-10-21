@@ -941,6 +941,7 @@ struct PersistenceStoreTests {
     // Three different senders so reorderSameSenderClusters leaves them alone,
     // isolating the fetch's sort keys. createdAt (drain order) runs opposite to
     // send time, proving the secondary sort key is timestamp, not createdAt.
+
     func backlogMessage(sender: String, sendTime: UInt32, drainOffset: TimeInterval) -> MessageDTO {
       MessageDTO(from: Message(
         radioID: device.id,
