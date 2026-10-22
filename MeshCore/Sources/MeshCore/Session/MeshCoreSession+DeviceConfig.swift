@@ -154,14 +154,16 @@ public extension MeshCoreSession {
     advertisementLocationPolicy: UInt8,
     multiAcks: UInt8? = nil
   ) async throws {
-    try await sendSimpleCommand(PacketBuilder.setOtherParams(
-      manualAddContacts: manualAddContacts,
-      telemetryModeEnvironment: telemetryModeEnvironment,
-      telemetryModeLocation: telemetryModeLocation,
-      telemetryModeBase: telemetryModeBase,
-      advertisementLocationPolicy: advertisementLocationPolicy,
-      multiAcks: multiAcks
-    ))
+    try await otherParamsSerializer.withSerialization { [self] in
+      try await applyOtherParams(PacketBuilder.setOtherParams(
+        manualAddContacts: manualAddContacts,
+        telemetryModeEnvironment: telemetryModeEnvironment,
+        telemetryModeLocation: telemetryModeLocation,
+        telemetryModeBase: telemetryModeBase,
+        advertisementLocationPolicy: advertisementLocationPolicy,
+        multiAcks: multiAcks
+      ))
+    }
   }
 
   /// Sets the device PIN for administrative access.
@@ -248,12 +250,8 @@ public extension MeshCoreSession {
     try await sendSimpleCommand(PacketBuilder.setAutoAddConfig(config))
   }
 
-  /// Serializes a granular "other params" change against any other granular setter.
-  ///
-  /// The read-modify-write (read the current config, apply `transform`, write it back)
-  /// spans several wire exchanges. Holding `otherParamsSerializer` across the whole
-  /// sequence keeps two concurrent setters from each reading the same snapshot and then
-  /// reverting the other's write when they store the full config back.
+  /// Holds configuration ownership through the read, write, and cache refresh so
+  /// another full or granular setter cannot revert an acknowledged change.
   private func mutateOtherParams(
     _ transform: @escaping @Sendable (inout OtherParamsConfig) -> Void
   ) async throws {
@@ -283,16 +281,18 @@ public extension MeshCoreSession {
 
   /// Applies other params configuration to device.
   private func applyOtherParams(_ config: OtherParamsConfig) async throws {
-    try await setOtherParams(
+    try await applyOtherParams(PacketBuilder.setOtherParams(
       manualAddContacts: config.manualAddContacts,
       telemetryModeEnvironment: config.telemetryModeEnvironment,
       telemetryModeLocation: config.telemetryModeLocation,
       telemetryModeBase: config.telemetryModeBase,
       advertisementLocationPolicy: config.advertisementLocationPolicy,
       multiAcks: config.multiAcks
-    )
+    ))
+  }
 
-    // Refresh selfInfo to keep cache consistent
+  private func applyOtherParams(_ data: Data) async throws {
+    try await sendSimpleCommand(data)
     selfInfo = try await sendAppStart()
   }
 

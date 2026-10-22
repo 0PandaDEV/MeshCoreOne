@@ -84,12 +84,8 @@ public actor MeshCoreSession: MeshCoreSessionProtocol {
   let dispatcher = EventDispatcher()
   let requestResponseSerializer = RequestResponseSerializer()
 
-  /// Serializes the read-modify-write of the granular "other params" setters. The
-  /// inner wire exchanges already serialize on requestResponseSerializer, but a
-  /// read-modify-write spans several of them, so without this outer guard two
-  /// concurrent setters each write back the full config and silently revert each
-  /// other's change. This is a distinct lock from requestResponseSerializer, which
-  /// is not reentrant; nesting the two would deadlock.
+  /// Serializes full and granular configuration writes through their cache refresh.
+  /// This is separate from the nonreentrant serializer used by each wire exchange.
   let otherParamsSerializer = RequestResponseSerializer()
 
   // State

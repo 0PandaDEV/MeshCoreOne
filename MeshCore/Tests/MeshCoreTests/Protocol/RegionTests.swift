@@ -279,6 +279,58 @@ struct RequestRegionsIntegrationTests {
     )
   }
 
+  @Test(arguments: [true, false])
+  func `cancellation restores flood routing after the submitted exchange drains`(duringTemporaryWrite: Bool) async throws {
+    let transport = MockTransport()
+    let session = MeshCoreSession(transport: transport)
+    try await startSession(session, transport: transport)
+    let regions = Task { try await session.requestRegions(from: makeTestContact()) }
+    try await waitUntil { await transport.sentData.count == 1 }
+    if !duringTemporaryWrite {
+      await transport.simulateOK()
+      try await waitUntil { await transport.sentData.count == 2 }
+    }
+
+    regions.cancel()
+    let ack = Data([1, 2, 3, 4])
+    if duringTemporaryWrite {
+      await transport.simulateOK()
+    } else {
+      await transport.simulateReceive(makeMessageSentPacket(expectedAck: ack))
+      await transport.simulateReceive(makeBinaryResponsePacket(tag: ack, regionString: "Europe"))
+    }
+    do {
+      try await waitUntil(timeout: .seconds(1), "cancelled discovery must restore flood routing") {
+        await transport.sentData.last?.first == CommandCode.resetPath.rawValue
+      }
+    } catch {
+      await session.stop()
+      throw error
+    }
+    await transport.simulateOK()
+    await #expect(throws: CancellationError.self) { _ = try await regions.value }
+    let frames = await transport.sentData
+    #expect(frames[0][35] == 0)
+    let restore = try #require(frames.last)
+    #expect(Data(restore.dropFirst()) == makeTestContact().publicKey)
+    await session.stop()
+  }
+
+  @Test
+  func `stopping cancelled discovery prevents restoration writes`() async throws {
+    let transport = MockTransport()
+    let session = MeshCoreSession(transport: transport)
+    try await startSession(session, transport: transport)
+    let regions = Task { try await session.requestRegions(from: makeTestContact()) }
+    try await acknowledgeNextCommand(transport, sentCountBefore: 0)
+    try await waitUntil { await transport.sentData.count == 2 }
+    regions.cancel()
+    await session.stop(disconnectTransport: false)
+    await #expect(throws: CancellationError.self) { _ = try await regions.value }
+    #expect(await transport.sentData.count == 2)
+    await transport.disconnect()
+  }
+
   @Test
   func `full two-phase flow returns parsed regions`() async throws {
     let transport = MockTransport()
