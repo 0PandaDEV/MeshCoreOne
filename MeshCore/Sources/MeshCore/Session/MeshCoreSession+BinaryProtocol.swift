@@ -387,8 +387,9 @@ public extension MeshCoreSession {
   ///
   /// - Parameters:
   ///   - publicKey: The full 32-byte public key of the remote node.
-  ///   - start: Start of the time range.
-  ///   - end: End of the time range.
+  ///   - start: Exclusive start of the time range.
+  ///   - end: Inclusive end of the time range. Bounds use whole seconds ago,
+  ///          truncated toward zero; future dates are clamped to zero.
   /// - Returns: MMA response containing aggregated statistics.
   /// - Throws: ``MeshCoreError/timeout`` if no response within timeout period.
   ///           ``MeshCoreError/deviceError(code:)`` if the device rejects the request.
@@ -401,12 +402,19 @@ public extension MeshCoreSession {
 
   /// Internal implementation of MMA request, called within serialization.
   private func performMMARequest(from publicKey: Data, start: Date, end: Date) async throws -> MMAResponse {
-    // Build payload
+    let now = Date()
+    func secondsAgo(_ date: Date) -> UInt32 {
+      let seconds = now.timeIntervalSince(date)
+      guard seconds.isFinite, seconds > 0 else { return 0 }
+      guard seconds < Double(UInt32.max) else { return UInt32.max }
+      return UInt32(seconds)
+    }
+
     var payload = Data()
-    let startTimestamp = PacketBuilder.epochSeconds32(start)
-    let endTimestamp = PacketBuilder.epochSeconds32(end)
-    payload.append(contentsOf: withUnsafeBytes(of: startTimestamp.littleEndian) { Array($0) })
-    payload.append(contentsOf: withUnsafeBytes(of: endTimestamp.littleEndian) { Array($0) })
+    let startSecondsAgo = secondsAgo(start)
+    let endSecondsAgo = secondsAgo(end)
+    payload.append(contentsOf: withUnsafeBytes(of: startSecondsAgo.littleEndian) { Array($0) })
+    payload.append(contentsOf: withUnsafeBytes(of: endSecondsAgo.littleEndian) { Array($0) })
     payload.append(contentsOf: [0, 0])
 
     let publicKeyPrefix = Data(publicKey.prefix(6))
@@ -415,7 +423,9 @@ public extension MeshCoreSession {
       to: publicKey,
       operation: "MMA"
     ) { payload, tag in
-      MMAResponse(publicKeyPrefix: publicKeyPrefix, tag: tag, data: MMAParser.parse(payload))
+      let serverClockSize = MemoryLayout<UInt32>.size
+      guard payload.count >= serverClockSize else { return nil }
+      return MMAResponse(publicKeyPrefix: publicKeyPrefix, tag: tag, data: MMAParser.parse(Data(payload.dropFirst(serverClockSize))))
     }
   }
 
