@@ -280,7 +280,9 @@ struct ChatConversationView: View {
     .fullScreenCover(item: $imageViewerData) { data in
       FullScreenImageViewer(data: data)
     }
-    .task(id: appState.servicesVersion) {
+    // A nil task id while the scene is inactive keeps this task from loading or clearing unreads.
+    .task(id: scenePhase == .active ? appState.servicesVersion : nil) {
+      guard scenePhase == .active else { return }
       await performInitialLoad()
     }
     .task(id: didCompleteInitialLoad ? appState.navigation.pendingScrollTarget?.requestID : nil) {
@@ -323,10 +325,10 @@ struct ChatConversationView: View {
       leaveIfSlotReassigned()
     }
     .onChange(of: scenePhase) { _, newPhase in
-      // Clear delivered notifications on foreground return because the open hook does not run again.
       switch newPhase {
       case .active:
-        Task { await clearDeliveredNotifications() }
+        // Becoming active changes the load task id, which reloads and clears delivered notifications.
+        break
       case .background, .inactive:
         // The OS can suspend the process before the debounce fires, so flush
         // the draft synchronously here.
@@ -389,20 +391,26 @@ struct ChatConversationView: View {
     switch conversationType {
     case let .dm(contact):
       await chatViewModel.loadMessages(for: contact, populateMode: .refreshWindow)
+      guard !Task.isCancelled else { return }
       await chatViewModel.loadConversations(radioID: contact.radioID)
+      guard !Task.isCancelled else { return }
       await chatViewModel.loadAllContacts(radioID: contact.radioID)
 
     case let .channel(channel):
       // Load contacts first so contactNameSet is populated before buildChannelSenders runs
       await chatViewModel.loadAllContacts(radioID: channel.radioID)
+      guard !Task.isCancelled else { return }
       await chatViewModel.loadChannelMessages(for: channel, populateMode: .refreshWindow)
+      guard !Task.isCancelled else { return }
       await chatViewModel.loadConversations(radioID: channel.radioID)
     }
 
+    guard !Task.isCancelled else { return }
     // Opening the conversation counts as seeing its mentions. Without on-screen
     // bubble tracking, mark them all seen here so chat-list mention badges clear.
     await markConversationMentionsSeen()
 
+    guard !Task.isCancelled else { return }
     didCompleteInitialLoad = true
 
     // Clear delivered notifications after loading resets the unread count, keeping the badge current.
@@ -426,6 +434,7 @@ struct ChatConversationView: View {
   /// Removes delivered lock-screen / Notification Center notifications for the
   /// conversation the user just opened, then recomputes the app badge.
   private func clearDeliveredNotifications() async {
+    guard scenePhase == .active, !Task.isCancelled else { return }
     guard let notificationService = appState.services?.notificationService else { return }
     switch conversationType {
     case let .dm(contact):
@@ -488,6 +497,7 @@ struct ChatConversationView: View {
   }
 
   private func handleIncomingMentionIfNeeded(_ messageID: UUID) {
+    guard scenePhase == .active else { return }
     // ChatViewModel.recordIncomingMentionIfNeeded gates self-mentions; an open conversation counts them as seen.
     Task { await markNewArrivalMentionSeen(messageID: messageID) }
   }
@@ -516,14 +526,17 @@ struct ChatConversationView: View {
 
   /// Mark unseen mentions as seen on open because chat-list badges track conversation reads, not visible bubbles.
   private func markConversationMentionsSeen() async {
+    guard scenePhase == .active, !Task.isCancelled else { return }
     guard let dataStore = appState.services?.dataStore else { return }
     do {
       switch conversationType {
       case let .dm(contact):
         let ids = try await dataStore.fetchUnseenMentionIDs(contactID: contact.id)
         for id in ids {
+          guard scenePhase == .active, !Task.isCancelled else { return }
           try await dataStore.markMentionSeen(messageID: id)
         }
+        guard scenePhase == .active, !Task.isCancelled else { return }
         try await dataStore.clearUnreadMentionCount(contactID: contact.id)
 
       case let .channel(channel):
@@ -532,8 +545,10 @@ struct ChatConversationView: View {
           channelIndex: channel.index
         )
         for id in ids {
+          guard scenePhase == .active, !Task.isCancelled else { return }
           try await dataStore.markMentionSeen(messageID: id)
         }
+        guard scenePhase == .active, !Task.isCancelled else { return }
         try await dataStore.clearChannelUnreadMentionCount(channelID: channel.id)
       }
       parentViewModel?.requestConversationReload()
@@ -547,9 +562,11 @@ struct ChatConversationView: View {
   }
 
   private func persistMentionSeen(messageID: UUID) async -> Bool {
+    guard scenePhase == .active, !Task.isCancelled else { return false }
     guard let dataStore = appState.services?.dataStore else { return false }
     do {
       try await dataStore.markMentionSeen(messageID: messageID)
+      guard scenePhase == .active, !Task.isCancelled else { return false }
       switch conversationType {
       case let .dm(contact):
         try await dataStore.decrementUnreadMentionCount(contactID: contact.id)

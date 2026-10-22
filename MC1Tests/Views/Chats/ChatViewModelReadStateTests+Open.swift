@@ -5,6 +5,53 @@ import Testing
 
 extension ChatViewModelReadStateTests {
   @Test(arguments: [false, true])
+  func `cancelled open preserves unread until a foreground reload`(isChannel: Bool) async throws {
+    let environment = try await makeEnvironment(connected: true)
+    defer { environment.cleanup() }
+    let coordinator = ChatCoordinator.makeForTesting()
+    environment.viewModel.bindCoordinatorForTesting(coordinator)
+    let arrived = Gate()
+    let resume = Gate()
+    coordinator.testPopulateAfterFetchHook = {
+      await arrived.open()
+      await resume.wait()
+    }
+    let open = Task {
+      if isChannel {
+        await environment.viewModel.loadChannelMessages(for: environment.channel, populateMode: .refreshWindow)
+      } else {
+        await environment.viewModel.loadMessages(for: environment.contact, populateMode: .refreshWindow)
+      }
+    }
+    await arrived.wait()
+    open.cancel()
+    await resume.open()
+    await open.value
+
+    let unreadBeforeReload = if isChannel {
+      try await environment.store.getChannelUnreadCount(channelID: environment.channel.id)
+    } else {
+      try await environment.store.getUnreadCount(contactID: environment.contact.id)
+    }
+    #expect(unreadBeforeReload == 4)
+    #expect(environment.sync.conversationsVersion == 0)
+    #expect(environment.recorder.badges.isEmpty)
+
+    coordinator.testPopulateAfterFetchHook = nil
+    if isChannel {
+      await environment.viewModel.loadChannelMessages(for: environment.channel, populateMode: .refreshWindow)
+    } else {
+      await environment.viewModel.loadMessages(for: environment.contact, populateMode: .refreshWindow)
+    }
+    let unreadAfterReload = if isChannel {
+      try await environment.store.getChannelUnreadCount(channelID: environment.channel.id)
+    } else {
+      try await environment.store.getUnreadCount(contactID: environment.contact.id)
+    }
+    #expect(unreadAfterReload == 0)
+  }
+
+  @Test(arguments: [false, true])
   func `connected successful opens notify sync and refresh badges`(isChannel: Bool) async throws {
     let environment = try await makeEnvironment(connected: true)
     defer { environment.cleanup() }

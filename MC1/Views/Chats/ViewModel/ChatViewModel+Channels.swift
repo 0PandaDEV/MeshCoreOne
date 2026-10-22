@@ -10,6 +10,7 @@ extension ChatViewModel {
   /// side effects here run only when that load succeeded.
   /// `populateMode` selects first-page replacement or an in-place window refresh; see `ChatPopulateMode`.
   func loadChannelMessages(for channel: ChannelDTO, populateMode: ChatPopulateMode) async {
+    guard !Task.isCancelled else { return }
     let dataStore = dataStore
     let capturedCoordinator = syncCoordinator
     // Track active channel for notification suppression
@@ -19,19 +20,22 @@ extension ChatViewModel {
     )
 
     let loaded = await primeInitialChannelMessages(for: channel, populateMode: populateMode)
+    guard !Task.isCancelled else { return }
 
     // Push the device flood scope after populating the timeline. A device
     // command, so it runs only on real channel open — never during prefetch.
     await syncFloodScope(for: channel)
 
-    guard loaded else { return }
+    guard loaded, !Task.isCancelled else { return }
 
     // Clear unread count and mention badge, then notify UI to refresh chat list.
     // The messages already rendered, so a bookkeeping failure here is logged
     // rather than surfaced as a load error.
     do {
       try await dataStore?.clearChannelUnreadCount(channelID: channel.id)
+      guard !Task.isCancelled else { return }
       try await dataStore?.clearChannelUnreadMentionCount(channelID: channel.id)
+      guard !Task.isCancelled else { return }
       try await dataStore?.markFailedSendsSeen(radioID: channel.radioID, channelIndex: channel.index)
     } catch {
       logger.warning("loadChannelMessages: failed to clear unread counts - \(error.localizedDescription)")

@@ -64,19 +64,22 @@ extension ChatViewModel {
   /// run only when that load succeeded.
   /// `populateMode` selects first-page replacement or an in-place window refresh; see `ChatPopulateMode`.
   func loadMessages(for contact: ContactDTO, populateMode: ChatPopulateMode) async {
+    guard !Task.isCancelled else { return }
     let dataStore = dataStore
     let capturedCoordinator = syncCoordinator
     // Track active conversation for notification suppression
     notificationService?.setActiveConversation(contactID: contact.id)
 
-    guard await primeInitialMessages(for: contact, populateMode: populateMode) else { return }
+    guard await primeInitialMessages(for: contact, populateMode: populateMode), !Task.isCancelled else { return }
 
     // Clear unread count and mention badge, then notify UI to refresh chat list.
     // The messages already rendered, so a bookkeeping failure here is logged
     // rather than surfaced as a load error.
     do {
       try await dataStore?.clearUnreadCount(contactID: contact.id)
+      guard !Task.isCancelled else { return }
       try await dataStore?.clearUnreadMentionCount(contactID: contact.id)
+      guard !Task.isCancelled else { return }
       try await dataStore?.markFailedSendsSeen(contactID: contact.id)
     } catch {
       logger.warning("loadMessages: failed to clear unread counts - \(error.localizedDescription)")
