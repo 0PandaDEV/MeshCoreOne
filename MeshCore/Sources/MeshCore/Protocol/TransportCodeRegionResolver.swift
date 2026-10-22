@@ -68,8 +68,7 @@ public enum TransportCodeRegionResolver {
   /// Codes shorter than 2 bytes are not unscoped.
   public static func isUnscoped(_ transportCode: Data) -> Bool {
     guard transportCode.count >= 2 else { return false }
-    let code = UInt16(transportCode[0]) | (UInt16(transportCode[1]) << 8)
-    return code == 0
+    return transportCode.readUInt16LE(at: 0) == 0
   }
 
   /// Rewrite the reserved transport-code values to their reserved-boundary
