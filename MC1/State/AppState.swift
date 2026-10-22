@@ -264,9 +264,10 @@ final class AppState {
     }
   }
 
-  /// Bumps observer versions after a store-direct backup import so mounted
-  /// tabs reload. Also re-reads `regionSelection`, which `init` loads once.
-  func notifyDataRestored() {
+  /// Bumps observer versions after a store-direct backup import so mounted tabs reload.
+  /// Re-reads `regionSelection`, which `init` loads once, and publishes shortcut recipients after that commit.
+  @discardableResult
+  func notifyDataRestored() -> Task<Void, Never> {
     contactsVersion += 1
     conversationsVersion += 1
     loadPersistedRegionSelection()
@@ -275,6 +276,9 @@ final class AppState {
     // Empties entries; the registry stays so later opens mint fresh coordinators.
     chatCoordinatorRegistry?.clear()
     bumpServicesVersion()
+    return Task { [weak self] in
+      await self?.publishShortcutRecipientsIfChanged(expectedServices: nil)
+    }
   }
 
   /// Bumps `servicesVersion` so observing views re-run `performInitialLoad`.
@@ -311,6 +315,15 @@ final class AppState {
 
   var staleNodeCleanupTask: Task<Void, Never>?
   var staleNodeCleanupServiceID: ObjectIdentifier?
+
+  /// Offered recipient ids last given to Shortcuts in this process.
+  /// Nil until the first publish. A new process starts nil again.
+  @ObservationIgnored var lastPublishedRecipientIDs: Set<String>?
+
+  #if DEBUG
+    @ObservationIgnored var updateShortcutParametersForTesting: (@MainActor () -> Void)?
+    @ObservationIgnored var beforeShortcutRecipientRereadForTesting: (@MainActor () -> Void)?
+  #endif
 
   /// Task consuming SettingsService event stream, canceled on disconnect
   var settingsEventsTask: Task<Void, Never>?
@@ -504,8 +517,8 @@ final class AppState {
     }
 
     // Wire device synced callback - runs after sync completes and state is .ready
-    connectionManager.onDeviceSynced = { [weak self] in
-      self?.performStaleNodeCleanup()
+    connectionManager.onDeviceSynced = { [weak self] hasCleanRecipientData in
+      await self?.handleDeviceSynced(hasCleanRecipientData: hasCleanRecipientData)
     }
 
     loadPersistedRegionSelection()
@@ -713,12 +726,6 @@ final class AppState {
     if lastBumpedServicesID != servicesID {
       lastBumpedServicesID = servicesID
       servicesVersion += 1
-
-      // A real services change is the one moment the addressable contact/channel
-      // set can differ from what saved shortcuts were resolved against, so re-resolve
-      // the App Intents parameter queries here (debounced by this same guard, and past
-      // the connection-lost early return so it never fires on disconnect).
-      refreshAppShortcutParameters()
     }
 
     // Set up notification center delegate, wire localized strings, then register categories
@@ -761,23 +768,27 @@ final class AppState {
   }
 
   /// Runs automatic cleanup of stale non-favorite nodes if the threshold is configured.
-  /// - Parameter force: When `true`, skips the cooldown and replaces a running cleanup.
-  func performStaleNodeCleanup(force: Bool = false) {
+  /// - Parameters:
+  ///   - force: When `true`, skips the cooldown and replaces a running cleanup.
+  ///   - publishRecipients: When `true`, publish shortcut recipients after `removeStaleNodes` returns.
+  /// - Returns: Whether this call stored a new cleanup task.
+  @discardableResult
+  func performStaleNodeCleanup(force: Bool = false, publishRecipients: Bool = false) -> Bool {
     let threshold = UserDefaults.standard.integer(forKey: AppStorageKey.autoDeleteStaleNodesDays.rawValue)
     guard threshold > 0 else {
       cancelStaleNodeCleanup()
-      return
+      return false
     }
-    guard let services = connectionManager.services else { return }
+    guard let services = connectionManager.services else { return false }
     let serviceID = ObjectIdentifier(services)
-    guard force || staleNodeCleanupTask == nil || staleNodeCleanupServiceID != serviceID else { return }
+    guard force || staleNodeCleanupTask == nil || staleNodeCleanupServiceID != serviceID else { return false }
 
     if !force {
       let lastRunTimestamp = UserDefaults.standard.double(forKey: AppStorageKey.lastStaleCleanupDate.rawValue)
       let lastRun = lastRunTimestamp > 0 ? Date(timeIntervalSinceReferenceDate: lastRunTimestamp) : Date.distantPast
       guard Date().timeIntervalSince(lastRun) >= Self.staleNodeCleanupCooldown else {
         logger.debug("Stale node cleanup skipped — cooldown not expired")
-        return
+        return false
       }
     }
 
@@ -804,12 +815,16 @@ final class AppState {
         } else {
           logger.debug("Stale node cleanup: no stale nodes found")
         }
+        if publishRecipients {
+          await publishShortcutRecipientsIfChanged(expectedServices: services)
+        }
       } catch is CancellationError {
         return
       } catch {
         logger.warning("Stale node cleanup failed: \(error.localizedDescription)")
       }
     }
+    return true
   }
 
   // MARK: - Onboarding

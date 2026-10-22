@@ -310,9 +310,9 @@ extension ConnectionManager {
       allowedRepeatFreqRanges = []
       return
     }
-    let syncSucceeded = await performInitialSync(radioID: radioID, services: newServices, transportType: .wifi, context: "WiFi reconnect")
+    let syncResult = await performInitialSync(radioID: radioID, services: newServices, transportType: .wifi, context: "WiFi reconnect")
 
-    guard await promoteToReady(syncSucceeded: syncSucceeded, expectedServices: newServices, transportType: .wifi) else { return }
+    guard await promoteToReady(syncResult: syncResult, expectedServices: newServices, transportType: .wifi) else { return }
 
     stopReconnectionWatchdog()
     if connectionState == .ready {
@@ -431,7 +431,7 @@ extension ConnectionManager {
       persistConnection(deviceID: deviceID, radioID: radioID, deviceName: meshCoreSelfInfo.name)
 
       await onConnectionReady?()
-      let syncSucceeded = await performInitialSync(radioID: radioID, services: newServices, transportType: .wifi, forceFullSync: forceFullSync)
+      let syncResult = await performInitialSync(radioID: radioID, services: newServices, transportType: .wifi, forceFullSync: forceFullSync)
 
       // Wire disconnection handler before promotion — needed even if promotion fails
       await newWiFiTransport.setDisconnectionHandler { [weak self, weak newWiFiTransport] error, eventTime in
@@ -441,7 +441,7 @@ extension ConnectionManager {
         }
       }
 
-      guard await promoteToReady(syncSucceeded: syncSucceeded, expectedServices: newServices, transportType: .wifi) else { return }
+      guard await promoteToReady(syncResult: syncResult, expectedServices: newServices, transportType: .wifi) else { return }
 
       stopReconnectionWatchdog()
       if connectionState == .ready {

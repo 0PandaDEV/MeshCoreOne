@@ -229,6 +229,20 @@ struct SyncCoordinatorTests {
   }
 
   @Test
+  func `hasCleanRecipientData requires clean contacts and clean channels`() {
+    #expect(
+      FullSyncResult(contacts: .clean, channels: .clean, messages: .failed("catch-up")).hasCleanRecipientData
+    )
+    #expect(
+      !FullSyncResult(contacts: .partial, channels: .clean, messages: .clean).hasCleanRecipientData
+    )
+    #expect(
+      !FullSyncResult(contacts: .clean, channels: .partial, messages: .clean).hasCleanRecipientData
+    )
+    #expect(!FullSyncResult.skipped.hasCleanRecipientData)
+  }
+
+  @Test
   @MainActor
   func `Sync activity callbacks not double called on error`() async throws {
     let coordinator = SyncCoordinator()

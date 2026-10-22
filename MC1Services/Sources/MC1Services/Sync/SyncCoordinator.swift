@@ -64,6 +64,12 @@ struct FullSyncResult: Equatable {
     contacts == .clean
   }
 
+  /// True when this result's contact pass and channel pass are both clean.
+  /// Message catch-up, `.synced`, and an older clean-channel time do not count.
+  var hasCleanRecipientData: Bool {
+    contacts.isClean && channels.isClean
+  }
+
   init(
     contacts: SyncPhaseStatus,
     channels: SyncPhaseStatus,
@@ -242,10 +248,13 @@ public actor SyncCoordinator {
 
   #if DEBUG
     /// Test override for `performResync`. When set, bypasses the real sync path.
-    var performResyncOverride: ((_ radioID: UUID, _ dependencies: SyncDependencies) async -> Bool)?
+    /// Nil stands in for a thrown sync. A completed result keeps its eligibility.
+    var performResyncOverride: ((_ radioID: UUID, _ dependencies: SyncDependencies) async -> FullSyncResult?)?
 
     /// Sets the test override for `performResync`.
-    func setPerformResyncOverride(_ override: @escaping @Sendable (_ radioID: UUID, _ dependencies: SyncDependencies) async -> Bool) {
+    func setPerformResyncOverride(
+      _ override: @escaping @Sendable (_ radioID: UUID, _ dependencies: SyncDependencies) async -> FullSyncResult?
+    ) {
       performResyncOverride = override
     }
   #endif

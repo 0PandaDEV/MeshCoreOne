@@ -210,7 +210,8 @@ extension ConnectionManager: BLEReconnectionDelegate {
       await abandonRebuildAfterHandshake(session: newSession, services: newServices)
       return
     }
-    let syncSucceeded = await performInitialSync(radioID: radioID, services: newServices, context: "[BLE] iOS auto-reconnect")
+    let syncResult = await performInitialSync(radioID: radioID, services: newServices, context: "[BLE] iOS auto-reconnect")
+    let syncSucceeded = syncResult?.isConnectionUsable == true
 
     // Caller-specific guard: generation check for superseded reconnects
     guard connectionIntent.wantsConnection,
@@ -242,7 +243,7 @@ extension ConnectionManager: BLEReconnectionDelegate {
     }
 
     guard await promoteToReady(
-      syncSucceeded: syncSucceeded,
+      syncResult: syncResult,
       expectedServices: newServices,
       transportType: .bluetooth,
       additionalGuard: { [reconnectionCoordinator] in

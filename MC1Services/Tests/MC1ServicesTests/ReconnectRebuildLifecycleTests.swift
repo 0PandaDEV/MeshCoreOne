@@ -150,7 +150,7 @@ struct ReconnectRebuildLifecycleTests {
       connectionIntent: .wantsConnection()
     )
     let promoted = await manager.promoteToReady(
-      syncSucceeded: true,
+      syncResult: FullSyncResult(contacts: .clean, channels: .clean, messages: .clean),
       expectedServices: services,
       transportType: .bluetooth
     )

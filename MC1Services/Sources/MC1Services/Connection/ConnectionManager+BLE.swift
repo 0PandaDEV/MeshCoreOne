@@ -678,10 +678,10 @@ extension ConnectionManager {
     } else {
       shouldForceFullSync = false
     }
-    let syncSucceeded = await performInitialSync(radioID: radioID, services: newServices, forceFullSync: shouldForceFullSync)
+    let syncResult = await performInitialSync(radioID: radioID, services: newServices, forceFullSync: shouldForceFullSync)
 
     guard await promoteToReady(
-      syncSucceeded: syncSucceeded,
+      syncResult: syncResult,
       expectedServices: newServices,
       transportType: .bluetooth,
       additionalGuard: { self.ownsConnectionAttempt(deviceID: deviceID, attemptID: attemptID) }

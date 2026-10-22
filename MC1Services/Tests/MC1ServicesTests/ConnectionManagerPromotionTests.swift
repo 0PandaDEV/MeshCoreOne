@@ -6,6 +6,17 @@ import Testing
 @Suite("ConnectionManager Promotion Tests")
 @MainActor
 struct ConnectionManagerPromotionTests {
+  private func usableSyncResult(
+    channels: SyncPhaseStatus = .clean,
+    messages: SyncPhaseStatus = .clean
+  ) -> FullSyncResult {
+    FullSyncResult(contacts: .clean, channels: channels, messages: messages)
+  }
+
+  private func unusableSyncResult() -> FullSyncResult {
+    FullSyncResult(contacts: .failed("sync failed"), channels: .skipped, messages: .skipped)
+  }
+
   private func makeTestServices() async throws -> ServiceContainer {
     let transport = SimulatorMockTransport()
     let session = MeshCoreSession(transport: transport)
@@ -46,7 +57,7 @@ struct ConnectionManagerPromotionTests {
     manager.setTestState(services: replacementServices)
 
     let promoted = await manager.promoteToReady(
-      syncSucceeded: true,
+      syncResult: usableSyncResult(),
       expectedServices: originalServices,
       transportType: .bluetooth
     )
@@ -69,7 +80,7 @@ struct ConnectionManagerPromotionTests {
     )
 
     let promoted = await manager.promoteToReady(
-      syncSucceeded: true,
+      syncResult: usableSyncResult(),
       expectedServices: originalServices,
       transportType: .bluetooth
     )
@@ -88,7 +99,7 @@ struct ConnectionManagerPromotionTests {
     setupForPromotion(manager: manager, services: services)
 
     let promoted = await manager.promoteToReady(
-      syncSucceeded: false,
+      syncResult: unusableSyncResult(),
       expectedServices: services,
       transportType: .bluetooth
     )
@@ -108,10 +119,10 @@ struct ConnectionManagerPromotionTests {
 
     setupForPromotion(manager: manager, services: services)
     manager.onConnectionBecameUsable = { becameUsable = true }
-    manager.onDeviceSynced = { onDeviceSyncedCalled = true }
+    manager.onDeviceSynced = { _ in onDeviceSyncedCalled = true }
 
     let promoted = await manager.promoteToReady(
-      syncSucceeded: false,
+      syncResult: unusableSyncResult(),
       expectedServices: services,
       transportType: .bluetooth
     )
@@ -131,7 +142,7 @@ struct ConnectionManagerPromotionTests {
     setupForPromotion(manager: manager, services: services)
 
     let promoted = await manager.promoteToReady(
-      syncSucceeded: true,
+      syncResult: usableSyncResult(),
       expectedServices: services,
       transportType: .bluetooth
     )
@@ -147,10 +158,10 @@ struct ConnectionManagerPromotionTests {
     var onDeviceSyncedCalled = false
 
     setupForPromotion(manager: manager, services: services)
-    manager.onDeviceSynced = { onDeviceSyncedCalled = true }
+    manager.onDeviceSynced = { _ in onDeviceSyncedCalled = true }
 
     await manager.promoteToReady(
-      syncSucceeded: true,
+      syncResult: usableSyncResult(),
       expectedServices: services,
       transportType: .bluetooth
     )
@@ -165,10 +176,10 @@ struct ConnectionManagerPromotionTests {
     var onDeviceSyncedCalled = false
 
     setupForPromotion(manager: manager, services: services)
-    manager.onDeviceSynced = { onDeviceSyncedCalled = true }
+    manager.onDeviceSynced = { _ in onDeviceSyncedCalled = true }
 
     await manager.promoteToReady(
-      syncSucceeded: false,
+      syncResult: unusableSyncResult(),
       expectedServices: services,
       transportType: .bluetooth
     )
@@ -191,13 +202,14 @@ struct ConnectionManagerPromotionTests {
       #expect(!onDeviceSyncedCalled)
       becameUsableCount += 1
     }
-    manager.onDeviceSynced = {
+    manager.onDeviceSynced = { hasCleanRecipientData in
+      #expect(hasCleanRecipientData)
       #expect(becameUsableCount == 1)
       onDeviceSyncedCalled = true
     }
 
     let promoted = await manager.promoteToReady(
-      syncSucceeded: true,
+      syncResult: usableSyncResult(),
       expectedServices: services,
       transportType: .bluetooth
     )
@@ -221,7 +233,7 @@ struct ConnectionManagerPromotionTests {
     setupForPromotion(manager: manager, services: services, connectionIntent: .userDisconnected)
 
     let promoted = await manager.promoteToReady(
-      syncSucceeded: true,
+      syncResult: usableSyncResult(),
       expectedServices: services,
       transportType: .bluetooth
     )
@@ -240,7 +252,7 @@ struct ConnectionManagerPromotionTests {
     setupForPromotion(manager: manager, services: services)
 
     let promoted = await manager.promoteToReady(
-      syncSucceeded: true,
+      syncResult: usableSyncResult(),
       expectedServices: services,
       transportType: .bluetooth,
       additionalGuard: { false }
@@ -257,7 +269,7 @@ struct ConnectionManagerPromotionTests {
     setupForPromotion(manager: manager, services: services, firmwareVersion: 14)
 
     let promoted = await manager.promoteToReady(
-      syncSucceeded: true,
+      syncResult: usableSyncResult(),
       expectedServices: services,
       transportType: .bluetooth
     )
@@ -281,6 +293,63 @@ struct ConnectionManagerPromotionTests {
 
     #expect(manager.connectionIntent.isUserDisconnected)
     #expect(manager.connectionState == .disconnected)
+  }
+
+  @Test
+  func `promoteToReady passes false when channels are partial`() async throws {
+    let (manager, _) = try ConnectionManager.createForTesting()
+    let services = try await makeTestServices()
+    var eligibility: Bool?
+    setupForPromotion(manager: manager, services: services)
+    manager.onDeviceSynced = { eligibility = $0 }
+
+    let promoted = await manager.promoteToReady(
+      syncResult: usableSyncResult(channels: .partial),
+      expectedServices: services,
+      transportType: .bluetooth
+    )
+
+    #expect(promoted)
+    #expect(manager.connectionState == .ready)
+    #expect(eligibility == false)
+  }
+
+  @Test
+  func `promoteToReady passes true when channels are clean and messages failed`() async throws {
+    let (manager, _) = try ConnectionManager.createForTesting()
+    let services = try await makeTestServices()
+    var eligibility: Bool?
+    setupForPromotion(manager: manager, services: services)
+    manager.onDeviceSynced = { eligibility = $0 }
+
+    let promoted = await manager.promoteToReady(
+      syncResult: usableSyncResult(messages: .failed("catch-up")),
+      expectedServices: services,
+      transportType: .bluetooth
+    )
+
+    #expect(promoted)
+    #expect(manager.connectionState == .ready)
+    #expect(eligibility == true)
+  }
+
+  @Test
+  func `promoteToReady skips onDeviceSynced for a nil sync result`() async throws {
+    let (manager, _) = try ConnectionManager.createForTesting()
+    let services = try await makeTestServices()
+    var onDeviceSyncedCalled = false
+    setupForPromotion(manager: manager, services: services)
+    manager.onDeviceSynced = { _ in onDeviceSyncedCalled = true }
+
+    let promoted = await manager.promoteToReady(
+      syncResult: nil,
+      expectedServices: services,
+      transportType: .bluetooth
+    )
+
+    #expect(promoted)
+    #expect(manager.connectionState == .syncing)
+    #expect(!onDeviceSyncedCalled)
   }
 
   // MARK: - Post-time-sync re-validation (not unit-testable)

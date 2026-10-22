@@ -256,10 +256,10 @@ public final class ConnectionManager {
   /// Installed by `AppState` during initialization.
   public var onAuthenticationFailure: ((UUID) -> Void)?
 
-  /// Called after initial sync completes and connectionState becomes `.ready`.
-  /// Use this for work that depends on up-to-date synced data (e.g. stale node cleanup).
+  /// Called after a usable sync promotes the connection to `.ready`.
+  /// The flag is clean contacts and clean channels from that result, so a partial channel pass is `.ready` with false.
   /// Installed by `AppState` during initialization.
-  public var onDeviceSynced: (() async -> Void)?
+  public var onDeviceSynced: ((_ hasCleanRecipientData: Bool) async -> Void)?
 
   /// Called when `clearPersistedConnection(for:)` clears the last-connected slot.
   /// Installed by `AppState` during initialization.
@@ -1052,11 +1052,12 @@ public final class ConnectionManager {
   ///   Currently only `rebuildSession` uses this (reconnect-generation check).
   @discardableResult
   func promoteToReady(
-    syncSucceeded: Bool,
+    syncResult: FullSyncResult?,
     expectedServices: ServiceContainer,
     transportType: TransportType,
     additionalGuard: (() -> Bool)? = nil
   ) async -> Bool {
+    let syncSucceeded = syncResult?.isConnectionUsable == true
     func canPromote(_ phase: String) -> Bool {
       guard connectionIntent.wantsConnection else {
         logger.warning("Promotion suppressed\(phase): user disconnected")
@@ -1096,7 +1097,10 @@ public final class ConnectionManager {
       guard canPromote(" after timezone sync") else { return false }
     }
 
-    if syncSucceeded { await onDeviceSynced?() }
+    if syncSucceeded {
+      await onDeviceSynced?(syncResult?.hasCleanRecipientData == true)
+      guard canPromote(" after device sync callback") else { return false }
+    }
     return true
   }
 

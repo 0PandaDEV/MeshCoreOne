@@ -258,14 +258,14 @@ extension SyncCoordinator {
   ///   - forceFullSync: When true, forces a full contact sync instead of incremental.
   ///   - channelSyncConfig: Channel sync skip configuration.
   ///   - platformName: Platform name for instrumentation logging.
-  /// - Returns: `true` if sync succeeded, `false` if it failed
+  /// - Returns: The completed sync result, or nil when the sync throws.
   func performResync(
     radioID: UUID,
     dependencies: SyncDependencies,
     forceFullSync: Bool = false,
     channelSyncConfig: ChannelSyncConfig = .none,
     platformName: String = "unknown"
-  ) async -> Bool {
+  ) async -> FullSyncResult? {
     #if DEBUG
       if let override = performResyncOverride {
         return await override(radioID, dependencies)
@@ -308,11 +308,10 @@ extension SyncCoordinator {
 
       if result.isConnectionUsable {
         logger.info("Resync succeeded")
-        return true
+      } else {
+        logger.warning("Resync completed without usable contacts")
       }
-
-      logger.warning("Resync completed without usable contacts")
-      return false
+      return result
     } catch {
       await drainHandlersAndResumeNotifications(
         notificationService: dependencies.notificationService,
@@ -323,7 +322,7 @@ extension SyncCoordinator {
 
       logger.warning("Resync failed: \(error.localizedDescription)")
       await setState(.failed(.syncFailed(error.localizedDescription)))
-      return false
+      return nil
     }
   }
 

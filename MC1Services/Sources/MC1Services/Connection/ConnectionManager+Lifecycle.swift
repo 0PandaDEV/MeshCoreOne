@@ -760,7 +760,8 @@ public extension ConnectionManager {
 
       connectingDeviceID = nil
       connectionState = .ready
-      await onDeviceSynced?()
+      // The seeded fixture is the simulator's whole recipient set.
+      await onDeviceSynced?(true)
       logger.info("Simulator connection complete")
     } catch {
       connectingDeviceID = nil
@@ -847,9 +848,9 @@ public extension ConnectionManager {
 
       // Notify observers before sync starts so they can wire callbacks
       await onConnectionReady?()
-      let syncSucceeded = await performInitialSync(radioID: radioID, services: newServices, context: "Device switch", forceFullSync: true)
+      let syncResult = await performInitialSync(radioID: radioID, services: newServices, context: "Device switch", forceFullSync: true)
 
-      guard await promoteToReady(syncSucceeded: syncSucceeded, expectedServices: newServices, transportType: .bluetooth) else { return }
+      guard await promoteToReady(syncResult: syncResult, expectedServices: newServices, transportType: .bluetooth) else { return }
 
       // Refill the rebuild-preserve budget so a spent counter on radio A cannot
       // force radio B's first rebuild failure to sever.

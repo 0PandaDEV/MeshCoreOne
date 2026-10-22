@@ -105,7 +105,7 @@ public extension ConnectionManager {
   }
 
   /// Pairing leftover-GATT wait. `.syncing` already has a session
-  /// (`promoteToReady(syncSucceeded: false)`); `.connected` is still rebuilding.
+  /// (`promoteToReady` with a non-usable result); `.connected` is still rebuilding.
   func waitForPairingAdoptionToSettle() async throws {
     #if DEBUG
       if let strategy = pairingAdoptionSettleStrategyOverride {
