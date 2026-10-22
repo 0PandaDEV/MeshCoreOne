@@ -45,11 +45,21 @@ struct NewCommandsTests {
     }
   }
 
-  @Test
-  func `sendRawData clamps payload to rawDataMaxPayloadBytes`() throws {
-    let payload = Data(repeating: 0x22, count: 220)
-    let packet = try PacketBuilder.sendRawData(pathLength: 0x00, path: Data(), payload: payload)
-    #expect(Data(packet[2...]) == Data(repeating: 0x22, count: PacketBuilder.rawDataMaxPayloadBytes))
+  @Test(arguments: [(UInt8(0), 0, 174), (7, 7, 167), (0x44, 8, 166), (0x83, 9, 165)])
+  func `sendRawData enforces the host frame budget`(pathLength: UInt8, pathCount: Int, payloadCount: Int) throws {
+    let path = Data(repeating: 0x11, count: pathCount + 3)
+    let payload = Data(repeating: 0x22, count: payloadCount)
+    let packet = try PacketBuilder.sendRawData(pathLength: pathLength, path: path, payload: payload)
+    #expect(packet.count == 176)
+    #expect(Data(packet.suffix(payloadCount)) == payload)
+
+    let error = #expect(throws: MeshCoreError.self) {
+      try PacketBuilder.sendRawData(pathLength: pathLength, path: path, payload: payload + Data([0x22]))
+    }
+    guard case .invalidInput? = error else {
+      Issue.record("Expected invalidInput")
+      return
+    }
   }
 
   @Test
