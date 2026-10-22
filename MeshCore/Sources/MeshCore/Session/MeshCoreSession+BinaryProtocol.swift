@@ -311,7 +311,7 @@ public extension MeshCoreSession {
         group.cancelAll()
         throw error
       }
-      if await !sessionIsRunning {
+      if !sessionIsRunning {
         throw CancellationError()
       }
       throw MeshCoreError.timeout

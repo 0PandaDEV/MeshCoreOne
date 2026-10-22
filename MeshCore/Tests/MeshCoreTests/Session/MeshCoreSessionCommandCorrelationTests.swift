@@ -1175,12 +1175,13 @@ struct MeshCoreSessionCommandCorrelationTests {
     let statusTask = Task {
       try await session.requestStatus(from: firstTarget)
     }
-    let telemetryTask = Task {
-      try await session.requestTelemetry(from: secondTarget)
-    }
-
     try await waitUntil("first binary request should be sent") {
       await transport.sentData.count == 2
+    }
+    #expect(await transport.sentData.last == PacketBuilder.sendStatusRequest(to: firstTarget))
+
+    let telemetryTask = Task {
+      try await session.requestTelemetry(from: secondTarget)
     }
 
     try? await Task.sleep(for: .milliseconds(50))
@@ -1201,6 +1202,7 @@ struct MeshCoreSessionCommandCorrelationTests {
     try await waitUntil("second binary request should send after the first one fails") {
       await transport.sentData.count == 3
     }
+    #expect(await transport.sentData.last == PacketBuilder.getSelfTelemetry(destination: secondTarget))
 
     await transport.simulateError(code: 13)
 
