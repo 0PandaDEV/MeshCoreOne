@@ -85,7 +85,7 @@ public extension MeshCoreSession {
   /// - Throws: ``MeshCoreError`` if the fetch fails.
   func ensureContacts(force: Bool = false) async throws -> [MeshContact] {
     if force || contactManager.needsRefresh || contactManager.isEmpty {
-      return try await getContacts(since: contactManager.contactsLastModified)
+      _ = try await getContacts(since: contactManager.contactsLastModified)
     }
     return cachedContacts
   }
@@ -213,11 +213,17 @@ public extension MeshCoreSession {
       }
     }
 
-    // Update contact manager on the actor after the serialized exchange completes
-    for contact in contacts {
-      contactManager.store(contact)
+    let isCompleteSnapshot = lastModified == nil && reportedTotal == contacts.count
+    if isCompleteSnapshot {
+      contactManager.replaceCache(contacts)
+    } else {
+      for contact in contacts {
+        contactManager.store(contact)
+      }
     }
-    if let modifiedDate {
+    if lastModified == nil, !isCompleteSnapshot {
+      contactManager.requireFullRefresh()
+    } else if let modifiedDate {
       contactManager.markClean(lastModified: modifiedDate)
     }
 
@@ -269,6 +275,7 @@ public extension MeshCoreSession {
   func removeContact(publicKey: Data) async throws {
     try requireFullPublicKey(publicKey, operation: "removeContact")
     try await sendSimpleCommand(PacketBuilder.removeContact(publicKey: publicKey))
+    contactManager.remove(publicKey.hexString)
   }
 
   /// Shares a contact with nearby devices via broadcast.
