@@ -26,9 +26,6 @@ struct ConversationListContent: View {
   private static let rowSeparatorLeadingInset: CGFloat = 72
   private static let sectionHeaderHorizontalPadding: CGFloat = 16
   private static let sectionHeaderVerticalPadding: CGFloat = 12
-  /// `topScrollAnchor` is zero height, and scroll spacing separates it from the Nodes filter.
-  /// Chats has no anchor, so the filter keeps that room itself.
-  private static let filterHeaderTopMargin: CGFloat = 8
 
   init(
     viewModel: ChatViewModel,
@@ -109,7 +106,6 @@ struct ConversationListContent: View {
   private var filterHeader: some View {
     ChatFilterPicker(selection: $selectedFilter, isSearching: !searchText.isEmpty)
       .frame(maxWidth: .infinity)
-      .padding(.top, Self.filterHeaderTopMargin)
       .pinnedFilterHeaderBackground(theme)
   }
 

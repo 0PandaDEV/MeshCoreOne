@@ -4,8 +4,8 @@ import SwiftUI
 import Testing
 import UIKit
 
-/// Compares the production Chats and Nodes headers under their native title and search placement.
-@Suite("Search filter spacing", .serialized, .timeLimit(.minutes(2)))
+/// Compares the production Chats, Nodes, and Discover headers under the same search placement.
+@Suite("Search filter spacing", .serialized, .timeLimit(.minutes(3)))
 @MainActor
 struct SearchFilterSpacingTests {
   private enum Layout {
@@ -17,38 +17,40 @@ struct SearchFilterSpacingTests {
     let name: String
     let chats: CGFloat
     let nodes: CGFloat
+    let discover: CGFloat
     let scale: CGFloat
   }
 
   @Test
-  func `chats search to filter gap matches nodes within one pixel`() async throws {
-    let loading = try await sample("loading", chatsLoaded: false, nodesLoaded: false, focus: false, rows: false)
-    let populated = try await sample("populated", chatsLoaded: true, nodesLoaded: true, focus: false, rows: true)
-    let focused = try await sample("focused empty", chatsLoaded: true, nodesLoaded: true, focus: true, rows: true)
+  func `search to filter gap matches across chats nodes and discover`() async throws {
+    let loading = try await sample("loading", loaded: false, focus: false, rows: false)
+    let populated = try await sample("populated", loaded: true, focus: false, rows: true)
+    let focused = try await sample("focused empty", loaded: true, focus: true, rows: true)
     let samples = [loading, populated, focused]
     let report = samples.map { sample in
-      "\(sample.name) chats=\(sample.chats) nodes=\(sample.nodes) delta=\(sample.chats - sample.nodes) scale=\(sample.scale)"
+      "\(sample.name) chats=\(sample.chats) nodes=\(sample.nodes) discover=\(sample.discover) scale=\(sample.scale)"
     }.joined(separator: "\n")
     for sample in samples {
       let tolerance = 1 / max(sample.scale, 1)
       #expect(abs(sample.chats - sample.nodes) <= tolerance, "\(sample.name) \(report)")
+      #expect(abs(sample.chats - sample.discover) <= tolerance, "\(sample.name) \(report)")
     }
   }
 
   private func sample(
     _ name: String,
-    chatsLoaded: Bool,
-    nodesLoaded: Bool,
+    loaded: Bool,
     focus: Bool,
     rows: Bool
   ) async throws -> Sample {
-    let chats = try await chatsGap(loaded: chatsLoaded, focus: focus, rows: rows)
-    let nodes = try await nodesGap(loaded: nodesLoaded, focus: focus, rows: rows)
-    return Sample(name: name, chats: chats.gap, nodes: nodes.gap, scale: chats.scale)
+    let chats = try await chatsGap(loaded: loaded, focus: focus, rows: rows)
+    let nodes = try await nodesGap(loaded: loaded, focus: focus, rows: rows)
+    let discover = try await discoverGap(loaded: loaded, focus: focus)
+    return Sample(name: name, chats: chats.gap, nodes: nodes.gap, discover: discover.gap, scale: chats.scale)
   }
 
   private func chatsGap(loaded: Bool, focus: Bool, rows: Bool) async throws -> Gap {
-    let host = try mountChats(loaded: loaded, rows: rows)
+    let host = try await mountChats(loaded: loaded, rows: rows)
     defer { host.tearDown() }
     try await settle(host.window)
     if focus {
@@ -59,7 +61,7 @@ struct SearchFilterSpacingTests {
   }
 
   private func nodesGap(loaded: Bool, focus: Bool, rows: Bool) async throws -> Gap {
-    let host = try mountNodes(loaded: loaded, rows: rows)
+    let host = try await mountNodes(loaded: loaded, rows: rows)
     defer { host.tearDown() }
     try await settle(host.window)
     if focus {
@@ -67,6 +69,17 @@ struct SearchFilterSpacingTests {
       try await settle(host.window)
     }
     return try measuredGap(in: host.window, titles: nodeTitles)
+  }
+
+  private func discoverGap(loaded: Bool, focus: Bool) async throws -> Gap {
+    let host = try await mountDiscover(loaded: loaded)
+    defer { host.tearDown() }
+    try await settle(host.window)
+    if focus {
+      searchField(in: host.window)?.becomeFirstResponder()
+      try await settle(host.window)
+    }
+    return try measuredGap(in: host.window, titles: discoverTitles)
   }
 
   private func measuredGap(in window: UIWindow, titles: Set<String>) throws -> Gap {
@@ -77,7 +90,7 @@ struct SearchFilterSpacingTests {
     return Gap(gap: top - search.maxY, scale: window.screen.scale)
   }
 
-  private func mountChats(loaded: Bool, rows: Bool) throws -> ChatsSpacingHost {
+  private func mountChats(loaded: Bool, rows: Bool) async throws -> ChatsSpacingHost {
     let viewModel = ChatViewModel()
     viewModel.hasLoadedOnce = loaded
     let others = rows ? [Conversation.direct(makeContact(name: "Ada"))] : []
@@ -89,11 +102,11 @@ struct SearchFilterSpacingTests {
         others: others
       )
     )
-    let window = try makeWindow(controller)
+    let window = try await makeWindow(controller)
     return ChatsSpacingHost(window: window)
   }
 
-  private func mountNodes(loaded: Bool, rows: Bool) throws -> NodesSpacingHost {
+  private func mountNodes(loaded: Bool, rows: Bool) async throws -> NodesSpacingHost {
     let viewModel = ContactsViewModel()
     viewModel.hasLoadedOnce = loaded
     viewModel.contacts = rows ? [makeContact(name: "Ada")] : []
@@ -103,13 +116,32 @@ struct SearchFilterSpacingTests {
     let controller = UIHostingController(
       rootView: NodesSpacingRoot(state: state, contacts: contacts, appState: AppState())
     )
-    let window = try makeWindow(controller)
+    let window = try await makeWindow(controller)
     return NodesSpacingHost(window: window, state: state)
   }
 
-  private func makeWindow(_ controller: UIViewController) throws -> UIWindow {
-    let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
-    let window = UIWindow(windowScene: scene)
+  private func mountDiscover(loaded: Bool) async throws -> DiscoverSpacingHost {
+    let state = DiscoveryState()
+    state.viewModel.hasLoadedOnce = loaded
+    let controller = UIHostingController(
+      rootView: NavigationStack {
+        DiscoveryView(state: state, rendererRevision: 0)
+      }
+      .environment(\.appState, AppState())
+      .environment(\.appTheme, .default)
+    )
+    let window = try await makeWindow(controller)
+    return DiscoverSpacingHost(window: window, state: state)
+  }
+
+  private func makeWindow(_ controller: UIViewController) async throws -> UIWindow {
+    var scene: UIWindowScene?
+    try await waitUntil(timeout: .seconds(5), "No window scene") {
+      scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+      return scene != nil
+    }
+    let resolved = try #require(scene)
+    let window = UIWindow(windowScene: resolved)
     window.frame = Layout.viewport
     window.rootViewController = controller
     window.makeKeyAndVisible()
@@ -129,6 +161,10 @@ struct SearchFilterSpacingTests {
 
   private var nodeTitles: Set<String> {
     Set(NodeSegment.allCases.map(\.localizedTitle))
+  }
+
+  private var discoverTitles: Set<String> {
+    Set(DiscoverSegment.allCases.map(\.localizedTitle))
   }
 
   private func makeContact(name: String) -> ContactDTO {
@@ -244,6 +280,24 @@ private final class NodesSpacingHost {
   let state: ContactsSidebarState
 
   init(window: UIWindow, state: ContactsSidebarState) {
+    self.window = window
+    self.state = state
+  }
+
+  func tearDown() {
+    state.end()
+    window.rootViewController = nil
+    window.isHidden = true
+    window.windowScene = nil
+  }
+}
+
+@MainActor
+private final class DiscoverSpacingHost {
+  let window: UIWindow
+  let state: DiscoveryState
+
+  init(window: UIWindow, state: DiscoveryState) {
     self.window = window
     self.state = state
   }

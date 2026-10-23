@@ -23,7 +23,7 @@ struct ContactsListContent: View {
 
   /// Leading inset for the inter-row divider, aligning it under the row text past the avatar.
   private static let rowSeparatorLeadingInset: CGFloat = 72
-  /// Zero-height `scrollTo` target used after pull-to-refresh.
+  /// Content container target used to scroll to the top after pull-to-refresh.
   private static let topScrollAnchor = "nodesListTop"
 
   var body: some View {
@@ -68,10 +68,7 @@ struct ContactsListContent: View {
     let scrollContent = content()
     return ScrollViewReader { proxy in
       ScrollView {
-        Color.clear
-          .frame(height: 0)
-          .id(Self.topScrollAnchor)
-        scrollContent
+        scrollContent.id(Self.topScrollAnchor)
       }
       .scrollPosition(id: $scrollPositionID, anchor: .top)
       .swipeActionsContainerIfAvailable()

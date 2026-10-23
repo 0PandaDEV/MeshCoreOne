@@ -24,16 +24,42 @@ struct ContactsScrollBookmarkTests {
   func `reaching the actual top clears the retained bookmark`() async throws {
     let fixture = try makeFixture()
     defer { fixture.tearDown() }
-    try #require(await waitFor {
-      guard let scroll = scrollView(in: fixture.window) else { return false }
-      return topOffset(scroll) > fixture.window.bounds.height
-    })
-    let scroll = try #require(scrollView(in: fixture.window))
+    let scroll = try await restoredScroll(in: fixture)
     scroll.setContentOffset(CGPoint(x: 0, y: -scroll.adjustedContentInset.top), animated: false)
     try #require(await waitFor { fixture.state.scrollPositionID == nil })
     fixture.render.status = "Updated ancestor"
     try await Task.sleep(for: Layout.scrollSettle)
     #expect(abs(topOffset(scroll)) < Layout.topTolerance)
+  }
+
+  @Test
+  func `refresh scrolls restored content to the actual top`() async throws {
+    let fixture = try makeFixture()
+    defer { fixture.tearDown() }
+    let scroll = try await restoredScroll(in: fixture)
+    let refresh = try #require(scroll.refreshControl)
+    defer { refresh.endRefreshing() }
+    refresh.beginRefreshing()
+    #expect(topOffset(scroll) > fixture.window.bounds.height)
+    refresh.sendActions(for: .valueChanged)
+    try #require(await waitFor { fixture.state.showOfflineRefreshAlert })
+    try #require(await waitFor { abs(topOffset(scroll)) < Layout.topTolerance })
+    #expect(fixture.state.scrollPositionID == nil)
+  }
+
+  @Test
+  func `loading content restores the retained bookmark`() async throws {
+    let fixture = try makeFixture(loaded: false)
+    defer { fixture.tearDown() }
+    try #require(await waitFor {
+      views(fixture.window).contains { view in
+        guard let scroll = view as? UIScrollView else { return false }
+        return scroll.bounds.height == fixture.window.bounds.height
+      }
+    })
+    #expect(fixture.state.scrollPositionID == fixture.state.viewModel.contacts[Layout.restoredContactIndex].id)
+    fixture.state.viewModel.hasLoadedOnce = true
+    _ = try await restoredScroll(in: fixture)
   }
 
   private func scrollView(in window: UIWindow) -> UIScrollView? {
@@ -42,6 +68,26 @@ struct ContactsScrollBookmarkTests {
 
   private func topOffset(_ scroll: UIScrollView) -> CGFloat {
     scroll.contentOffset.y + scroll.adjustedContentInset.top
+  }
+
+  private func restoredScroll(in fixture: Fixture) async throws -> UIScrollView {
+    let restored = await waitFor {
+      guard let scroll = scrollView(in: fixture.window) else { return false }
+      return topOffset(scroll) > fixture.window.bounds.height
+    }
+    let scroll = scrollView(in: fixture.window)
+    let model = fixture.state.viewModel
+    let bookmarkIndex = model.contacts.firstIndex { $0.id == fixture.state.scrollPositionID }
+    let diagnostic = "key=\(fixture.window.isKeyWindow) hidden=\(fixture.window.isHidden) "
+      + "index=\(String(describing: bookmarkIndex)) contacts=\(model.contacts.count) loaded=\(model.hasLoadedOnce) "
+      + "bookmark=\(String(describing: fixture.state.scrollPositionID)) "
+      + "offset=\(String(describing: scroll?.contentOffset)) "
+      + "insets=\(String(describing: scroll?.adjustedContentInset)) "
+      + "bounds=\(String(describing: scroll?.bounds)) "
+      + "contentSize=\(String(describing: scroll?.contentSize))"
+    if !restored { Attachment.record(diagnostic, named: "Nodes scroll bookmark restoration") }
+    try #require(restored, "\(diagnostic)")
+    return try #require(scroll)
   }
 
   private func views(_ view: UIView) -> [UIView] {
@@ -56,14 +102,14 @@ struct ContactsScrollBookmarkTests {
     return condition()
   }
 
-  private func makeFixture() throws -> Fixture {
+  private func makeFixture(loaded: Bool = true) throws -> Fixture {
     let radioID = UUID()
     let now = UInt32(Date().timeIntervalSince1970)
     let model = ContactsViewModel()
     model.contacts = (0..<Layout.contactCount).map { index in
       contact(index: index, radioID: radioID, timestamp: now - UInt32(index + 1) * Layout.advertInterval)
     }
-    model.hasLoadedOnce = true
+    model.hasLoadedOnce = loaded
     let state = ContactsSidebarState(viewModel: model)
     state.scrollPositionID = model.contacts[Layout.restoredContactIndex].id
     let render = RenderState()
