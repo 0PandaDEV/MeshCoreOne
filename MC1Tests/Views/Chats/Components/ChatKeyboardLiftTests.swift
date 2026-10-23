@@ -4,7 +4,7 @@ import SwiftUI
 import Testing
 import UIKit
 
-@Suite("ChatKeyboardLift")
+@Suite("ChatKeyboardLift", .serialized)
 struct ChatKeyboardLiftTests {
   private let windowBounds = CGRect(x: 0, y: 0, width: 390, height: 852)
   private let homeIndicator: CGFloat = 34
@@ -15,7 +15,6 @@ struct ChatKeyboardLiftTests {
     static let composerHeight: CGFloat = 52
     static let startupTimeout: TimeInterval = 5
     static let runLoopSlice: TimeInterval = 0.02
-    static let settle: TimeInterval = 0.35
     static let tolerance: CGFloat = 1
   }
 
@@ -36,21 +35,21 @@ struct ChatKeyboardLiftTests {
 
   @Test
   @MainActor
-  func `native chat observer owns the window bottom at compact and regular widths`() throws {
+  func `native chat observer owns the window bottom at compact and regular widths`() async throws {
     for regularWidth in [false, true] {
-      try assertObserverOwnsWindowBottom(regularWidth: regularWidth)
+      try await assertObserverOwnsWindowBottom(regularWidth: regularWidth)
     }
   }
 
   @MainActor
-  private func assertObserverOwnsWindowBottom(regularWidth: Bool) throws {
+  private func assertObserverOwnsWindowBottom(regularWidth: Bool) async throws {
     var readyScene: UIWindowScene?
     let deadline = Date(timeIntervalSinceNow: HostedLayout.startupTimeout)
     repeat {
       readyScene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         .first { $0.activationState == .foregroundActive && $0.keyWindow != nil }
       if readyScene != nil { break }
-      RunLoop.main.run(until: Date(timeIntervalSinceNow: HostedLayout.runLoopSlice))
+      try await Task.sleep(for: .seconds(HostedLayout.runLoopSlice))
     } while Date() < deadline
     let scene = try #require(readyScene, "Timed out waiting for a foreground app scene with a key window")
     let previousKeyWindow = scene.keyWindow
@@ -70,23 +69,34 @@ struct ChatKeyboardLiftTests {
       previousKeyWindow?.makeKey()
     }
     window.layoutIfNeeded()
-    RunLoop.main.run(until: Date(timeIntervalSinceNow: HostedLayout.settle))
-    window.layoutIfNeeded()
+    let guide = controller.view.keyboardLayoutGuide
+    let attachmentDeadline = Date(timeIntervalSinceNow: HostedLayout.startupTimeout)
+    while controller.view.superview?.constraints.contains(where: {
+      ($0.secondItem as? UIKeyboardLayoutGuide) === guide && $0.isActive && $0.firstAttribute == .bottom
+        && $0.secondAttribute == .top && $0.relation == .equal
+    }) != true, Date() < attachmentDeadline {
+      try await Task.sleep(for: .seconds(HostedLayout.runLoopSlice))
+      window.layoutIfNeeded()
+    }
 
     if !regularWidth {
       try #require(window.safeAreaInsets.bottom > 0, "The compact fixture must include the home indicator")
     }
     let observer = try #require(findObserver(in: window))
-    let guide = controller.view.keyboardLayoutGuide
+    let container = try #require(controller.view.superview)
     let frame = observer.convert(observer.bounds, to: window)
     #expect(
       abs(frame.maxY - window.bounds.maxY) < HostedLayout.tolerance,
       "regular=\(regularWidth), observer=\(frame), window=\(window.bounds), safeArea=\(window.safeAreaInsets)"
     )
-    let keyboardConstraints = controller.view.constraints.filter {
+    let keyboardConstraints = container.constraints.filter {
       ($0.secondItem as? UIKeyboardLayoutGuide) === guide
     }
-    #expect(keyboardConstraints.contains { $0.isActive && $0.firstAttribute == .top && $0.relation == .equal })
+    let trackingLimit = try #require(keyboardConstraints.first {
+      $0.isActive && $0.firstAttribute == .bottom && $0.secondAttribute == .top && $0.relation == .equal
+    })
+    let tracker = try #require(trackingLimit.firstItem as? UIView)
+    #expect(tracker.superview === container)
   }
 
   @Test
@@ -107,29 +117,32 @@ struct ChatKeyboardLiftTests {
       previousKeyWindow?.makeKey()
     }
     let observer = ChatKeyboardLayoutObserver()
+    observer.setActive(true)
     observer.onWindowAttachment = { [weak observer] in
       guard let observer else { return }
       observer.trackKeyboardLayoutGuide(observer.window?.rootViewController?.view.keyboardLayoutGuide)
     }
     controller.view.addSubview(observer)
     let guide = controller.view.keyboardLayoutGuide
-    let marker = try #require(observer.subviews.first)
-    let original = try #require(controller.view.constraints.first {
-      ($0.secondItem as? UIKeyboardLayoutGuide) === guide && ($0.firstItem as? UIView) === marker
+    let container = try #require(controller.view.superview)
+    let original = try #require(container.constraints.first {
+      ($0.secondItem as? UIKeyboardLayoutGuide) === guide && $0.firstAttribute == .bottom
     })
+    let tracker = try #require(original.firstItem as? UIView)
+    let originalConstraints = container.constraints.filter { ($0.firstItem as? UIView) === tracker }
+    #expect(tracker.superview === container)
     #expect(original.isActive)
-
     observer.removeFromSuperview()
-    #expect(!original.isActive)
+    #expect(originalConstraints.allSatisfy { !$0.isActive })
+    #expect(tracker.superview == nil)
     controller.view.addSubview(observer)
-    let rebound = try #require(controller.view.constraints.first {
-      ($0.secondItem as? UIKeyboardLayoutGuide) === guide && ($0.firstItem as? UIView) === marker
+    let rebound = try #require(container.constraints.first {
+      ($0.secondItem as? UIKeyboardLayoutGuide) === guide && $0.firstAttribute == .bottom
     })
     #expect(rebound.isActive)
     #expect(rebound !== original)
-
     let nextController = UIViewController()
-    let nextWindow = UIWindow(windowScene: scene)
+    let nextWindow = try UIWindow(windowScene: #require(window.windowScene))
     nextWindow.frame = window.frame
     nextWindow.rootViewController = nextController
     nextWindow.makeKeyAndVisible()
@@ -140,14 +153,30 @@ struct ChatKeyboardLiftTests {
     }
     nextController.view.addSubview(observer)
     let nextGuide = nextController.view.keyboardLayoutGuide
+    let nextContainer = try #require(nextController.view.superview)
     #expect(!rebound.isActive)
-    #expect(nextController.view.constraints.contains {
-      $0.isActive && ($0.secondItem as? UIKeyboardLayoutGuide) === nextGuide && ($0.firstItem as? UIView) === marker
+    let nextLimit = try #require(nextContainer.constraints.first {
+      $0.isActive && ($0.secondItem as? UIKeyboardLayoutGuide) === nextGuide && $0.firstAttribute == .bottom
     })
+    let nextTracker = try #require(nextLimit.firstItem as? UIView)
+    #expect(nextTracker.superview === nextContainer)
+    observer.setActive(false)
     observer.trackKeyboardLayoutGuide(nil)
-    #expect(!nextController.view.constraints.contains {
-      $0.isActive && ($0.firstItem as? UIView) === marker
+    #expect(!nextLimit.isActive)
+    #expect(nextTracker.superview == nil)
+    observer.setActive(true)
+    observer.trackKeyboardLayoutGuide(nextGuide)
+    let resumed = try #require(nextContainer.constraints.first {
+      $0.isActive && ($0.secondItem as? UIKeyboardLayoutGuide) === nextGuide && $0.firstAttribute == .bottom
     })
+    let resumedTracker = try #require(resumed.firstItem as? UIView)
+    #expect(resumedTracker.superview === nextContainer)
+    observer.trackKeyboardLayoutGuide(nil)
+    #expect(resumedTracker.superview == nil)
+    #expect(!nextContainer.constraints.contains {
+      $0.isActive && ($0.firstItem as? UIView) === resumedTracker
+    })
+    observer.removeFromSuperview()
   }
 
   @MainActor

@@ -114,21 +114,6 @@ final class ChatComposerUITextView: UITextView {
 
   var onSend: (() -> Bool)?
 
-  @discardableResult
-  override func becomeFirstResponder() -> Bool {
-    if !isFirstResponder, window != nil {
-      var responder = next
-      while let current = responder {
-        if let owner = current as? any ChatKeyboardPresentationPreparing {
-          owner.prepareForKeyboardPresentation()
-          break
-        }
-        responder = current.next
-      }
-    }
-    return super.becomeFirstResponder()
-  }
-
   /// UITextView reports its text as `accessibilityValue` when that property is left unset.
   /// Leave it unset so encryption status stays on the label.
   private var accessibilityValueIsUnset = true

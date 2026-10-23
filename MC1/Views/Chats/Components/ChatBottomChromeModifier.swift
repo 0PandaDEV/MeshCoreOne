@@ -96,7 +96,7 @@ private struct ChatBottomChromeModifier<Chrome: View>: ViewModifier {
       controller.deactivate()
     }
 
-    final class Controller: UIViewController, ChatKeyboardPresentationPreparing {
+    final class Controller: UIViewController {
       let timelineHost: UIHostingController<TimelineRoot>
       let hosted: UIHostingController<Root>
       var onLiftChange: @MainActor (CGFloat) -> Void = { _ in }
@@ -146,6 +146,7 @@ private struct ChatBottomChromeModifier<Chrome: View>: ViewModifier {
           observer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
         ])
         observer.isInteractivePopActive = { [weak self] in self?.isPopActive == true }
+        observer.onKeyboardFrameChange = { [weak self] in self?.updateKeyboardLimit() }
         observer.onLiftChange = { [weak self] value in
           guard let self else { return }
           lift = value
@@ -167,6 +168,7 @@ private struct ChatBottomChromeModifier<Chrome: View>: ViewModifier {
         hosted.view.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(hosted.view)
         hosted.didMove(toParent: self)
+        keyboardLimit = hosted.view.bottomAnchor.constraint(lessThanOrEqualTo: view.topAnchor)
         restingLimit = hosted.view.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor)
         restingPreference = hosted.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         restingPreference.priority = .defaultHigh
@@ -211,7 +213,7 @@ private struct ChatBottomChromeModifier<Chrome: View>: ViewModifier {
       override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let restingInset = isCompact ? 0 : view.safeAreaInsets.bottom
-        keyboardLimit?.constant = keyboardHomeInset
+        updateKeyboardLimit()
         restingLimit.constant = -restingInset
         restingPreference.constant = -restingInset
         let height = hosted.view.bounds.height
@@ -237,16 +239,9 @@ private struct ChatBottomChromeModifier<Chrome: View>: ViewModifier {
         } else {
           nil
         }
-        // Descendant guides can lose keyboard geometry during a modal handoff.
-        if keyboardLimit?.secondItem as? UIKeyboardLayoutGuide !== guide {
-          keyboardLimit?.isActive = false
-          keyboardLimit = guide.map {
-            hosted.view.bottomAnchor.constraint(lessThanOrEqualTo: $0.topAnchor)
-          }
-        }
-        keyboardLimit?.constant = keyboardHomeInset
-        observer.trackKeyboardLayoutGuide(guide)
         observer.setActive(active)
+        observer.trackKeyboardLayoutGuide(active ? guide : nil)
+        updateKeyboardLimit()
         keyboardLimit?.isActive = active && frozenBottom == nil
         if !active {
           frozenBottom?.isActive = false
@@ -255,6 +250,15 @@ private struct ChatBottomChromeModifier<Chrome: View>: ViewModifier {
           lift = 0
           queueLiftReport()
         }
+      }
+
+      private func updateKeyboardLimit() {
+        guard isSceneActive, isVisible, !isPopActive, frozenBottom == nil,
+              let window = view.window, let frame = observer.keyboardFrameInWindow else { return }
+        let bottom = view.convert(frame, from: window).minY + keyboardHomeInset
+        guard keyboardLimit?.constant != bottom else { return }
+        keyboardLimit?.constant = bottom
+        view.layoutIfNeeded()
       }
 
       private var keyboardHomeInset: CGFloat {
@@ -283,20 +287,7 @@ private struct ChatBottomChromeModifier<Chrome: View>: ViewModifier {
         return coordinator
       }
 
-      func prepareForKeyboardPresentation() {
-        guard isSceneActive, isVisible, !isPopActive, frozenBottom == nil,
-              keyboardLimit?.isActive == true,
-              let guide = keyboardLimit?.secondItem as? UIKeyboardLayoutGuide,
-              let window = view.window, guide.owningView?.window === window else { return }
-        keyboardLimit?.isActive = false
-        keyboardLimit?.isActive = true
-        observer.reconnectKeyboardLayoutGuide()
-        guide.owningView?.layoutIfNeeded()
-      }
-
       @objc private func keyboardWillChange(_ notification: Notification) {
-        // Sheet dismissal restores the keyboard without becomeFirstResponder.
-        prepareForKeyboardPresentation()
         synchronizePopFreeze()
       }
 
