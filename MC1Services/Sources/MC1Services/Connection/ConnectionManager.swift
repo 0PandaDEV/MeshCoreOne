@@ -548,6 +548,8 @@ public final class ConnectionManager {
     /// How many times the Bluetooth powered-on handler has run.
     var testBluetoothPoweredOnHandlerRuns = 0
 
+    var testAutoReconnectEntryCompletions = 0
+
     /// Runs after `shouldPersistBondRefresh` returns true and before the epoch
     /// check in `persistBondRefreshIfStillValid` — tests force clear in that window.
     var bondRefreshPersistAfterShouldPersistHook: (@MainActor () async -> Void)?
@@ -776,6 +778,9 @@ public final class ConnectionManager {
     await stateMachine.setAutoReconnectingHandler { [weak self] (deviceID: UUID, errorInfo: String) in
       Task { @MainActor in
         guard let self else { return }
+        #if DEBUG
+          defer { self.testAutoReconnectEntryCompletions += 1 }
+        #endif
         guard !self.powerOffSuppressesReconnect(for: deviceID) else {
           self.logger.info("[BLE] Auto-reconnect suppressed during power-off for \(deviceID.uuidString.prefix(8))")
           return

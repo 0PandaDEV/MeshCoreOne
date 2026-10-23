@@ -26,6 +26,10 @@ final class BLEReconnectionCoordinator {
 
   private var timeoutTask: Task<Void, Never>?
 
+  var uiTimeoutTaskForTest: Task<Void, Never>? {
+    timeoutTask
+  }
+
   /// Generation of an in-flight `rebuildSession` (including first-fail retry), or
   /// nil when none. Rejects a second completion only for the same generation so
   /// a newer cycle (bumped by `handleEnteringAutoReconnect`) can still rebuild

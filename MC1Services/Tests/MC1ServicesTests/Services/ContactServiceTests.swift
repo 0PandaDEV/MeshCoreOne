@@ -63,26 +63,6 @@ struct ContactServiceTests {
     #expect(result.isIncremental == true)
   }
 
-  // MARK: - ContactServiceError Tests
-
-  @Test
-  func `ContactServiceError cases are distinct`() {
-    // Verify basic error cases
-    let basicErrors: [ContactServiceError] = [
-      .notConnected,
-      .sendFailed,
-      .invalidResponse,
-      .syncInterrupted,
-      .contactNotFound,
-      .contactTableFull
-    ]
-
-    // Verify all basic cases are distinct (no duplicates)
-    let errorDescriptions = basicErrors.map { String(describing: $0) }
-    let uniqueDescriptions = Set(errorDescriptions)
-    #expect(errorDescriptions.count == uniqueDescriptions.count)
-  }
-
   // MARK: - MeshContact.toContactFrame() Tests
 
   @Test

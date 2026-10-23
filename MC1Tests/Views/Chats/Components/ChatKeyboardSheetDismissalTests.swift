@@ -1,11 +1,13 @@
+import Foundation
 @testable import MC1
 import MC1Services
 import SwiftUI
+import Testing
 import UIKit
-import XCTest
 
+@Suite("Chat keyboard sheet dismissal", .serialized)
 @MainActor
-final class ChatKeyboardSheetDismissalTests: XCTestCase {
+struct ChatKeyboardSheetDismissalTests {
   private enum Metrics {
     static let rowCount = 80
     static let rowHeight: CGFloat = 44
@@ -117,13 +119,15 @@ final class ChatKeyboardSheetDismissalTests: XCTestCase {
     }
   }
 
-  func testKeyboardStaysDismissedAfterMessageActionsSheet() async throws {
+  @Test
+  func `keyboard stays dismissed after message actions sheet`() async throws {
     try await exerciseSheet(interruptingDismissal: false)
   }
 
-  func testChannelInfoSheetDismissalKeepsChatAboveVisibleKeyboard() async throws {
+  @Test
+  func `channel info sheet dismissal keeps chat above visible keyboard`() async throws {
     let scene = try await foregroundScene()
-    let window = try XCTUnwrap(scene.keyWindow)
+    let window = try #require(scene.keyWindow)
     let originalController = window.rootViewController
     let appState = AppState()
     let presentation = InfoPresentation()
@@ -140,12 +144,12 @@ final class ChatKeyboardSheetDismissalTests: XCTestCase {
     }
 
     let mounted = await waitUntil { self.findComposer(in: window) != nil }
-    XCTAssertTrue(mounted, "The production composer did not mount")
-    let composer = try XCTUnwrap(findComposer(in: window))
+    #expect(mounted, "The production composer did not mount")
+    let composer = try #require(findComposer(in: window))
     try await Task.sleep(for: Metrics.settleInterval)
     let restingTop = window.bounds.maxY
     disconnectHardwareKeyboard()
-    XCTAssertTrue(composer.becomeFirstResponder())
+    #expect(composer.becomeFirstResponder())
     let shown = await waitUntil {
       let notified = frames.top.map { $0 < restingTop - Metrics.minimumKeyboardHeight } ?? false
       let guide = self.keyboardTop(in: controller, window: window) < restingTop - Metrics.minimumKeyboardHeight
@@ -153,7 +157,7 @@ final class ChatKeyboardSheetDismissalTests: XCTestCase {
         .map { $0 < restingTop - Metrics.minimumKeyboardHeight } ?? false
       return notified || guide || visual
     }
-    XCTAssertTrue(shown, """
+    #expect(shown, """
     The software keyboard must appear before the info sheet. \
     notification=\(String(describing: frames.top)) \
     guide=\(keyboardTop(in: controller, window: window)) \
@@ -164,21 +168,22 @@ final class ChatKeyboardSheetDismissalTests: XCTestCase {
 
     presentation.showInfo = true
     let presented = await waitUntil { self.presentedController(in: controller) != nil }
-    XCTAssertTrue(presented, "The info sheet must present while the composer is first responder")
+    #expect(presented, "The info sheet must present while the composer is first responder")
     try await Task.sleep(for: Metrics.settleInterval)
     presentation.showInfo = false
     let dismissed = await waitUntil { self.presentedController(in: controller) == nil }
-    XCTAssertTrue(dismissed, "The info sheet must dismiss")
+    #expect(dismissed, "The info sheet must dismiss")
 
     let settled = await waitUntil(timeout: Metrics.timeout) {
       self.chatCoversKeyboard(composer: composer, scene: scene, window: window, notificationTop: frames.top) == nil
     }
-    XCTAssertTrue(settled, chatCoversKeyboard(
+    #expect(settled, Comment(rawValue: chatCoversKeyboard(
       composer: composer, scene: scene, window: window, notificationTop: frames.top
-    ) ?? "The chat stayed under the keyboard after the info sheet dismissed")
+    ) ?? "The chat stayed under the keyboard after the info sheet dismissed"))
   }
 
-  func testKeyboardStaysDismissedAfterLargeMessageActionsInterruptsDismissal() async throws {
+  @Test
+  func `keyboard stays dismissed after large message actions interrupts dismissal`() async throws {
     try await exerciseSheet(interruptingDismissal: true, usesLargeSheet: true)
   }
 
@@ -188,8 +193,8 @@ final class ChatKeyboardSheetDismissalTests: XCTestCase {
       readyWindow = ChatKeyboardLift.keyWindow()
       return readyWindow != nil
     }
-    XCTAssertTrue(hasScene)
-    let window = try XCTUnwrap(readyWindow)
+    #expect(hasScene)
+    let window = try #require(readyWindow)
     let originalController = window.rootViewController
     let appState = AppState()
     let presentation = Presentation()
@@ -205,15 +210,15 @@ final class ChatKeyboardSheetDismissalTests: XCTestCase {
       appState.shutdown()
     }
     let mounted = await waitUntil { self.findComposer(in: window) != nil }
-    XCTAssertTrue(mounted)
-    let composer = try XCTUnwrap(findComposer(in: window))
+    #expect(mounted)
+    let composer = try #require(findComposer(in: window))
     try await Task.sleep(for: Metrics.settleInterval)
     let restingTop = keyboardTop(in: controller, window: window)
-    XCTAssertTrue(composer.becomeFirstResponder())
+    #expect(composer.becomeFirstResponder())
     let shown = await waitUntil {
       self.keyboardTop(in: controller, window: window) < restingTop - Metrics.minimumKeyboardHeight
     }
-    XCTAssertTrue(shown, "The software keyboard must appear before presenting the sheet")
+    #expect(shown, "The software keyboard must appear before presenting the sheet")
     try await Task.sleep(for: Metrics.settleInterval)
     try assertTimelineReceivesTouches(in: window, phase: "before sheet")
     if interruptingDismissal {
@@ -222,31 +227,30 @@ final class ChatKeyboardSheetDismissalTests: XCTestCase {
     ChatKeyboardLift.resignFirstResponder()
     presentation.message = MessageBubbleTestData.outgoingDM()
     let presented = await waitUntil { self.presentedController(in: controller) != nil }
-    XCTAssertTrue(presented, "The production message actions sheet must present")
+    #expect(presented, "The production message actions sheet must present")
     try await Task.sleep(for: Metrics.settleInterval)
     presentation.message = nil
     let dismissed = await waitUntil { self.presentedController(in: controller) == nil }
-    XCTAssertTrue(dismissed)
+    #expect(dismissed)
     try await Task.sleep(for: Metrics.settleInterval)
 
     let afterSheetTop = keyboardTop(in: controller, window: window)
     let afterSheetResponder = composer.isFirstResponder
-    XCTAssertFalse(afterSheetResponder, "Closing message actions must not refocus the composer")
-    XCTAssertGreaterThanOrEqual(afterSheetTop, restingTop - Metrics.tolerance,
-                                "The keyboard must stay dismissed after closing message actions")
+    #expect(!afterSheetResponder, "Closing message actions must not refocus the composer")
+    #expect(afterSheetTop >= restingTop - Metrics.tolerance, "The keyboard must stay dismissed after closing message actions")
     try assertComposerPosition(in: window, keyboardTop: afterSheetTop, restingTop: restingTop)
     try assertTimelineReceivesTouches(in: window, phase: "after sheet")
-    XCTAssertTrue(composer.becomeFirstResponder())
+    #expect(composer.becomeFirstResponder())
     let reopened = await waitUntil {
       self.keyboardTop(in: controller, window: window) < restingTop - Metrics.minimumKeyboardHeight
     }
-    XCTAssertTrue(reopened)
+    #expect(reopened)
     try await Task.sleep(for: Metrics.settleInterval)
     try dragToDismiss(in: window, keyboardTop: keyboardTop(in: controller, window: window))
     let keyboardDismissed = await waitUntil {
       self.keyboardTop(in: controller, window: window) >= restingTop - Metrics.tolerance
     }
-    XCTAssertTrue(keyboardDismissed, """
+    #expect(keyboardDismissed, """
     Keyboard stuck after message actions: firstResponder=\(afterSheetResponder), \
     afterSheetTop=\(afterSheetTop), currentTop=\(keyboardTop(in: controller, window: window)), \
     restingTop=\(restingTop), responderNow=\(composer.isFirstResponder)
@@ -266,24 +270,23 @@ final class ChatKeyboardSheetDismissalTests: XCTestCase {
       if let collection = view as? UICollectionView { return collection }
       return view.subviews.compactMap { findCollection(in: $0) }.first
     }
-    let collection = try XCTUnwrap(findCollection(in: window))
-    let composer = try XCTUnwrap(findComposer(in: window))
+    let collection = try #require(findCollection(in: window))
+    let composer = try #require(findComposer(in: window))
     let composerTop = composer.convert(composer.bounds, to: window).minY
     let viewport = collection.convert(collection.bounds, to: window).intersection(window.bounds)
     let point = CGPoint(
       x: viewport.midX,
       y: (max(viewport.minY, window.safeAreaInsets.top) + min(viewport.maxY, composerTop)) / 2
     )
-    _ = try XCTUnwrap(collection.visibleCells.first { $0.convert($0.bounds, to: window).contains(point) })
-    let hit = try XCTUnwrap(window.hitTest(point, with: nil), """
+    _ = try #require(collection.visibleCells.first { $0.convert($0.bounds, to: window).contains(point) })
+    let hit = try #require(window.hitTest(point, with: nil), """
     No message hit during \(phase): point=\(point), window=\(window.bounds), \
     enabled=\(window.isUserInteractionEnabled), collection=\(collection.convert(collection.bounds, to: window)), \
     viewport=\(viewport), composerTop=\(composerTop), enabled=\(collection.isUserInteractionEnabled)
     """)
-    XCTAssertTrue(hit.isDescendant(of: collection), "A sheet overlay must not intercept message touches after dismissal")
-    XCTAssertTrue(collection.panGestureRecognizer.isEnabled)
-    XCTAssertTrue(collection.panGestureRecognizer.view === collection)
-    XCTAssertTrue(collection.gestureRecognizers?.contains {
+    #expect(hit.isDescendant(of: collection), "A sheet overlay must not intercept message touches after dismissal")
+    #expect(collection.panGestureRecognizer.isEnabled)
+    #expect(collection.gestureRecognizers?.contains {
       $0 is UIPanGestureRecognizer && $0 !== collection.panGestureRecognizer && $0.isEnabled && $0.view === collection
     } == true, "An installed timeline pan must remain attached and enabled")
   }
@@ -293,12 +296,9 @@ final class ChatKeyboardSheetDismissalTests: XCTestCase {
       if view.accessibilityIdentifier == Metrics.composerIdentifier { return view }
       return view.subviews.compactMap { findMarker(in: $0) }.first
     }
-    let marker = try XCTUnwrap(findMarker(in: window))
+    let marker = try #require(findMarker(in: window))
     let bottom = marker.convert(marker.bounds, to: window).maxY
-    XCTAssertEqual(
-      bottom, min(keyboardTop, restingTop), accuracy: Metrics.tolerance,
-      "The composer must follow the actual keyboard rather than retaining a raised position"
-    )
+    #expect(abs(bottom - min(keyboardTop, restingTop)) <= Metrics.tolerance, "The composer must follow the actual keyboard rather than retaining a raised position")
   }
 
   private func dragToDismiss(in window: UIWindow, keyboardTop: CGFloat) throws {
@@ -307,7 +307,7 @@ final class ChatKeyboardSheetDismissalTests: XCTestCase {
       if view.responds(to: action) { return view }
       return view.subviews.compactMap { findTarget(in: $0) }.first
     }
-    let target = try XCTUnwrap(findTarget(in: window), "The production bottom-area drag target must exist")
+    let target = try #require(findTarget(in: window), "The production bottom-area drag target must exist")
     let pan = BottomAreaPan(
       window: window, point: CGPoint(x: window.bounds.midX, y: keyboardTop - Metrics.tolerance)
     )
@@ -394,7 +394,7 @@ final class ChatKeyboardSheetDismissalTests: XCTestCase {
         .first { $0.activationState == .foregroundActive && $0.keyWindow != nil }
       return readyScene != nil
     }
-    return try XCTUnwrap(readyScene)
+    return try #require(readyScene)
   }
 
   private func waitUntil(timeout: TimeInterval = Metrics.timeout, _ condition: () -> Bool) async -> Bool {

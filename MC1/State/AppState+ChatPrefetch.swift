@@ -53,7 +53,7 @@ extension AppState {
   }
 
   /// Builds the `EnvInputs` snapshot the chat view model bakes into `MessageItem`s.
-  /// Reads the user-preference toggles from `UserDefaults.standard` (matching the
+  /// Reads the user-preference toggles from the app's defaults (matching the
   /// `@AppStorage` reads at render time) and takes the four true-environment values
   /// that only exist inside a SwiftUI view. Shared by `ChatConversationView` and the
   /// navigation-time prefetch so a prefetched timeline bakes identical items and the
@@ -73,7 +73,6 @@ extension AppState {
       contentSizeCategory: contentSizeCategory
     )
 
-    let defaults = UserDefaults.standard
     func bool(_ key: AppStorageKey, _ fallback: Bool) -> Bool {
       defaults.object(forKey: key.rawValue) as? Bool ?? fallback
     }

@@ -182,6 +182,9 @@ public extension MeshCoreSession {
   ///            channel datagram (firmware v11+), or ``MessageResult/noMoreMessages``.
   /// - Throws: ``MeshCoreError`` if the fetch fails.
   func getMessage(timeout: TimeInterval? = nil) async throws -> MessageResult {
+    getMessageCallerCountForTest += 1
+    defer { getMessageCallerCountForTest -= 1 }
+
     // Calls arriving while a fetch is in flight coalesce onto the same task and
     // share its outcome, so every coalesced caller's wait is bounded by the
     // leader's timeout and released on every completion path. The exchange runs

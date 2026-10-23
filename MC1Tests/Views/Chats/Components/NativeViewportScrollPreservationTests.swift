@@ -1,10 +1,12 @@
+import Foundation
 @testable import MessagingUI
 import SwiftUI
+import Testing
 import UIKit
-import XCTest
 
+@Suite("Native viewport scroll preservation", .serialized)
 @MainActor
-final class NativeViewportScrollPreservationTests: XCTestCase {
+final class NativeViewportScrollPreservationTests {
   private struct Message: Identifiable, Equatable {
     let id: Int
   }
@@ -54,6 +56,8 @@ final class NativeViewportScrollPreservationTests: XCTestCase {
     static let tolerance: CGFloat = 1
     static let mountPasses = 6
     static let mountInterval: TimeInterval = 0.02
+    static let rowGrowthTimeout: Duration = .seconds(5)
+    static let rowGrowthPollInterval: Duration = .milliseconds(16)
     static let heightCycle: [CGFloat] = [744, 644, keyboardHeight, 644, 744, restingHeight]
     static let dismissalHeights: [CGFloat] = [592, 642, 692, 742, 792, restingHeight]
     static let userInteractions: [(isTracking: Bool, isDragging: Bool, isDecelerating: Bool)] = [
@@ -64,17 +68,14 @@ final class NativeViewportScrollPreservationTests: XCTestCase {
   private typealias HostView = TiledUIView<Message, MessageCell, Never, Never, Never, Never, Void>
   private var windows: [UIWindow] = []
 
-  override func tearDown() async throws {
-    await MainActor.run {
-      for window in windows {
-        window.isHidden = true
-      }
-      windows.removeAll()
+  isolated deinit {
+    for window in windows {
+      window.isHidden = true
     }
-    try await super.tearDown()
   }
 
-  func test_idleBottomStaysAtBottomAcrossNativeViewportCycle() throws {
+  @Test
+  func `idle bottom stays at bottom across native viewport cycle`() throws {
     let view = mount()
     try assertLastRowMeetsChrome(view)
 
@@ -85,7 +86,8 @@ final class NativeViewportScrollPreservationTests: XCTestCase {
     }
   }
 
-  func test_idleBottomStaysAtBottomWhenLayoutIsInvalidatedBeforeViewportResize() throws {
+  @Test
+  func `idle bottom stays at bottom when layout is invalidated before viewport resize`() throws {
     let view = mount()
     let originalOffset = view.test_contentOffsetY
     try assertLastRowMeetsChrome(view)
@@ -94,16 +96,14 @@ final class NativeViewportScrollPreservationTests: XCTestCase {
       view.test_collectionView.collectionViewLayout.invalidateLayout()
       resize(view, to: height)
 
-      XCTAssertEqual(
-        view.test_contentOffsetY, originalOffset + Metrics.restingHeight - height,
-        accuracy: Metrics.tolerance, diagnostic(view)
-      )
+      #expect(abs((view.test_contentOffsetY) - (originalOffset + Metrics.restingHeight - height)) <= Metrics.tolerance, "\(diagnostic(view))")
       try assertLastRowMeetsChrome(view)
       assertVisibleCellCoverage(view)
     }
   }
 
-  func test_idleBottomStaysAtBottomWhenViewportShrinksAndComposerGrowsInOneLayoutPass() throws {
+  @Test
+  func `idle bottom stays at bottom when viewport shrinks and composer grows in one layout pass`() throws {
     for order in [GeometryUpdateOrder.viewportThenInset, .insetThenViewport] {
       let view = mount()
       try assertLastRowMeetsChrome(view)
@@ -112,130 +112,115 @@ final class NativeViewportScrollPreservationTests: XCTestCase {
       for height in [Metrics.keyboardHeight, Metrics.restingHeight] {
         resize(view, to: height, order: order)
         let inset = chromeInset(for: height, order: order)
-        let collectionLayout = try XCTUnwrap(view.test_collectionView.collectionViewLayout as? TiledCollectionViewLayout)
-        XCTAssertEqual(collectionLayout.additionalContentInset.bottom, inset, accuracy: Metrics.tolerance)
-        XCTAssertEqual(
-          view.test_contentOffsetY, originalOffset + Metrics.restingHeight - height + inset - Metrics.chromeInset,
-          accuracy: Metrics.tolerance, diagnostic(view)
-        )
+        let collectionLayout = try #require(view.test_collectionView.collectionViewLayout as? TiledCollectionViewLayout)
+        #expect(abs((collectionLayout.additionalContentInset.bottom) - inset) <= Metrics.tolerance)
+        #expect(abs((view.test_contentOffsetY) - (originalOffset + Metrics.restingHeight - height + inset - Metrics.chromeInset)) <= Metrics.tolerance, "\(diagnostic(view))")
         try assertLastRowMeetsChrome(view)
         assertVisibleCellCoverage(view)
       }
     }
   }
 
-  func test_idleHistoryKeepsLowestVisibleMessageAboveChromeAcrossNativeViewportCycle() throws {
+  @Test
+  func `idle history keeps lowest visible message above chrome across native viewport cycle`() throws {
     for order in GeometryUpdateOrder.allCases {
       let view = mount(targetID: Metrics.historyRow)
       let collection = view.test_collectionView
-      let lowestRow = try XCTUnwrap(collection.indexPathsForVisibleItems
+      let visibleItems = collection.indexPathsForVisibleItems
         .filter { $0.section == TiledCollectionViewLayout.DisplaySection.messages.rawValue }
         .filter { (view.test_messageFrame(at: $0.item)?.minY ?? .infinity) - view.test_contentOffsetY
           < view.bounds.height - Metrics.chromeInset
         }
-        .map(\.item).max())
+        .map(\.item)
+      let lowestRow = try #require(visibleItems.max())
       let originalBottom = try instantiatedFrame(of: lowestRow, in: view).maxY
       let originalOffset = view.test_contentOffsetY
 
       for height in Metrics.heightCycle {
         resize(view, to: height, order: order)
-        XCTAssertEqual(
-          view.test_contentOffsetY, originalOffset + Metrics.restingHeight - height,
-          accuracy: Metrics.tolerance, diagnostic(view)
-        )
-        XCTAssertEqual(
-          try instantiatedFrame(of: lowestRow, in: view).maxY, originalBottom + height - Metrics.restingHeight,
-          accuracy: Metrics.tolerance, diagnostic(view)
-        )
+        #expect(abs((view.test_contentOffsetY) - (originalOffset + Metrics.restingHeight - height)) <= Metrics.tolerance, "\(diagnostic(view))")
+        #expect(try abs((instantiatedFrame(of: lowestRow, in: view).maxY) - (originalBottom + height - Metrics.restingHeight)) <= Metrics.tolerance, "\(diagnostic(view))")
         assertVisibleCellCoverage(view)
       }
     }
   }
 
-  func test_idleNearBottomPreservesItsDistanceAcrossNativeViewportCycle() throws {
+  @Test
+  func `idle near bottom preserves its distance across native viewport cycle`() throws {
     for order in GeometryUpdateOrder.allCases {
       let view = mount()
       view.test_collectionView.contentOffset.y -= Metrics.bottomReadingGap
-      XCTAssertEqual(view.test_pointsFromBottom, Metrics.bottomReadingGap, accuracy: Metrics.tolerance)
+      #expect(abs((view.test_pointsFromBottom) - (Metrics.bottomReadingGap)) <= Metrics.tolerance)
 
       for height in Metrics.heightCycle {
         resize(view, to: height, order: order)
-        XCTAssertEqual(
-          view.test_pointsFromBottom, Metrics.bottomReadingGap,
-          accuracy: Metrics.tolerance, diagnostic(view)
-        )
-        XCTAssertEqual(
-          try instantiatedFrame(of: Metrics.rowCount - 1, in: view).maxY,
-          height - view.swiftUIWorldSafeAreaInset.bottom + Metrics.bottomReadingGap,
-          accuracy: Metrics.tolerance, diagnostic(view)
-        )
+        #expect(abs((view.test_pointsFromBottom) - (Metrics.bottomReadingGap)) <= Metrics.tolerance, "\(diagnostic(view))")
+        #expect(try abs((instantiatedFrame(of: Metrics.rowCount - 1, in: view).maxY) - (height - view.swiftUIWorldSafeAreaInset.bottom + Metrics.bottomReadingGap)) <= Metrics.tolerance, "\(diagnostic(view))")
         assertVisibleCellCoverage(view)
       }
     }
   }
 
-  func test_idleHistoryPreservesReadingPositionWhenRowAboveViewportAndComposerGrow() throws {
+  @Test
+  func `idle history preserves reading position when row above viewport and composer grow`() async throws {
     let heightModel = MessageHeight(Metrics.rowHeight)
     let view = mount(targetID: Metrics.historyRow, heightModel: heightModel)
     let growingRow = Metrics.historyRow - 1
     let originalFrame = try instantiatedFrame(of: growingRow, in: view)
     let originalY = try instantiatedFrame(of: Metrics.historyRow, in: view).minY
     let originalOffset = view.test_contentOffsetY
-    XCTAssertEqual(originalFrame.maxY, Metrics.topInset, accuracy: Metrics.tolerance)
-    XCTAssertFalse(view.isInitialAnchorActive)
+    #expect(abs((originalFrame.maxY) - (Metrics.topInset)) <= Metrics.tolerance)
+    #expect(!view.isInitialAnchorActive)
 
     heightModel.value += Metrics.rowHeightGrowth
     view.swiftUIWorldSafeAreaInset.bottom += Metrics.composerLineHeight
     let insetFrame = try instantiatedFrame(of: growingRow, in: view)
     let insetOffset = view.test_contentOffsetY
-    XCTAssertEqual(
-      try instantiatedFrame(of: Metrics.historyRow, in: view).minY, originalY,
-      accuracy: Metrics.tolerance, diagnostic(view)
-    )
+    #expect(try abs((instantiatedFrame(of: Metrics.historyRow, in: view).minY) - originalY) <= Metrics.tolerance, "\(diagnostic(view))")
 
-    for _ in 0..<Metrics.mountPasses {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: Metrics.rowGrowthTimeout)
+    while clock.now < deadline {
       layout(view)
-      RunLoop.current.run(until: Date().addingTimeInterval(Metrics.mountInterval))
-      XCTAssertEqual(
-        try instantiatedFrame(of: Metrics.historyRow, in: view).minY, originalY,
-        accuracy: Metrics.tolerance, diagnostic(view)
-      )
+      #expect(try abs((instantiatedFrame(of: Metrics.historyRow, in: view).minY) - originalY) <= Metrics.tolerance, "\(diagnostic(view))")
+      let frame = try instantiatedFrame(of: growingRow, in: view)
+      if abs(frame.height - originalFrame.height - Metrics.rowHeightGrowth) <= Metrics.tolerance {
+        break
+      }
+      try await Task.sleep(for: Metrics.rowGrowthPollInterval)
     }
 
     let finalFrame = try instantiatedFrame(of: growingRow, in: view)
-    let evidence = XCTAttachment(string:
+    Attachment.record(
       "growthDuringInset=\(insetFrame.height - originalFrame.height), "
         + "offsetDuringInset=\(insetOffset - originalOffset), "
         + "finalGrowth=\(finalFrame.height - originalFrame.height), "
-        + "finalOffset=\(view.test_contentOffsetY - originalOffset)")
-    evidence.name = "Self-sizing and inset ordering"
-    evidence.lifetime = .keepAlways
-    add(evidence)
-    XCTAssertEqual(finalFrame.height - originalFrame.height, Metrics.rowHeightGrowth, accuracy: Metrics.tolerance)
-    XCTAssertEqual(view.test_contentOffsetY - originalOffset, Metrics.rowHeightGrowth, accuracy: Metrics.tolerance)
-    XCTAssertEqual(view.bounds.height, Metrics.restingHeight, accuracy: Metrics.tolerance)
+        + "finalOffset=\(view.test_contentOffsetY - originalOffset)",
+      named: "Self-sizing and inset ordering"
+    )
+    #expect(abs((finalFrame.height - originalFrame.height) - (Metrics.rowHeightGrowth)) <= Metrics.tolerance)
+    #expect(abs((view.test_contentOffsetY - originalOffset) - (Metrics.rowHeightGrowth)) <= Metrics.tolerance)
     assertVisibleCellCoverage(view)
   }
 
-  func test_heldInitialAnchorTracksNativeViewportCenter() throws {
+  @Test
+  func `held initial anchor tracks native viewport center`() throws {
     for order in GeometryUpdateOrder.allCases {
       let view = mount(targetID: Metrics.historyRow, anchor: .center, holdAnchor: true)
-      XCTAssertTrue(view.isInitialAnchorActive)
+      #expect(view.isInitialAnchorActive)
 
       for height in Metrics.heightCycle {
         resize(view, to: height, order: order)
         let expectedCenter = Metrics.topInset + (height - Metrics.topInset - view.swiftUIWorldSafeAreaInset.bottom) / 2
-        XCTAssertTrue(view.isInitialAnchorActive)
-        XCTAssertEqual(
-          try instantiatedFrame(of: Metrics.historyRow, in: view).midY, expectedCenter,
-          accuracy: Metrics.tolerance, diagnostic(view)
-        )
+        #expect(view.isInitialAnchorActive)
+        #expect(try abs((instantiatedFrame(of: Metrics.historyRow, in: view).midY) - expectedCenter) <= Metrics.tolerance, "\(diagnostic(view))")
         assertVisibleCellCoverage(view)
       }
     }
   }
 
-  func test_activeBottomRemainsCoveredWhileNativeViewportExpands() throws {
+  @Test
+  func `active bottom remains covered while native viewport expands`() throws {
     // Start at the focused geometry so an idle focus failure cannot obscure dismissal behavior.
     for order in GeometryUpdateOrder.allCases {
       for interaction in Metrics.userInteractions {
@@ -251,17 +236,15 @@ final class NativeViewportScrollPreservationTests: XCTestCase {
           collection.contentOffset.y = requestedOffset
           resize(view, to: height, order: order)
           let maximumOffset = collection.contentSize.height + collection.adjustedContentInset.bottom - height
-          XCTAssertEqual(
-            collection.contentOffset.y, min(requestedOffset, maximumOffset),
-            accuracy: Metrics.tolerance, diagnostic(view)
-          )
+          #expect(abs((collection.contentOffset.y) - min(requestedOffset, maximumOffset)) <= Metrics.tolerance, "\(diagnostic(view))")
           assertVisibleCellCoverage(view)
         }
       }
     }
   }
 
-  func test_activeHistoryPreservesUserMotionWhileNativeViewportExpands() throws {
+  @Test
+  func `active history preserves user motion while native viewport expands`() throws {
     for order in GeometryUpdateOrder.allCases {
       for interaction in Metrics.userInteractions {
         let view = mount(
@@ -269,7 +252,7 @@ final class NativeViewportScrollPreservationTests: XCTestCase {
           targetID: Metrics.historyRow, holdAnchor: interaction.isDragging || interaction.isDecelerating
         )
         beginInteraction(interaction, in: view)
-        XCTAssertFalse(view.isInitialAnchorActive)
+        #expect(!view.isInitialAnchorActive)
 
         for height in Metrics.dismissalHeights {
           let collection = view.test_collectionView
@@ -277,18 +260,16 @@ final class NativeViewportScrollPreservationTests: XCTestCase {
           let requestedOffset = collection.contentOffset.y
           let expectedY = try instantiatedFrame(of: Metrics.historyRow, in: view).minY
           resize(view, to: height, order: order)
-          XCTAssertEqual(collection.contentOffset.y, requestedOffset, accuracy: Metrics.tolerance, diagnostic(view))
-          XCTAssertEqual(
-            try instantiatedFrame(of: Metrics.historyRow, in: view).minY, expectedY,
-            accuracy: Metrics.tolerance, diagnostic(view)
-          )
+          #expect(abs((collection.contentOffset.y) - requestedOffset) <= Metrics.tolerance, "\(diagnostic(view))")
+          #expect(try abs((instantiatedFrame(of: Metrics.historyRow, in: view).minY) - expectedY) <= Metrics.tolerance, "\(diagnostic(view))")
           assertVisibleCellCoverage(view)
         }
       }
     }
   }
 
-  func test_explicitScrollBetweenViewportCaptureAndLayoutWins() {
+  @Test
+  func `explicit scroll between viewport capture and layout wins`() {
     let view = mount()
     let capturedOffset = view.test_contentOffsetY
     captureViewportChange(view, to: Metrics.keyboardHeight)
@@ -297,18 +278,16 @@ final class NativeViewportScrollPreservationTests: XCTestCase {
     position.scrollTo(edge: .top, animated: false)
     view.applyScrollPosition(position)
     let requestedOffset = view.test_contentOffsetY
-    XCTAssertNotEqual(requestedOffset, capturedOffset)
+    #expect(requestedOffset != capturedOffset)
 
     resize(view, to: Metrics.keyboardHeight)
 
-    XCTAssertEqual(
-      view.test_contentOffsetY, requestedOffset,
-      accuracy: Metrics.tolerance, diagnostic(view)
-    )
+    #expect(abs((view.test_contentOffsetY) - requestedOffset) <= Metrics.tolerance, "\(diagnostic(view))")
     assertVisibleCellCoverage(view)
   }
 
-  func test_dragBeginningAndEndingBetweenCaptureAndLayoutIsNotReplayed() {
+  @Test
+  func `drag beginning and ending between capture and layout is not replayed`() {
     for decelerates in [false, true] {
       let view = mount(targetID: Metrics.historyRow, holdAnchor: true)
       captureViewportChange(view, to: Metrics.keyboardHeight)
@@ -320,19 +299,17 @@ final class NativeViewportScrollPreservationTests: XCTestCase {
       if decelerates {
         view.scrollViewDidEndDecelerating(view.test_collectionView)
       }
-      XCTAssertFalse(view.isInitialAnchorActive)
+      #expect(!view.isInitialAnchorActive)
 
       resize(view, to: Metrics.keyboardHeight)
 
-      XCTAssertEqual(
-        view.test_contentOffsetY, requestedOffset,
-        accuracy: Metrics.tolerance, diagnostic(view)
-      )
+      #expect(abs((view.test_contentOffsetY) - requestedOffset) <= Metrics.tolerance, "\(diagnostic(view))")
       assertVisibleCellCoverage(view)
     }
   }
 
-  func test_boundsOnlyChangeReportsFinalGeometryWithHistoryAnchorPreserved() throws {
+  @Test
+  func `bounds only change reports final geometry with history anchor preserved`() throws {
     let view = mount(targetID: Metrics.historyRow)
     let initialOffset = view.test_contentOffsetY
     var reports: [TiledScrollGeometry] = []
@@ -342,21 +319,22 @@ final class NativeViewportScrollPreservationTests: XCTestCase {
       reports.removeAll()
       resize(view, to: height)
       let expectedOffset = initialOffset + Metrics.restingHeight - height
-      _ = try XCTUnwrap(reports.last, "Bounds-only changes must publish their new visible size")
-      XCTAssertEqual(view.test_contentOffsetY, expectedOffset, accuracy: Metrics.tolerance)
+      _ = try #require(reports.last, "Bounds-only changes must publish their new visible size")
+      #expect(abs((view.test_contentOffsetY) - expectedOffset) <= Metrics.tolerance)
       for report in reports {
-        XCTAssertEqual(report.visibleSize.height, height, accuracy: Metrics.tolerance)
-        XCTAssertEqual(report.contentOffset.y, expectedOffset, accuracy: Metrics.tolerance)
-        XCTAssertEqual(report.contentInset, view.test_collectionView.adjustedContentInset)
-        XCTAssertEqual(report.contentSize, view.test_collectionView.contentSize)
+        #expect(abs((report.visibleSize.height) - height) <= Metrics.tolerance)
+        #expect(abs((report.contentOffset.y) - expectedOffset) <= Metrics.tolerance)
+        #expect(report.contentInset == view.test_collectionView.adjustedContentInset)
+        #expect(report.contentSize == view.test_collectionView.contentSize)
       }
     }
   }
 
-  func test_modelOffsetAlreadyAdjustedForViewportIsNotAdjustedTwice() {
+  @Test
+  func `model offset already adjusted for viewport is not adjusted twice`() {
     let view = mount(height: Metrics.keyboardHeight)
     view.test_collectionView.contentOffset.y -= Metrics.bottomReadingGap
-    XCTAssertEqual(view.test_pointsFromBottom, Metrics.bottomReadingGap, accuracy: Metrics.tolerance)
+    #expect(abs((view.test_pointsFromBottom) - (Metrics.bottomReadingGap)) <= Metrics.tolerance)
     let originalOffset = view.test_contentOffsetY
     captureViewportChange(view, to: Metrics.restingHeight)
 
@@ -365,11 +343,8 @@ final class NativeViewportScrollPreservationTests: XCTestCase {
     view.test_collectionView.contentOffset.y = adjustedOffset
     resize(view, to: Metrics.restingHeight)
 
-    XCTAssertEqual(
-      view.test_contentOffsetY, adjustedOffset,
-      accuracy: Metrics.tolerance, diagnostic(view)
-    )
-    XCTAssertEqual(view.test_pointsFromBottom, Metrics.bottomReadingGap, accuracy: Metrics.tolerance)
+    #expect(abs((view.test_contentOffsetY) - adjustedOffset) <= Metrics.tolerance, "\(diagnostic(view))")
+    #expect(abs((view.test_pointsFromBottom) - (Metrics.bottomReadingGap)) <= Metrics.tolerance)
     assertVisibleCellCoverage(view)
   }
 
@@ -419,8 +394,7 @@ final class NativeViewportScrollPreservationTests: XCTestCase {
       if order == .viewportThenInset { view.swiftUIWorldSafeAreaInset.bottom = inset }
       layout(view)
     }
-    XCTAssertEqual(view.test_collectionView.bounds.height, height, accuracy: Metrics.tolerance)
-    XCTAssertEqual(view.swiftUIWorldSafeAreaInset.bottom, inset, accuracy: Metrics.tolerance)
+    #expect(abs((view.test_collectionView.bounds.height) - height) <= Metrics.tolerance)
   }
 
   private func chromeInset(for height: CGFloat, order: GeometryUpdateOrder) -> CGFloat {
@@ -458,29 +432,23 @@ final class NativeViewportScrollPreservationTests: XCTestCase {
 
   private func instantiatedFrame(of row: Int, in view: HostView) throws -> CGRect {
     let indexPath = TiledCollectionViewLayout.DisplaySection.messages.indexPath(item: row)
-    let cell = try XCTUnwrap(view.test_collectionView.cellForItem(at: indexPath), diagnostic(view))
-    XCTAssertFalse(cell.isHidden)
-    XCTAssertGreaterThan(cell.alpha, 0)
-    XCTAssertGreaterThan(cell.contentView.alpha, 0)
+    let cell = try #require(view.test_collectionView.cellForItem(at: indexPath), "\(diagnostic(view))")
+    #expect(!cell.isHidden)
+    #expect(cell.alpha > 0)
+    #expect(cell.contentView.alpha > 0)
     return cell.convert(cell.bounds, to: view)
   }
 
   private func assertLastRowMeetsChrome(
     _ view: HostView,
-    file: StaticString = #filePath,
-    line: UInt = #line
+    sourceLocation: SourceLocation = SourceLocation(fileID: #fileID, filePath: #filePath, line: #line, column: #column)
   ) throws {
-    XCTAssertEqual(
-      try instantiatedFrame(of: Metrics.rowCount - 1, in: view).maxY,
-      view.bounds.height - view.swiftUIWorldSafeAreaInset.bottom,
-      accuracy: Metrics.tolerance, diagnostic(view), file: file, line: line
-    )
+    #expect(try abs((instantiatedFrame(of: Metrics.rowCount - 1, in: view).maxY) - (view.bounds.height - view.swiftUIWorldSafeAreaInset.bottom)) <= Metrics.tolerance, "\(diagnostic(view))", sourceLocation: sourceLocation)
   }
 
   private func assertVisibleCellCoverage(
     _ view: HostView,
-    file: StaticString = #filePath,
-    line: UInt = #line
+    sourceLocation: SourceLocation = SourceLocation(fileID: #fileID, filePath: #filePath, line: #line, column: #column)
   ) {
     let collection = view.test_collectionView
     let messageSection = TiledCollectionViewLayout.DisplaySection.messages.rawValue
@@ -504,12 +472,9 @@ final class NativeViewportScrollPreservationTests: XCTestCase {
       let image = UIGraphicsImageRenderer(bounds: view.bounds, format: format).image { context in
         view.layer.render(in: context.cgContext)
       }
-      let attachment = XCTAttachment(image: image)
-      attachment.name = diagnostic(view)
-      attachment.lifetime = .keepAlways
-      add(attachment)
+      Attachment.record(image, named: diagnostic(view), as: .png)
     }
-    XCTAssertLessThanOrEqual(uncovered, Metrics.tolerance, diagnostic(view), file: file, line: line)
+    #expect(uncovered <= Metrics.tolerance, "\(diagnostic(view))", sourceLocation: sourceLocation)
   }
 
   private func diagnostic(_ view: HostView) -> String {

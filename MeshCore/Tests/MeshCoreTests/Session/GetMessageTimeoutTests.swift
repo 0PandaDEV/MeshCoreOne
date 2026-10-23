@@ -1,41 +1,55 @@
 import Foundation
 @testable import MeshCore
+import MeshCoreTestSupport
 import Testing
 
-@Suite("MeshCoreSession getMessage timeout")
+@Suite("MeshCoreSession getMessage timeout", .timeLimit(.minutes(1)))
 struct GetMessageTimeoutTests {
   @Test(arguments: [
-    (defaultTimeout: 0.2, override: nil as Double?),
-    (defaultTimeout: 2.0, override: 0.05),
-    (defaultTimeout: 0.2, override: 0.6)
+    (defaultTimeout: 2.0, override: nil as Double?),
+    (defaultTimeout: 20.0, override: 5.0),
+    (defaultTimeout: 2.0, override: 6.0)
   ])
   func `getMessage uses the default timeout or its override`(
     _ timeouts: (defaultTimeout: Double, override: Double?)
   ) async throws {
     let transport = MockTransport()
+    let clock = TestClock()
     let session = MeshCoreSession(
       transport: transport,
-      configuration: SessionConfiguration(defaultTimeout: timeouts.defaultTimeout, clientIdentifier: "MeshCore-Tests")
+      configuration: SessionConfiguration(defaultTimeout: timeouts.defaultTimeout, clientIdentifier: "MeshCore-Tests"),
+      clock: clock
     )
-    let startTask = Task { try await session.start() }
-    try await waitUntil("transport should send appStart") {
-      await transport.sentData.count == 1
-    }
-    await transport.simulateReceive(makeSelfInfoPacket())
-    try await startTask.value
+    do {
+      let startTask = Task { try await session.start() }
+      try await waitUntil("transport should send appStart") {
+        await transport.sentData.count == 1
+      }
+      await transport.simulateReceive(makeSelfInfoPacket())
+      try await startTask.value
+      try #require(clock.sleeperCount == 0)
 
-    let clock = ContinuousClock()
-    let start = clock.now
-    await #expect {
-      _ = try await session.getMessage(timeout: timeouts.override)
-    } throws: { error in
-      guard let error = error as? MeshCoreError, case .timeout = error else { return false }
-      return true
+      let request = Task { try await session.getMessage(timeout: timeouts.override) }
+      try await waitUntil("getMessage timeout should park on the injected clock") {
+        clock.sleeperCount == 1
+      }
+      let expected = Duration.seconds(timeouts.override ?? timeouts.defaultTimeout)
+      let boundaryStep = Duration.milliseconds(1)
+      clock.advance(by: expected - boundaryStep)
+      try #require(clock.sleeperCount == 1, "getMessage must not time out before its deadline")
+      clock.advance(by: boundaryStep)
+      try #require(clock.sleeperCount == 0, "getMessage must time out at its deadline")
+
+      await #expect {
+        _ = try await request.value
+      } throws: { error in
+        guard let error = error as? MeshCoreError, case .timeout = error else { return false }
+        return true
+      }
+    } catch {
+      await session.stop()
+      throw error
     }
-    let elapsed = start.duration(to: clock.now)
-    let expected = timeouts.override ?? timeouts.defaultTimeout
-    #expect(elapsed >= .seconds(expected * 0.75))
-    #expect(elapsed < .seconds(expected + 1))
     await session.stop()
   }
 }

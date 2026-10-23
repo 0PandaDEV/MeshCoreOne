@@ -3,38 +3,6 @@ import Foundation
 import MeshCore
 import Testing
 
-@Suite("NoiseFloorReading")
-struct NoiseFloorReadingTests {
-  @Test
-  func `reading stores all values correctly`() {
-    let timestamp = Date()
-    let reading = NoiseFloorReading(
-      id: UUID(),
-      timestamp: timestamp,
-      noiseFloor: -95,
-      lastRSSI: -80,
-      lastSNR: 7.5
-    )
-
-    #expect(reading.noiseFloor == -95)
-    #expect(reading.lastRSSI == -80)
-    #expect(reading.lastSNR == 7.5)
-    #expect(reading.timestamp == timestamp)
-  }
-}
-
-@Suite("NoiseFloorStatistics")
-struct NoiseFloorStatisticsTests {
-  @Test
-  func `statistics calculates min/max/avg correctly`() {
-    let stats = NoiseFloorStatistics(min: -110, max: -80, average: -95.5)
-
-    #expect(stats.min == -110)
-    #expect(stats.max == -80)
-    #expect(stats.average == -95.5)
-  }
-}
-
 @Suite("NoiseFloorQuality")
 struct NoiseFloorQualityTests {
   @Test

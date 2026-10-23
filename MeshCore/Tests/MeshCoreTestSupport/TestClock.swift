@@ -10,24 +10,24 @@ import Foundation
 /// on this clock before advancing, so the two never race. If production stops
 /// using the injected clock, `sleeperCount` stays zero and the waiting test
 /// fails instead of silently passing on wall-clock timing.
-final class TestClock: Clock, @unchecked Sendable {
-  struct Instant: InstantProtocol {
+public final class TestClock: Clock, @unchecked Sendable {
+  public struct Instant: InstantProtocol {
     var offset: Duration
 
-    func advanced(by duration: Duration) -> Instant {
+    public func advanced(by duration: Duration) -> Instant {
       Instant(offset: offset + duration)
     }
 
-    func duration(to other: Instant) -> Duration {
+    public func duration(to other: Instant) -> Duration {
       other.offset - offset
     }
 
-    static func < (lhs: Instant, rhs: Instant) -> Bool {
+    public static func < (lhs: Instant, rhs: Instant) -> Bool {
       lhs.offset < rhs.offset
     }
   }
 
-  var minimumResolution: Duration {
+  public var minimumResolution: Duration {
     .zero
   }
 
@@ -41,20 +41,22 @@ final class TestClock: Clock, @unchecked Sendable {
     let continuation: CheckedContinuation<Void, any Error>
   }
 
-  var now: Instant {
+  public init() {}
+
+  public var now: Instant {
     lock.lock()
     defer { lock.unlock() }
     return _now
   }
 
   /// Number of tasks currently parked in `sleep`.
-  var sleeperCount: Int {
+  public var sleeperCount: Int {
     lock.lock()
     defer { lock.unlock() }
     return sleepers.count
   }
 
-  func sleep(until deadline: Instant, tolerance: Duration? = nil) async throws {
+  public func sleep(until deadline: Instant, tolerance: Duration? = nil) async throws {
     let id = UUID()
     try await withTaskCancellationHandler {
       try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
@@ -85,7 +87,7 @@ final class TestClock: Clock, @unchecked Sendable {
   }
 
   /// Advances virtual time, resuming every sleeper whose deadline has passed.
-  func advance(by duration: Duration = .zero) {
+  public func advance(by duration: Duration = .zero) {
     lock.lock()
     _now = _now.advanced(by: duration)
     let due = sleepers.filter { $0.deadline <= _now }

@@ -23,7 +23,7 @@ extension ContactCleanupTests {
 
   func makeEnvironment() async throws -> Environment {
     let container = try PersistenceStore.createContainer(inMemory: true)
-    let manager = ConnectionManager(modelContainer: container)
+    let manager = ConnectionManager(modelContainer: container, defaults: defaults)
     let radioID = UUID()
     let store = manager.persistenceStore
     try await store.saveDevice(DeviceDTO(from: Device(

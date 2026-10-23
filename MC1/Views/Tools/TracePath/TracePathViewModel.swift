@@ -23,10 +23,12 @@ final class TracePathViewModel {
   /// picker's "Recent" section; persisted per radio via ``RecentHopsStore``.
   var recentPublicKeys: [Data] = []
   private let recents: RecentHopsStore
+  private let clock: any Clock<Duration>
   private var currentRadioID: UUID?
 
-  init(defaults: UserDefaults = .standard) {
+  init(defaults: UserDefaults = .standard, clock: (any Clock<Duration>)? = nil) {
     recents = RecentHopsStore(defaults: defaults)
+    self.clock = clock ?? ContinuousClock()
   }
 
   /// Combined repeaters and rooms for resolution (hex codes, map pins, etc.)
@@ -468,7 +470,7 @@ final class TracePathViewModel {
 
     errorAutoClearTask = Task { @MainActor [weak self] in
       guard let self else { return }
-      try? await Task.sleep(for: errorAutoClearDelay)
+      try? await clock.sleep(for: errorAutoClearDelay)
       guard !Task.isCancelled else { return }
       errorMessage = nil
     }
@@ -945,7 +947,7 @@ final class TracePathViewModel {
 
       if traceIndex < batchSize {
         guard isCurrent(ticket), !batchCancelled else { break }
-        try? await Task.sleep(for: .milliseconds(Self.interTraceBufferMs))
+        try? await clock.sleep(for: .milliseconds(Self.interTraceBufferMs))
         guard isCurrent(ticket), !batchCancelled else { break }
       }
     }
@@ -1100,18 +1102,16 @@ final class TracePathViewModel {
 
   private func armCurrentWait(ticket: Epoch.Ticket) {
     guard isCurrent(ticket), let tag = pendingTag, responseDeadline == nil else { return }
-    armTimeout(tag: tag, timeoutSeconds: pendingTimeoutSeconds)
+    let timeoutClock = clock
+    armTimeout(tag: tag, timeoutSeconds: pendingTimeoutSeconds, clock: timeoutClock)
   }
 
-  private func armTimeout(tag: UInt32, timeoutSeconds: Double) {
+  private func armTimeout<C: Clock>(tag: UInt32, timeoutSeconds: Double, clock: C) where C.Duration == Duration {
     responseDeadline = Date().addingTimeInterval(timeoutSeconds)
-    let deadline = responseDeadline
+    let deadline = clock.now.advanced(by: .seconds(timeoutSeconds))
     timeoutTask?.cancel()
     timeoutTask = Task { @MainActor in
-      let remaining = deadline?.timeIntervalSinceNow ?? timeoutSeconds
-      if remaining > 0 {
-        try? await Task.sleep(for: .seconds(remaining))
-      }
+      try? await clock.sleep(until: deadline, tolerance: nil)
       guard !Task.isCancelled else { return }
       applyTimeout(tag: tag)
     }
@@ -1182,6 +1182,7 @@ final class TracePathViewModel {
     Task { @MainActor [weak self] in
       guard let self, ticket.isCurrent(in: self.executionEpoch), let dataStore = self.dataStore else { return }
       #if DEBUG
+        defer { afterTraceRunAppendForTesting?() }
         if let beforeTraceRunAppendForTesting {
           await beforeTraceRunAppendForTesting()
         }
@@ -1366,6 +1367,23 @@ final class TracePathViewModel {
     var responseTimeoutSecondsForTesting: Double?
     var unackedTimeoutSecondsForTesting: Double?
     var beforeTraceRunAppendForTesting: (@MainActor () async -> Void)?
+    var afterTraceRunAppendForTesting: (@MainActor () -> Void)?
+    var executionTaskForTesting: Task<Void, Never>? {
+      executionTask
+    }
+
+    var traceEventsTaskForTesting: Task<Void, Never>? {
+      traceEventsTask
+    }
+
+    var timeoutTaskForTesting: Task<Void, Never>? {
+      timeoutTask
+    }
+
+    var errorAutoClearTaskForTesting: Task<Void, Never>? {
+      errorAutoClearTask
+    }
+
     var pendingTagForTesting: UInt32? {
       pendingTag
     }

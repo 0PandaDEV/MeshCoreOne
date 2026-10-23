@@ -1,6 +1,7 @@
 import Foundation
 @testable import MC1Services
 @testable import MeshCore
+import MeshCoreTestSupport
 import Testing
 
 @Suite("ConnectionManager WiFi heartbeat")

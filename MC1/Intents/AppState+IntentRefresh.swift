@@ -68,6 +68,9 @@ extension AppState {
     if let services,
        let task = staleNodeCleanupTask,
        staleNodeCleanupServiceID == ObjectIdentifier(services) {
+      #if DEBUG
+        beforeShortcutRecipientCleanupAwaitForTesting?()
+      #endif
       await task.value
       guard hasCleanRecipientData, connectionManager.services === services else { return }
       await publishShortcutRecipientsIfChanged(expectedServices: services)

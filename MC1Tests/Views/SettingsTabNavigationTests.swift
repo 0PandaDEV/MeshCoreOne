@@ -67,8 +67,8 @@ struct SettingsTabNavigationTests {
     )
 
     try #require(try await harness.openChild(row: destination.row, title: destination.title, markers: destination.markers, detail: destination.root.detail), "\(harness.describe())")
-    harness.selectTab(.map)
-    try #require(try await harness.waitUntil { harness.showsSelectedTab(.map) }, "\(harness.describe())")
+    harness.selectTab(.chats)
+    try #require(try await harness.waitUntil { harness.showsSelectedTab(.chats) }, "\(harness.describe())")
     harness.navigation.navigateToSetting(.backup)
     try #require(
       try await harness.waitUntil {

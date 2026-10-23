@@ -1,4 +1,5 @@
 import Foundation
+import MeshCoreTestSupport
 import Testing
 
 @Suite("TestClock cancellation")

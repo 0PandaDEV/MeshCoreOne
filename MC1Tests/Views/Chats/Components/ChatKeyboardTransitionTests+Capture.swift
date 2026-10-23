@@ -1,8 +1,9 @@
+import Foundation
 @testable import MC1
 import MessagingUI
 import SwiftUI
+import Testing
 import UIKit
-import XCTest
 
 extension ChatKeyboardTransitionTests {
   @Observable
@@ -407,24 +408,23 @@ extension ChatKeyboardTransitionTests {
 
   func assertLatestRowDuringOpening(_ samples: [Sample], baseline: Sample) throws {
     let lastItem = Metrics.rowCount - 1
-    let baselineCell = try XCTUnwrap(baseline.coverage?.cells.first { $0.item == lastItem })
-    let baselineStripe = try XCTUnwrap(baseline.latestRenderedBottom, "The newest row stripe must be visible before focus")
+    let baselineCell = try #require(baseline.coverage?.cells.first { $0.item == lastItem })
+    let baselineStripe = try #require(baseline.latestRenderedBottom, "The newest row stripe must be visible before focus")
     let cellGap = baseline.composerTop - baselineCell.frame.maxY
     let paintedGap = baseline.composerTop - baselineStripe
-    XCTAssertEqual(cellGap, 0, accuracy: Metrics.coverageTolerance, "Opening must start at the true bottom")
-    XCTAssertEqual(paintedGap, 0, accuracy: Metrics.coverageTolerance)
+    #expect(abs(cellGap - 0) <= Metrics.coverageTolerance, "Opening must start at the true bottom")
+    #expect(abs(paintedGap - 0) <= Metrics.coverageTolerance)
     for sample in samples {
-      let cell = try XCTUnwrap(sample.coverage?.cells.first { $0.item == lastItem },
-                               "The newest message was retired during opening at \(sample.timestamp)")
-      XCTAssertGreaterThan(cell.opacity, 0)
-      XCTAssertGreaterThan(cell.contentOpacity, 0)
-      XCTAssertEqual(sample.composerTop - cell.frame.maxY, cellGap, accuracy: Metrics.alignmentTolerance)
-      XCTAssertGreaterThanOrEqual(sample.composerTop - cell.frame.maxY, -Metrics.alignmentTolerance)
-      let stripe = try XCTUnwrap(sample.latestRenderedBottom,
-                                 "The newest message lost its painted stripe during opening at \(sample.timestamp)")
-      XCTAssertEqual(sample.composerTop - stripe, paintedGap, accuracy: Metrics.coverageTolerance,
-                     "The newest message moved relative to the rendered composer at \(sample.timestamp)")
-      XCTAssertLessThanOrEqual(stripe, sample.composerTop + Metrics.coverageTolerance)
+      let cell = try #require(sample.coverage?.cells.first { $0.item == lastItem },
+                              "The newest message was retired during opening at \(sample.timestamp)")
+      #expect(cell.opacity > 0)
+      #expect(cell.contentOpacity > 0)
+      #expect(abs((sample.composerTop - cell.frame.maxY) - cellGap) <= Metrics.alignmentTolerance)
+      #expect(sample.composerTop - cell.frame.maxY >= -Metrics.alignmentTolerance)
+      let stripe = try #require(sample.latestRenderedBottom,
+                                "The newest message lost its painted stripe during opening at \(sample.timestamp)")
+      #expect(abs((sample.composerTop - stripe) - paintedGap) <= Metrics.coverageTolerance, "The newest message moved relative to the rendered composer at \(sample.timestamp)")
+      #expect(stripe <= sample.composerTop + Metrics.coverageTolerance)
     }
   }
 

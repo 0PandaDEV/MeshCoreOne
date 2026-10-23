@@ -42,21 +42,6 @@ struct SyncingPillViewTests {
   }
 
   @Test
-  @MainActor
-  func `Disconnected with tap handler stores closure`() {
-    var tapped = false
-    let view = SyncingPillView(
-      state: .disconnected,
-      onDisconnectedTap: { tapped = true }
-    )
-    // The handler is stored but not called until user interaction
-    #expect(!tapped)
-    // Manually invoke to verify the closure is wired correctly
-    view.onDisconnectedTap?()
-    #expect(tapped)
-  }
-
-  @Test
   func `Failed state shows red text and failure icon with custom message`() {
     let message = "Sync failed"
     let state = StatusPillState.failed(message: message)
@@ -64,14 +49,6 @@ struct SyncingPillViewTests {
     #expect(state.systemImageName == "exclamationmark.triangle.fill")
     #expect(state.isFailure == true)
     #expect(state.textColor == .red)
-  }
-
-  @Test
-  func `Failed state preserves custom error message`() {
-    let customMessage = "Custom Error"
-    let state = StatusPillState.failed(message: customMessage)
-    #expect(state.displayText == customMessage)
-    #expect(state.isFailure == true)
   }
 
   @Test

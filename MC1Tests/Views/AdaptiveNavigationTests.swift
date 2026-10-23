@@ -422,7 +422,6 @@ struct AdaptiveNavigationTests {
   func `saved contact actions restore without focus`() async throws {
     let appState = AppState()
     let contact = makeContact()
-    appState.navigation.navigateToContactDetail(contact)
     let state = ContactDetailState(contact: contact)
     state.scrollSection = .actions
     let routes = NodesNavigationState(presentation: .compact)
@@ -432,14 +431,29 @@ struct AdaptiveNavigationTests {
     )
     defer { dismount(host); state.end() }
 
+    try #require(await waitFor {
+      guard let navigation = navigationControllers(from: host.controller)
+        .first(where: { viewIsVisible($0.view, in: host.window) }),
+        let source = navigation.topViewController?.viewIfLoaded else { return false }
+      return navigation.viewControllers.count == 1
+        && navigation.transitionCoordinator == nil
+        && viewIsVisible(source, in: host.window)
+    })
+    try #require(state.rendererID == nil)
+    try #require(appState.navigation.selectedContact == nil)
+    appState.navigation.navigateToContactDetail(contact)
+
     let actionsRow = IndexPath(item: 0, section: Layout.savedHistoryIndexPath.section)
-    try #require(await waitFor { firstVisibleContactRow(in: host.window) == actionsRow })
+    try #require(await waitFor { firstVisibleContactRow(in: host.window) == actionsRow },
+                 "\(describeContactScroll(host, state: state))")
     #expect(state.scrollSection == .actions)
     resize(host, to: Layout.regularSize, regularWidth: true)
-    try #require(await waitFor { firstVisibleContactRow(in: host.window) == actionsRow })
+    try #require(await waitFor { firstVisibleContactRow(in: host.window) == actionsRow },
+                 "\(describeContactScroll(host, state: state))")
     #expect(state.scrollSection == .actions)
     resize(host, to: Layout.compactSize, regularWidth: false)
-    try #require(await waitFor { firstVisibleContactRow(in: host.window) == actionsRow })
+    try #require(await waitFor { firstVisibleContactRow(in: host.window) == actionsRow },
+                 "\(describeContactScroll(host, state: state))")
     #expect(state.scrollSection == .actions)
   }
 
@@ -450,6 +464,18 @@ struct AdaptiveNavigationTests {
     return list.indexPathsForVisibleItems.filter { index in
       index.item == 0 && list.layoutAttributesForItem(at: index)?.frame.intersects(viewport) == true
     }.min()
+  }
+
+  private func describeContactScroll(_ host: Host, state: ContactDetailState) -> String {
+    let lists = descendantViews(in: host.window, of: UICollectionView.self).enumerated().map { index, list in
+      let rows = list.indexPathsForVisibleItems.sorted().map { path in
+        "\(path)=\(String(describing: list.layoutAttributesForItem(at: path)?.frame))"
+      }
+      return "list\(index) visible=\(viewIsVisible(list, in: host.window)) bounds=\(list.bounds) "
+        + "offset=\(list.contentOffset) inset=\(list.adjustedContentInset) content=\(list.contentSize) rows=\(rows)"
+    }
+    return describeEditor(host, state: state)
+      + " first=\(String(describing: firstVisibleContactRow(in: host.window))) lists=\(lists)"
   }
 
   private func nicknameField(in window: UIWindow) -> UITextField? {
@@ -542,7 +568,7 @@ struct AdaptiveNavigationTests {
     #expect(visibleHistoryNavigationController(in: host.window)?
       .viewControllers.dropLast().last?.navigationItem.title == contact.displayName)
 
-    appState.navigation.selectedTab = AppTab.map.rawValue
+    appState.navigation.selectedTab = AppTab.chats.rawValue
     settle(host.window)
     appState.navigation.selectedTab = AppTab.nodes.rawValue
     settle(host.window)

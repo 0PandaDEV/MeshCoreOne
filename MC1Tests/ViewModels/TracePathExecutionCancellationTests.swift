@@ -23,6 +23,14 @@ private final class ControllableTraceSend {
     continuations.removeFirst().resume(returning: info)
   }
 
+  func completeAll() {
+    let pending = continuations
+    continuations.removeAll()
+    for continuation in pending {
+      continuation.resume(returning: info)
+    }
+  }
+
   func failOldest(_ error: Error) {
     guard !continuations.isEmpty else { return }
     continuations.removeFirst().resume(throwing: error)
@@ -45,7 +53,7 @@ private final class AppendGate {
   }
 }
 
-@Suite("Trace Path execution cancellation")
+@Suite("Trace Path execution cancellation", .timeLimit(.minutes(1)))
 @MainActor
 struct TracePathExecutionCancellationTests {
   private func makeContact() -> ContactDTO {
@@ -68,9 +76,10 @@ struct TracePathExecutionCancellationTests {
   }
 
   private func makeViewModel(
-    send: ControllableTraceSend? = nil
+    send: ControllableTraceSend? = nil,
+    clock: (any Clock<Duration>)? = nil
   ) -> TracePathViewModel {
-    let viewModel = TracePathViewModel()
+    let viewModel = TracePathViewModel(clock: clock)
     viewModel.configure(dependencies: TracePathViewModel.Dependencies(
       dataStore: { nil },
       session: { nil },
@@ -108,15 +117,27 @@ struct TracePathExecutionCancellationTests {
     )
   }
 
+  private func advanceBatchBuffer(on clock: TestClock) async throws {
+    try await waitUntil("batch buffer should park") { clock.sleeperCount == 1 }
+    clock.advance(by: .milliseconds(499))
+    try #require(clock.sleeperCount == 1)
+    clock.advance(by: .milliseconds(1))
+    try #require(clock.sleeperCount == 0)
+  }
+
   @Test
   func `hiding during the response wait still accepts the response`() async throws {
     let send = ControllableTraceSend()
     send.hangUntilComplete = false
     let viewModel = makeViewModel(send: send)
+    defer {
+      viewModel.reset()
+      send.completeAll()
+    }
     viewModel.responseTimeoutSecondsForTesting = 30
     viewModel.startTrace()
 
-    try await waitUntil(timeout: .seconds(1), "wait should be armed") {
+    try await waitUntil("wait should be armed") {
       viewModel.pendingTagForTesting != nil
     }
     viewModel.setWorkspaceVisible(false)
@@ -131,14 +152,18 @@ struct TracePathExecutionCancellationTests {
   func `explicit cancel drops a late ACK and a late response`() async throws {
     let send = ControllableTraceSend()
     let viewModel = makeViewModel(send: send)
-    viewModel.startTrace()
+    defer {
+      viewModel.reset()
+      send.completeAll()
+    }
+    let execution = Task { await viewModel.runTrace() }
 
-    try await waitUntil(timeout: .seconds(1), "send should start") {
+    try await waitUntil("send should start") {
       send.sendCount == 1
     }
     viewModel.cancelExecution()
     send.completeOldest()
-    try await Task.sleep(for: .milliseconds(30))
+    await execution.value
 
     #expect(viewModel.isRunning == false)
     #expect(viewModel.errorMessage == nil)
@@ -153,10 +178,14 @@ struct TracePathExecutionCancellationTests {
     let send = ControllableTraceSend()
     send.hangUntilComplete = false
     let viewModel = makeViewModel(send: send)
+    defer {
+      viewModel.reset()
+      send.completeAll()
+    }
     viewModel.responseTimeoutSecondsForTesting = 30
     viewModel.startTrace()
 
-    try await waitUntil(timeout: .seconds(1), "wait should be armed") {
+    try await waitUntil("wait should be armed") {
       viewModel.pendingTagForTesting != nil
     }
     let tag = try #require(viewModel.pendingTagForTesting)
@@ -171,28 +200,34 @@ struct TracePathExecutionCancellationTests {
   @Test
   func `explicit cancel between batch members keeps completed results and drops a late ACK`() async throws {
     let send = ControllableTraceSend()
-    let viewModel = makeViewModel(send: send)
+    let clock = TestClock()
+    let viewModel = makeViewModel(send: send, clock: clock)
+    defer {
+      viewModel.reset()
+      send.completeAll()
+    }
     viewModel.responseTimeoutSecondsForTesting = 30
     viewModel.batchEnabled = true
     viewModel.batchSize = 3
-    viewModel.startTrace()
+    let execution = Task { await viewModel.runBatchTrace() }
 
-    try await waitUntil(timeout: .seconds(1), "first send should start") {
+    try await waitUntil("first send should start") {
       send.sendCount == 1
     }
     send.completeOldest()
-    try await waitUntil(timeout: .seconds(1), "first member should be waiting") {
-      viewModel.pendingTagForTesting != nil
+    try await waitUntil("first member should be waiting") {
+      clock.sleeperCount == 1
     }
     let tag = try #require(viewModel.pendingTagForTesting)
     viewModel.handleTraceResponse(traceInfo(tag: tag), radioID: nil)
-    try await waitUntil(timeout: .seconds(2), "second send should start") {
+    try await advanceBatchBuffer(on: clock)
+    try await waitUntil("second send should start") {
       send.sendCount == 2
     }
 
     viewModel.cancelBatchTrace()
     send.completeOldest()
-    try await Task.sleep(for: .milliseconds(40))
+    await execution.value
 
     #expect(viewModel.completedResults.count == 1)
     #expect(viewModel.completedResults[0].success)
@@ -204,33 +239,40 @@ struct TracePathExecutionCancellationTests {
   @Test
   func `replacement startTrace drops the old send cleanup`() async throws {
     let send = ControllableTraceSend()
-    let viewModel = makeViewModel(send: send)
+    let clock = TestClock()
+    let viewModel = makeViewModel(send: send, clock: clock)
+    defer {
+      viewModel.reset()
+      send.completeAll()
+    }
     viewModel.responseTimeoutSecondsForTesting = 30
     viewModel.batchEnabled = true
     viewModel.batchSize = 3
     viewModel.startTrace()
 
-    try await waitUntil(timeout: .seconds(1), "first send should start") {
+    try await waitUntil("first send should start") {
       send.sendCount == 1
     }
     send.completeOldest()
-    try await waitUntil(timeout: .seconds(1), "first member should be waiting") {
-      viewModel.pendingTagForTesting != nil
+    try await waitUntil("first member should be waiting") {
+      clock.sleeperCount == 1
     }
     let tag = try #require(viewModel.pendingTagForTesting)
     viewModel.handleTraceResponse(traceInfo(tag: tag), radioID: nil)
-    try await waitUntil(timeout: .seconds(2), "second send should start") {
+    try await advanceBatchBuffer(on: clock)
+    try await waitUntil("second send should start") {
       send.sendCount == 2
     }
 
     #expect(viewModel.completedResults.count == 1)
+    let oldExecution = try #require(viewModel.executionTaskForTesting)
     viewModel.startTrace()
     send.completeOldest()
-    try await Task.sleep(for: .milliseconds(40))
+    await oldExecution.value
 
     #expect(viewModel.completedResults.isEmpty)
     #expect(viewModel.errorMessage == nil)
-    try await waitUntil(timeout: .seconds(1), "replacement send should be in flight") {
+    try await waitUntil("replacement send should be in flight") {
       send.sendCount == 3 && viewModel.isRunning
     }
   }
@@ -239,15 +281,19 @@ struct TracePathExecutionCancellationTests {
   func `canceled send error does not record a failure`() async throws {
     let send = ControllableTraceSend()
     let viewModel = makeViewModel(send: send)
-    viewModel.startTrace()
+    defer {
+      viewModel.reset()
+      send.completeAll()
+    }
+    let execution = Task { await viewModel.runTrace() }
 
-    try await waitUntil(timeout: .seconds(1), "send should start") {
+    try await waitUntil("send should start") {
       send.sendCount == 1
     }
 
     viewModel.cancelExecution()
     send.failOldest(MeshCoreError.timeout)
-    try await Task.sleep(for: .milliseconds(30))
+    await execution.value
 
     #expect(viewModel.errorMessage == nil)
     #expect(viewModel.completedResults.isEmpty)
@@ -274,19 +320,21 @@ struct TracePathExecutionCancellationTests {
       connectedDevice: { nil },
       bestAvailableLocation: { nil }
     ))
+    var appendFinished = false
     viewModel.beforeTraceRunAppendForTesting = { await gate.wait() }
+    viewModel.afterTraceRunAppendForTesting = { appendFinished = true }
     viewModel.throwBeforeTagForTesting = { throw MeshCoreError.timeout }
     viewModel.addNode(makeContact())
     viewModel.activeSavedPath = saved
     viewModel.result = TraceResult.sendFailed("stale", attemptedPath: [0xAB], hashSize: 1)
     viewModel.startTrace()
 
-    try await waitUntil(timeout: .seconds(1), "append should reach the gate") {
+    try await waitUntil("append should reach the gate") {
       gate.started
     }
     viewModel.reset()
     gate.release()
-    try await Task.sleep(for: .milliseconds(50))
+    try await waitUntil("abandoned append should finish") { appendFinished }
 
     let stored = try await store.fetchSavedTracePath(id: saved.id)
     #expect(stored?.runs.isEmpty == true)
@@ -301,6 +349,7 @@ struct TracePathExecutionCancellationTests {
     let oldServices = try makeServices()
     var currentServices: ServiceContainer? = oldServices
     let viewModel = makeViewModel()
+    defer { viewModel.reset() }
     viewModel.configure(dependencies: TracePathViewModel.Dependencies(
       dataStore: { nil },
       session: { nil },
@@ -320,7 +369,7 @@ struct TracePathExecutionCancellationTests {
       .traceResponse(traceInfo: traceInfo(tag: 0x00C0_FFEE), radioID: UUID())
     )
 
-    try await waitUntil(timeout: .seconds(1), "rebound service should deliver the response") {
+    try await waitUntil("rebound service should deliver the response") {
       viewModel.result != nil
     }
     #expect(viewModel.result?.success == true)
@@ -332,6 +381,7 @@ struct TracePathExecutionCancellationTests {
     let services = try makeServices()
     var currentServices: ServiceContainer? = services
     let viewModel = makeViewModel()
+    defer { viewModel.reset() }
     viewModel.configure(dependencies: TracePathViewModel.Dependencies(
       dataStore: { nil },
       session: { nil },
@@ -342,15 +392,17 @@ struct TracePathExecutionCancellationTests {
     viewModel.addNode(makeContact())
     viewModel.setPendingTagForTesting(0x00C0_FFEE)
     viewModel.startListening()
+    let listener = try #require(viewModel.traceEventsTaskForTesting)
     viewModel.reset()
+    await listener.value
 
     let replacement = try makeServices()
     currentServices = replacement
     viewModel.reattachIfWaiting()
+    #expect(replacement.advertisementService.eventBroadcaster.subscriberCount == 0)
     replacement.advertisementService.eventBroadcaster.yield(
       .traceResponse(traceInfo: traceInfo(tag: 0x00C0_FFEE), radioID: UUID())
     )
-    try await Task.sleep(for: .milliseconds(50))
 
     #expect(viewModel.result == nil)
     #expect(viewModel.outboundPath.isEmpty)
@@ -362,6 +414,7 @@ struct TracePathExecutionCancellationTests {
     let services = try makeServices()
     var currentServices: ServiceContainer? = services
     let viewModel = makeViewModel()
+    defer { viewModel.reset() }
     viewModel.configure(dependencies: TracePathViewModel.Dependencies(
       dataStore: { nil },
       session: { nil },
@@ -372,9 +425,10 @@ struct TracePathExecutionCancellationTests {
     viewModel.setPendingTagForTesting(0x00C0_FFEE)
     viewModel.isRunning = true
     viewModel.startListening()
+    let listener = try #require(viewModel.traceEventsTaskForTesting)
     services.advertisementService.finishEvents()
     currentServices = nil
-    try await Task.sleep(for: .milliseconds(40))
+    await listener.value
 
     #expect(viewModel.pendingTagForTesting == 0x00C0_FFEE)
     #expect(viewModel.result == nil)
@@ -387,7 +441,7 @@ struct TracePathExecutionCancellationTests {
     ready.advertisementService.eventBroadcaster.yield(
       .traceResponse(traceInfo: traceInfo(tag: 0x00C0_FFEE), radioID: UUID())
     )
-    try await waitUntil(timeout: .seconds(1), "later ready should accept the tag") {
+    try await waitUntil("later ready should accept the tag") {
       viewModel.result != nil
     }
   }
@@ -395,20 +449,29 @@ struct TracePathExecutionCancellationTests {
   @Test
   func `a throw after the tag leaves it in place until the deadline`() async throws {
     let send = ControllableTraceSend()
-    let viewModel = makeViewModel(send: send)
-    viewModel.unackedTimeoutSecondsForTesting = 0.05
+    let clock = TestClock()
+    let viewModel = makeViewModel(send: send, clock: clock)
+    defer {
+      viewModel.reset()
+      send.completeAll()
+    }
+    viewModel.unackedTimeoutSecondsForTesting = 5
     viewModel.startTrace()
 
-    try await waitUntil(timeout: .seconds(1), "send should start") {
+    try await waitUntil("send should start") {
       send.sendCount == 1
     }
     send.failOldest(MeshCoreError.timeout)
-    try await Task.sleep(for: .milliseconds(20))
+    try await waitUntil("unacked response deadline should park") { clock.sleeperCount == 1 }
 
+    clock.advance(by: .milliseconds(4999))
+    try #require(clock.sleeperCount == 1)
     #expect(viewModel.pendingTagForTesting != nil)
     #expect(viewModel.errorMessage == nil)
 
-    try await waitUntil(timeout: .seconds(1), "deadline should fail the run") {
+    clock.advance(by: .milliseconds(1))
+    try #require(clock.sleeperCount == 0)
+    try await waitUntil("deadline should fail the run") {
       viewModel.errorMessage != nil
     }
     #expect(viewModel.pendingTagForTesting == nil)
@@ -421,7 +484,7 @@ struct TracePathExecutionCancellationTests {
     viewModel.throwBeforeTagForTesting = { throw MeshCoreError.timeout }
     viewModel.startTrace()
 
-    try await waitUntil(timeout: .seconds(1), "pre-tag failure should surface") {
+    try await waitUntil("pre-tag failure should surface") {
       viewModel.errorMessage != nil
     }
     #expect(viewModel.pendingTagForTesting == nil)
@@ -432,16 +495,23 @@ struct TracePathExecutionCancellationTests {
   func `response then expiry keeps the success`() async throws {
     let send = ControllableTraceSend()
     send.hangUntilComplete = false
-    let viewModel = makeViewModel(send: send)
-    viewModel.responseTimeoutSecondsForTesting = 0.05
+    let clock = TestClock()
+    let viewModel = makeViewModel(send: send, clock: clock)
+    defer {
+      viewModel.reset()
+      send.completeAll()
+    }
+    viewModel.responseTimeoutSecondsForTesting = 5
     viewModel.startTrace()
 
-    try await waitUntil(timeout: .seconds(1), "tag should be assigned") {
-      viewModel.pendingTagForTesting != nil
+    try await waitUntil("tag should be assigned") {
+      clock.sleeperCount == 1
     }
     let tag = try #require(viewModel.pendingTagForTesting)
+    let timeout = try #require(viewModel.timeoutTaskForTesting)
     viewModel.handleTraceResponse(traceInfo(tag: tag), radioID: nil)
-    try await Task.sleep(for: .milliseconds(80))
+    await timeout.value
+    clock.advance(by: .seconds(5))
     viewModel.expireWaitingRunIfDeadlinePassed()
 
     #expect(viewModel.result?.success == true)
@@ -452,15 +522,21 @@ struct TracePathExecutionCancellationTests {
   func `expiry then response does not set result`() async throws {
     let send = ControllableTraceSend()
     send.hangUntilComplete = false
-    let viewModel = makeViewModel(send: send)
-    viewModel.responseTimeoutSecondsForTesting = 0.05
+    let clock = TestClock()
+    let viewModel = makeViewModel(send: send, clock: clock)
+    defer {
+      viewModel.reset()
+      send.completeAll()
+    }
+    viewModel.responseTimeoutSecondsForTesting = 5
     viewModel.startTrace()
 
-    try await waitUntil(timeout: .seconds(1), "tag should be assigned") {
-      viewModel.pendingTagForTesting != nil
+    try await waitUntil("tag should be assigned") {
+      clock.sleeperCount == 1
     }
     let tag = try #require(viewModel.pendingTagForTesting)
-    try await waitUntil(timeout: .seconds(1), "deadline should win") {
+    clock.advance(by: .seconds(5))
+    try await waitUntil("deadline should win") {
       viewModel.errorMessage != nil
     }
     viewModel.handleTraceResponse(traceInfo(tag: tag), radioID: nil)
@@ -469,12 +545,16 @@ struct TracePathExecutionCancellationTests {
   }
 
   @Test
-  func `hidden errorMessage stays until clearError`() async throws {
-    let viewModel = makeViewModel()
-    viewModel.errorAutoClearDelay = .milliseconds(40)
+  func `hidden errorMessage stays until clearError`() {
+    let clock = TestClock()
+    let viewModel = makeViewModel(clock: clock)
+    defer { viewModel.reset() }
+    viewModel.errorAutoClearDelay = .seconds(1)
     viewModel.setWorkspaceVisible(false)
     viewModel.setError("radio silent")
-    try await Task.sleep(for: .milliseconds(80))
+    #expect(viewModel.errorAutoClearTaskForTesting == nil)
+    #expect(clock.sleeperCount == 0)
+    clock.advance(by: .seconds(1))
     viewModel.setWorkspaceVisible(true)
 
     #expect(viewModel.errorMessage == "radio silent")
@@ -484,12 +564,18 @@ struct TracePathExecutionCancellationTests {
 
   @Test
   func `hiding cancels a clear that was armed while visible`() async throws {
-    let viewModel = makeViewModel()
-    viewModel.errorAutoClearDelay = .milliseconds(40)
+    let clock = TestClock()
+    let viewModel = makeViewModel(clock: clock)
+    defer { viewModel.reset() }
+    viewModel.errorAutoClearDelay = .seconds(1)
     viewModel.setWorkspaceVisible(true)
     viewModel.setError("radio silent")
+    try await waitUntil("visible error clear should park") { clock.sleeperCount == 1 }
+    let errorClear = try #require(viewModel.errorAutoClearTaskForTesting)
     viewModel.setWorkspaceVisible(false)
-    try await Task.sleep(for: .milliseconds(80))
+    try #require(clock.sleeperCount == 0)
+    await errorClear.value
+    clock.advance(by: .seconds(1))
 
     #expect(viewModel.errorMessage == "radio silent")
   }
@@ -497,23 +583,29 @@ struct TracePathExecutionCancellationTests {
   @Test
   func `hidden result-sheet dismiss does not cancel the batch and presents again`() async throws {
     let send = ControllableTraceSend()
-    let viewModel = makeViewModel(send: send)
+    let clock = TestClock()
+    let viewModel = makeViewModel(send: send, clock: clock)
+    defer {
+      viewModel.reset()
+      send.completeAll()
+    }
     viewModel.responseTimeoutSecondsForTesting = 30
     viewModel.batchEnabled = true
     viewModel.batchSize = 3
     viewModel.setWorkspaceVisible(true)
     viewModel.startTrace()
 
-    try await waitUntil(timeout: .seconds(1), "first send should start") {
+    try await waitUntil("first send should start") {
       send.sendCount == 1
     }
     send.completeOldest()
-    try await waitUntil(timeout: .seconds(1), "first member should be waiting") {
-      viewModel.pendingTagForTesting != nil
+    try await waitUntil("first member should be waiting") {
+      clock.sleeperCount == 1
     }
     let tag = try #require(viewModel.pendingTagForTesting)
     viewModel.handleTraceResponse(traceInfo(tag: tag), radioID: nil)
-    try await waitUntil(timeout: .seconds(2), "second send should start") {
+    try await advanceBatchBuffer(on: clock)
+    try await waitUntil("second send should start") {
       send.sendCount == 2
     }
 
@@ -532,7 +624,12 @@ struct TracePathExecutionCancellationTests {
   @Test(arguments: [false, true])
   func `cancelling an acknowledged batch wait does not republish its result`(dismissSheet: Bool) async throws {
     let send = ControllableTraceSend()
-    let viewModel = makeViewModel(send: send)
+    let clock = TestClock()
+    let viewModel = makeViewModel(send: send, clock: clock)
+    defer {
+      viewModel.reset()
+      send.completeAll()
+    }
     viewModel.responseTimeoutSecondsForTesting = 30
     viewModel.batchEnabled = true
     viewModel.batchSize = 3
@@ -543,21 +640,22 @@ struct TracePathExecutionCancellationTests {
       batchTask.cancel()
     }
 
-    try await waitUntil(timeout: .seconds(1), "first send should start") {
+    try await waitUntil("first send should start") {
       send.sendCount == 1
     }
     send.completeOldest()
-    try await waitUntil(timeout: .seconds(1), "first member should be waiting") {
-      viewModel.pendingTagForTesting != nil
+    try await waitUntil("first member should be waiting") {
+      clock.sleeperCount == 1
     }
     let tag = try #require(viewModel.pendingTagForTesting)
     viewModel.handleTraceResponse(traceInfo(tag: tag), radioID: nil)
-    try await waitUntil(timeout: .seconds(2), "second send should start") {
+    try await advanceBatchBuffer(on: clock)
+    try await waitUntil("second send should start") {
       send.sendCount == 2
     }
     send.completeOldest()
-    try await waitUntil(timeout: .seconds(1), "second member should be waiting for its response") {
-      viewModel.hasActiveTimeoutTaskForTesting
+    try await waitUntil("second member should be waiting for its response") {
+      clock.sleeperCount == 1
     }
     let cancelledTag = try #require(viewModel.pendingTagForTesting)
     let resultID = try #require(viewModel.resultID)

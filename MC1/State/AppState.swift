@@ -123,14 +123,14 @@ final class AppState {
   }
 
   private func persistRegionSelection() {
-    BackupUserDefaults.persistRegionSelection(regionSelection)
+    BackupUserDefaults.persistRegionSelection(regionSelection, to: defaults)
   }
 
   private func loadPersistedRegionSelection() {
-    guard UserDefaults.standard.data(forKey: BackupUserDefaults.regionSelectionKey) != nil else { return }
-    guard let decoded = BackupUserDefaults.loadRegionSelection() else {
+    guard defaults.data(forKey: BackupUserDefaults.regionSelectionKey) != nil else { return }
+    guard let decoded = BackupUserDefaults.loadRegionSelection(from: defaults) else {
       logger.warning("Failed to decode persisted region selection — clearing key")
-      UserDefaults.standard.removeObject(forKey: BackupUserDefaults.regionSelectionKey)
+      defaults.removeObject(forKey: BackupUserDefaults.regionSelectionKey)
       return
     }
     suppressRegionPersist = true
@@ -323,6 +323,7 @@ final class AppState {
   #if DEBUG
     @ObservationIgnored var updateShortcutParametersForTesting: (@MainActor () -> Void)?
     @ObservationIgnored var beforeShortcutRecipientRereadForTesting: (@MainActor () -> Void)?
+    @ObservationIgnored var beforeShortcutRecipientCleanupAwaitForTesting: (@MainActor () -> Void)?
   #endif
 
   /// Task consuming SettingsService event stream, canceled on disconnect
@@ -424,6 +425,7 @@ final class AppState {
     return connectionState == .connected && connectionUI.currentSyncPhase == .messages
   }
 
+  @ObservationIgnored let defaults: UserDefaults
   @ObservationIgnored let conversationUnreadOperations: ConversationUnreadOperations
 
   // MARK: - Initialization
@@ -436,11 +438,12 @@ final class AppState {
     injectedConnectionUI: ConnectionUIState? = nil,
     conversationUnreadOperations: ConversationUnreadOperations = .live
   ) {
+    self.defaults = defaults
     self.conversationUnreadOperations = conversationUnreadOperations
     draftStore = DraftStore(defaults: defaults)
 
     let store = StoreService()
-    let theme = ThemeService(store: store)
+    let theme = ThemeService(store: store, defaults: defaults)
     storeState = StoreState(service: store)
     themeService = theme
 
@@ -774,7 +777,7 @@ final class AppState {
   /// - Returns: Whether this call stored a new cleanup task.
   @discardableResult
   func performStaleNodeCleanup(force: Bool = false, publishRecipients: Bool = false) -> Bool {
-    let threshold = UserDefaults.standard.integer(forKey: AppStorageKey.autoDeleteStaleNodesDays.rawValue)
+    let threshold = defaults.integer(forKey: AppStorageKey.autoDeleteStaleNodesDays.rawValue)
     guard threshold > 0 else {
       cancelStaleNodeCleanup()
       return false
@@ -784,7 +787,7 @@ final class AppState {
     guard force || staleNodeCleanupTask == nil || staleNodeCleanupServiceID != serviceID else { return false }
 
     if !force {
-      let lastRunTimestamp = UserDefaults.standard.double(forKey: AppStorageKey.lastStaleCleanupDate.rawValue)
+      let lastRunTimestamp = defaults.double(forKey: AppStorageKey.lastStaleCleanupDate.rawValue)
       let lastRun = lastRunTimestamp > 0 ? Date(timeIntervalSinceReferenceDate: lastRunTimestamp) : Date.distantPast
       guard Date().timeIntervalSince(lastRun) >= Self.staleNodeCleanupCooldown else {
         logger.debug("Stale node cleanup skipped — cooldown not expired")
@@ -809,7 +812,7 @@ final class AppState {
       do {
         let result = try await connectionManager.removeStaleNodes(olderThanDays: threshold)
         guard !Task.isCancelled, connectionManager.services === services else { return }
-        UserDefaults.standard.set(Date().timeIntervalSinceReferenceDate, forKey: AppStorageKey.lastStaleCleanupDate.rawValue)
+        defaults.set(Date().timeIntervalSinceReferenceDate, forKey: AppStorageKey.lastStaleCleanupDate.rawValue)
         if result.total > 0 {
           logger.info("Stale node cleanup: removed \(result.removed) of \(result.total) nodes older than \(threshold) days")
         } else {

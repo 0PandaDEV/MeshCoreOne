@@ -1,11 +1,13 @@
+import Foundation
 @testable import MC1
 @testable import MC1Services
 import SwiftUI
+import Testing
 import UIKit
-import XCTest
 
+@Suite("Channel keyboard typing", .serialized)
 @MainActor
-final class ChatChannelKeyboardTypingTests: XCTestCase {
+struct ChatChannelKeyboardTypingTests {
   private enum Metrics {
     static let timeout: TimeInterval = 5
     static let sceneTimeout: TimeInterval = 15
@@ -17,9 +19,10 @@ final class ChatChannelKeyboardTypingTests: XCTestCase {
     static let channelIndex: UInt8 = 1
   }
 
-  func testChannelComposerStaysAboveKeyboardWhenTabsRefreshWithoutRefocusing() async throws {
+  @Test
+  func `channel composer stays above keyboard when tabs refresh without refocusing`() async throws {
     let suiteName = "test.channel-keyboard.\(UUID().uuidString)"
-    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
     let appState = AppState(defaults: defaults)
     let radioID = UUID()
     let device = DeviceDTO(from: Device(
@@ -61,34 +64,34 @@ final class ChatChannelKeyboardTypingTests: XCTestCase {
       self.descendants(UITabBar.self, in: window).contains { !$0.isHidden && $0.alpha > 0 }
         && self.descendants(ChatComposerUITextView.self, in: window).isEmpty
     }
-    XCTAssertTrue(sidebarMounted, "The compact sidebar and bottom tabs must appear before selecting the channel")
+    #expect(sidebarMounted, "The compact sidebar and bottom tabs must appear before selecting the channel")
 
     appState.navigation.setChatsRoute(.channel(channel))
     let composerMounted = await waitUntil {
       !self.descendants(ChatComposerUITextView.self, in: window).isEmpty
     }
-    XCTAssertTrue(composerMounted, "Selecting the channel must mount the production composer")
-    let composer = try XCTUnwrap(descendants(ChatComposerUITextView.self, in: window).first)
-    let chrome = try XCTUnwrap(chromeController(for: composer))
+    #expect(composerMounted, "Selecting the channel must mount the production composer")
+    let composer = try #require(descendants(ChatComposerUITextView.self, in: window).first)
+    let chrome = try #require(chromeController(for: composer))
     let timelineLoaded = await waitUntil {
       self.descendants(UICollectionView.self, in: chrome.view).contains { !$0.visibleCells.isEmpty }
     }
-    XCTAssertTrue(timelineLoaded, "The persisted channel message must appear in the production timeline")
+    #expect(timelineLoaded, "The persisted channel message must appear in the production timeline")
     try await Task.sleep(for: Metrics.settleInterval)
     disconnectHardwareKeyboard()
-    XCTAssertTrue(composer.becomeFirstResponder())
+    #expect(composer.becomeFirstResponder())
     let shown = await waitUntil { keyboard.visibleTop != nil }
-    XCTAssertTrue(shown, "A docked software keyboard must appear independently of the root layout guide")
+    #expect(shown, "A docked software keyboard must appear independently of the root layout guide")
     try await Task.sleep(for: Metrics.settleInterval)
     try assertChatAboveKeyboard(composer: composer, chrome: chrome, keyboard: keyboard, phase: "before typing")
 
     controller.rootView = rootView(appState: appState, locale: Locale(identifier: "en_GB"))
     composer.insertText("K")
     let draftUpdated = await waitUntil { editor.text == "K" }
-    XCTAssertTrue(draftUpdated, "Native typing must update the channel Draft after the tab refresh")
+    #expect(draftUpdated, "Native typing must update the channel Draft after the tab refresh")
     try await sampleTyping(composer: composer, chrome: chrome, keyboard: keyboard, phase: "tab refresh and typing")
-    XCTAssertTrue(composer === descendants(ChatComposerUITextView.self, in: window).first)
-    XCTAssertTrue(composer.isFirstResponder, "Refreshing tabs must retain the focused channel composer")
+    #expect(composer === descendants(ChatComposerUITextView.self, in: window).first)
+    #expect(composer.isFirstResponder, "Refreshing tabs must retain the focused channel composer")
   }
 
   private func rootView(appState: AppState, locale: Locale) -> some View {
@@ -111,22 +114,19 @@ final class ChatChannelKeyboardTypingTests: XCTestCase {
   private func assertChatAboveKeyboard(
     composer: ChatComposerUITextView, chrome: UIViewController, keyboard: KeyboardFrames, phase: String
   ) throws {
-    let window = try XCTUnwrap(composer.window)
-    let top = try XCTUnwrap(keyboard.visibleTop, "The keyboard must remain visible during \(phase)")
+    let window = try #require(composer.window)
+    let top = try #require(keyboard.visibleTop, "The keyboard must remain visible during \(phase)")
     let modelFrame = composer.convert(composer.bounds, to: window)
     let frame = presentedFrame(of: composer, in: window)
     let guide = window.rootViewController?.view.keyboardLayoutGuide.layoutFrame
-    XCTAssertGreaterThanOrEqual(frame.minY, window.bounds.minY, "The composer must stay visible during \(phase)")
-    XCTAssertLessThanOrEqual(frame.maxY, top + Metrics.tolerance, """
+    #expect(frame.minY >= window.bounds.minY, "The composer must stay visible during \(phase)")
+    #expect(frame.maxY <= top + Metrics.tolerance, """
     Composer moved under the keyboard during \(phase): rendered=\(frame), model=\(modelFrame), \
     keyboardNotificationTop=\(top), guide=\(String(describing: guide)), firstResponder=\(composer.isFirstResponder)
     """)
-    let collection = try XCTUnwrap(descendants(UICollectionView.self, in: chrome.view).first)
-    let latestCell = try XCTUnwrap(collection.visibleCells.max { $0.frame.maxY < $1.frame.maxY })
-    XCTAssertLessThanOrEqual(
-      presentedFrame(of: latestCell, in: window).maxY, top + Metrics.tolerance,
-      "The latest channel message moved under the keyboard during \(phase)"
-    )
+    let collection = try #require(descendants(UICollectionView.self, in: chrome.view).first)
+    let latestCell = try #require(collection.visibleCells.max { $0.frame.maxY < $1.frame.maxY })
+    #expect(presentedFrame(of: latestCell, in: window).maxY <= top + Metrics.tolerance, "The latest channel message moved under the keyboard during \(phase)")
   }
 
   private func presentedFrame(of view: UIView, in window: UIWindow) -> CGRect {
@@ -163,7 +163,7 @@ final class ChatChannelKeyboardTypingTests: XCTestCase {
       window = ChatKeyboardLift.keyWindow()
       return window != nil
     }
-    return try XCTUnwrap(window, "A foreground app window is required")
+    return try #require(window, "A foreground app window is required")
   }
 
   private func waitUntil(timeout: TimeInterval = Metrics.timeout, _ condition: () -> Bool) async -> Bool {

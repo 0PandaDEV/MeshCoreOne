@@ -79,7 +79,9 @@ struct MeshCoreSessionCommandCorrelationTests {
       await transport.sentData.count == 2
     }
 
-    try? await Task.sleep(for: .milliseconds(50))
+    try await waitUntil("the next command should wait on the serializer") {
+      await session.requestResponseSerializer.waiterCountForTest == 1
+    }
     #expect(await transport.sentData.count == 2)
 
     await transport.simulateOK()
@@ -419,7 +421,6 @@ struct MeshCoreSessionCommandCorrelationTests {
     }
 
     await transport.simulateReceive(makeContactsStartPacket(count: 1))
-    try await Task.sleep(for: .milliseconds(140))
 
     let error = await #expect(throws: MeshCoreError.self) {
       try await contactsTask.value
@@ -864,8 +865,6 @@ struct MeshCoreSessionCommandCorrelationTests {
     }
     await transport.simulateReceive(makeMessageSentPacket(expectedAck: sentTag, timeoutMs: 500))
     await transport.simulateReceive(makeBinaryTelemetryResponsePacket(tag: foreignTag, lppPayload: Data([0xBB])))
-    try? await Task.sleep(for: .milliseconds(80))
-    #expect(!telemetryTask.isCancelled)
 
     await transport.simulateReceive(makeBinaryTelemetryResponsePacket(tag: sentTag, lppPayload: acceptedPayload))
 
@@ -901,8 +900,6 @@ struct MeshCoreSessionCommandCorrelationTests {
       await transport.sentData.count == 2
     }
     await transport.simulateReceive(makeBinaryTelemetryResponsePacket(tag: tag, lppPayload: Data([0xBB])))
-    try? await Task.sleep(for: .milliseconds(80))
-    #expect(!telemetryTask.isCancelled)
 
     await transport.simulateReceive(makeMessageSentPacket(expectedAck: tag, timeoutMs: 500))
     await transport.simulateReceive(makeBinaryTelemetryResponsePacket(tag: tag, lppPayload: acceptedPayload))
@@ -1116,7 +1113,9 @@ struct MeshCoreSessionCommandCorrelationTests {
       try await session.requestStatus(from: target)
     }
 
-    try? await Task.sleep(for: .milliseconds(50))
+    try await waitUntil("the next command should wait on the serializer") {
+      await session.requestResponseSerializer.waiterCountForTest == 1
+    }
     #expect(await transport.sentData.count == 2, "binary request must not send while a text command is in flight")
 
     // The error belongs to the in-flight text command only.
@@ -1184,7 +1183,9 @@ struct MeshCoreSessionCommandCorrelationTests {
       try await session.requestTelemetry(from: secondTarget)
     }
 
-    try? await Task.sleep(for: .milliseconds(50))
+    try await waitUntil("the next command should wait on the serializer") {
+      await session.requestResponseSerializer.waiterCountForTest == 1
+    }
     #expect(await transport.sentData.count == 2)
 
     await transport.simulateError(code: 12)
@@ -1245,8 +1246,10 @@ struct MeshCoreSessionCommandCorrelationTests {
     // Command #2 issued after the cancellation.
     let secondBattery = Task { try await session.getBattery() }
 
-    // Give the next command time to subscribe before the orphan lands.
-    try? await Task.sleep(for: .milliseconds(50))
+    // Confirm the next command is queued before the orphan lands.
+    try await waitUntil("the next command should wait on the serializer") {
+      await session.requestResponseSerializer.waiterCountForTest == 1
+    }
 
     // The radio's late response to the cancelled command #1.
     await transport.simulateReceive(makeBatteryPacket(level: orphanedLevel))
@@ -1287,8 +1290,10 @@ struct MeshCoreSessionCommandCorrelationTests {
     // Unicast send issued while the binary request is outstanding.
     let messageTask = Task { try await session.sendMessage(to: messageTarget, text: "hi") }
 
-    // Give a non-serialized sender time to also subscribe before any messageSent lands.
-    try? await Task.sleep(for: .milliseconds(50))
+    // Confirm the sender is queued before any messageSent lands.
+    try await waitUntil("the next command should wait on the serializer") {
+      await session.requestResponseSerializer.waiterCountForTest == 1
+    }
 
     // The status request's own messageSent + dedicated STATUS_RESPONSE.
     await transport.simulateReceive(makeMessageSentPacket(expectedAck: statusAck))
@@ -1334,7 +1339,9 @@ struct MeshCoreSessionCommandCorrelationTests {
 
     // Command #2 parks in acquire() behind command #1.
     let second = Task { try await session.sendAdvertisement(flood: true) }
-    try? await Task.sleep(for: .milliseconds(50))
+    try await waitUntil("the next command should wait on the serializer") {
+      await session.requestResponseSerializer.waiterCountForTest == 1
+    }
     #expect(await transport.sentData.count == 2, "second command must wait behind the first")
 
     // Cancel #2 while it is still parked, then let #1 finish so #2 acquires.

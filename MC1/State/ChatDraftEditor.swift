@@ -16,13 +16,15 @@ final class ChatDraftEditor {
   private(set) var text: String
 
   @ObservationIgnored private let store: DraftStore
+  @ObservationIgnored private let clock: any Clock<Duration>
   @ObservationIgnored private var isDirty = false
   @ObservationIgnored private var isRetired = false
   @ObservationIgnored private var saveTask: Task<Void, Never>?
 
-  init(conversationID: ChatConversationID, store: DraftStore) {
+  init(conversationID: ChatConversationID, store: DraftStore, clock: (any Clock<Duration>)? = nil) {
     self.conversationID = conversationID
     self.store = store
+    self.clock = clock ?? ContinuousClock()
     text = store.draft(for: conversationID) ?? ""
   }
 
@@ -63,10 +65,16 @@ final class ChatDraftEditor {
     isRetired = true
   }
 
+  #if DEBUG
+    var saveTaskForTesting: Task<Void, Never>? {
+      saveTask
+    }
+  #endif
+
   private func scheduleSave() {
     saveTask?.cancel()
-    saveTask = Task { [weak self] in
-      try? await Task.sleep(for: Self.draftSaveDebounce)
+    saveTask = Task { [weak self, clock] in
+      try? await clock.sleep(for: Self.draftSaveDebounce)
       guard !Task.isCancelled else { return }
       self?.saveIfStillDirty()
     }

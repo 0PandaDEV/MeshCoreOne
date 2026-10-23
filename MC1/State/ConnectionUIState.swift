@@ -218,6 +218,10 @@ final class ConnectionUIState {
   // MARK: - Activity Tracking
 
   #if DEBUG
+    var disconnectedPillTaskForTesting: Task<Void, Never>? {
+      disconnectedPillTask
+    }
+
     /// Test helper: Simulates sync activity started callback
     func simulateSyncStarted() {
       syncActivityCount += 1

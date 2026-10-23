@@ -124,6 +124,8 @@ public actor MeshCoreSession: MeshCoreSessionProtocol {
   private var autoMessageDrainRequested = false
   private var autoContactRefreshRequested = false
   var inFlightGetMessage: Task<MessageResult, Error>?
+  var getMessageCallerCountForTest = 0
+  private(set) var processedMessagesWaitingCountForTest = 0
 
   // MARK: - Connection State
 
@@ -365,6 +367,7 @@ public actor MeshCoreSession: MeshCoreSessionProtocol {
 
       if case .messagesWaiting = event {
         requestAutoMessageDrain()
+        processedMessagesWaitingCountForTest += 1
       }
     }
   }
@@ -520,6 +523,14 @@ public actor MeshCoreSession: MeshCoreSessionProtocol {
   /// subscribe call before dispatching events, avoiding the dispatch-vs-subscribe race.
   var subscriberCountForTest: Int {
     get async { await dispatcher.subscriberCountForTest }
+  }
+
+  var autoMessageDrainStateForTest: (requested: Bool, task: Task<Void, Never>?) {
+    (autoMessageDrainRequested, autoMessageDrainTask)
+  }
+
+  var autoContactRefreshStateForTest: (requested: Bool, task: Task<Void, Never>?) {
+    (autoContactRefreshRequested, autoContactRefreshTask)
   }
 }
 

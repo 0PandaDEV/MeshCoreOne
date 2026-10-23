@@ -6,11 +6,12 @@ import Testing
 extension ContactCleanupTests {
   @Test
   func `automatic cleanup suppresses duplicates and cancels on teardown`() async throws {
-    let restore = configureAutomaticCleanup()
-    defer { restore() }
+    configureAutomaticCleanup()
     let env = try await makeEnvironment()
     defer { env.stop() }
-    let appState = AppState(modelContainer: env.manager.modelContainer, injectedConnectionManager: env.manager)
+    let appState = AppState(
+      modelContainer: env.manager.modelContainer, defaults: defaults, injectedConnectionManager: env.manager
+    )
     defer { appState.shutdown() }
     appState.performStaleNodeCleanup()
     try await waitForCommands(1, transport: env.transport)
@@ -24,16 +25,17 @@ extension ContactCleanupTests {
     #expect(appState.staleNodeCleanupTask == nil)
     await running.value
     #expect(try await env.services.dataStore.fetchContacts(radioID: env.radioID).count == 3)
-    #expect(UserDefaults.standard.double(forKey: AppStorageKey.lastStaleCleanupDate.rawValue) == 0)
+    #expect(defaults.double(forKey: AppStorageKey.lastStaleCleanupDate.rawValue) == 0)
   }
 
   @Test
   func `replacement services get their own automatic cleanup run`() async throws {
-    let restore = configureAutomaticCleanup()
-    defer { restore() }
+    configureAutomaticCleanup()
     let env = try await makeEnvironment()
     defer { env.stop() }
-    let appState = AppState(modelContainer: env.manager.modelContainer, injectedConnectionManager: env.manager)
+    let appState = AppState(
+      modelContainer: env.manager.modelContainer, defaults: defaults, injectedConnectionManager: env.manager
+    )
     defer { appState.shutdown() }
     appState.performStaleNodeCleanup()
     try await waitForCommands(1, transport: env.transport)
@@ -55,7 +57,7 @@ extension ContactCleanupTests {
     try await waitForCommands(1, transport: transport)
     #expect(appState.staleNodeCleanupTask?.isCancelled == false)
     #expect(appState.staleNodeCleanupServiceID == ObjectIdentifier(replacement))
-    #expect(UserDefaults.standard.double(forKey: AppStorageKey.lastStaleCleanupDate.rawValue) == 0)
+    #expect(defaults.double(forKey: AppStorageKey.lastStaleCleanupDate.rawValue) == 0)
     for count in 1...3 {
       try await waitForCommands(count, transport: transport)
       await transport.simulateOK()
@@ -63,22 +65,23 @@ extension ContactCleanupTests {
     await current.value
     #expect(try await env.services.dataStore.fetchContacts(radioID: env.radioID).isEmpty)
     #expect(appState.staleNodeCleanupTask == nil)
-    #expect(UserDefaults.standard.double(forKey: AppStorageKey.lastStaleCleanupDate.rawValue) > 0)
+    #expect(defaults.double(forKey: AppStorageKey.lastStaleCleanupDate.rawValue) > 0)
   }
 
   @Test
   func `disabling automatic cleanup cancels its captured threshold without stamping cooldown`() async throws {
-    let restore = configureAutomaticCleanup()
-    defer { restore() }
+    configureAutomaticCleanup()
     let env = try await makeEnvironment()
     defer { env.stop() }
-    let appState = AppState(modelContainer: env.manager.modelContainer, injectedConnectionManager: env.manager)
+    let appState = AppState(
+      modelContainer: env.manager.modelContainer, defaults: defaults, injectedConnectionManager: env.manager
+    )
     defer { appState.shutdown() }
     appState.performStaleNodeCleanup()
     try await waitForCommands(1, transport: env.transport)
     let running = try #require(appState.staleNodeCleanupTask)
 
-    UserDefaults.standard.set(0, forKey: AppStorageKey.autoDeleteStaleNodesDays.rawValue)
+    defaults.set(0, forKey: AppStorageKey.autoDeleteStaleNodesDays.rawValue)
     appState.performStaleNodeCleanup(force: true)
     #expect(running.isCancelled)
     #expect(appState.staleNodeCleanupTask == nil)
@@ -86,16 +89,17 @@ extension ContactCleanupTests {
 
     #expect(try await env.services.dataStore.fetchContacts(radioID: env.radioID).count == 3)
     #expect(await env.transport.sentData.count == 1)
-    #expect(UserDefaults.standard.double(forKey: AppStorageKey.lastStaleCleanupDate.rawValue) == 0)
+    #expect(defaults.double(forKey: AppStorageKey.lastStaleCleanupDate.rawValue) == 0)
   }
 
   @Test
   func `forcing cleanup on the same services replaces the running task`() async throws {
-    let restore = configureAutomaticCleanup()
-    defer { restore() }
+    configureAutomaticCleanup()
     let env = try await makeEnvironment()
     defer { env.stop() }
-    let appState = AppState(modelContainer: env.manager.modelContainer, injectedConnectionManager: env.manager)
+    let appState = AppState(
+      modelContainer: env.manager.modelContainer, defaults: defaults, injectedConnectionManager: env.manager
+    )
     defer { appState.shutdown() }
     appState.performStaleNodeCleanup()
     try await waitForCommands(1, transport: env.transport)
@@ -108,11 +112,12 @@ extension ContactCleanupTests {
 
   @Test
   func `completed automatic cleanup stamps cooldown and suppresses another eligible run`() async throws {
-    let restore = configureAutomaticCleanup()
-    defer { restore() }
+    configureAutomaticCleanup()
     let env = try await makeEnvironment()
     defer { env.stop() }
-    let appState = AppState(modelContainer: env.manager.modelContainer, injectedConnectionManager: env.manager)
+    let appState = AppState(
+      modelContainer: env.manager.modelContainer, defaults: defaults, injectedConnectionManager: env.manager
+    )
     defer { appState.shutdown() }
     let contact = try #require(try await env.services.dataStore.fetchContact(id: env.contactIDs[0]))
     let startedAt = Date().timeIntervalSinceReferenceDate
@@ -124,7 +129,7 @@ extension ContactCleanupTests {
     }
     await running.value
 
-    let stamp = UserDefaults.standard.double(forKey: AppStorageKey.lastStaleCleanupDate.rawValue)
+    let stamp = defaults.double(forKey: AppStorageKey.lastStaleCleanupDate.rawValue)
     #expect(stamp >= startedAt)
     #expect(stamp <= Date().timeIntervalSinceReferenceDate)
     #expect(try await env.services.dataStore.fetchContacts(radioID: env.radioID).isEmpty)
@@ -133,20 +138,11 @@ extension ContactCleanupTests {
     #expect(appState.staleNodeCleanupTask == nil)
     #expect(await env.transport.sentData.count == 3)
     #expect(try await env.services.dataStore.fetchContacts(radioID: env.radioID).count == 1)
-    #expect(UserDefaults.standard.double(forKey: AppStorageKey.lastStaleCleanupDate.rawValue) == stamp)
+    #expect(defaults.double(forKey: AppStorageKey.lastStaleCleanupDate.rawValue) == stamp)
   }
 
-  func configureAutomaticCleanup() -> () -> Void {
-    let defaults = UserDefaults.standard
-    let thresholdKey = AppStorageKey.autoDeleteStaleNodesDays.rawValue
-    let cooldownKey = AppStorageKey.lastStaleCleanupDate.rawValue
-    let threshold = defaults.object(forKey: thresholdKey)
-    let cooldown = defaults.object(forKey: cooldownKey)
-    defaults.set(7, forKey: thresholdKey)
-    defaults.removeObject(forKey: cooldownKey)
-    return {
-      defaults.set(threshold, forKey: thresholdKey)
-      defaults.set(cooldown, forKey: cooldownKey)
-    }
+  func configureAutomaticCleanup() {
+    defaults.set(7, forKey: AppStorageKey.autoDeleteStaleNodesDays.rawValue)
+    defaults.removeObject(forKey: AppStorageKey.lastStaleCleanupDate.rawValue)
   }
 }

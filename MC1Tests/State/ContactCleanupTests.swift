@@ -6,6 +6,12 @@ import Testing
 @Suite("Contact cleanup", .serialized)
 @MainActor
 struct ContactCleanupTests {
+  let preferences = IsolatedUserDefaults()
+
+  var defaults: UserDefaults {
+    preferences.defaults
+  }
+
   @Test
   func `bulk cleanup waits for each ACK and groups production list updates`() async throws {
     let env = try await makeEnvironment()

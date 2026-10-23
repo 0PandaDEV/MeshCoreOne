@@ -10,7 +10,6 @@ struct ChannelSendSerializationTests {
   private static let firstScope = FloodScope.region("Alpha")
   private static let secondScope = FloodScope.region("Beta")
   private static let selectedScope = FloodScope.region("Gamma")
-  private static let contentionDelay: Duration = .milliseconds(50)
 
   @Test
   func `concurrent channels and UI scope changes cannot split a scope and send pair`() async throws {
@@ -31,7 +30,7 @@ struct ChannelSendSerializationTests {
       )
     }
     let selection = Task { try await session.setFloodScope(Self.selectedScope) }
-    try await Task.sleep(for: Self.contentionDelay)
+    try await waitForSerializerWaiters(2, session: session)
     #expect(await transport.sentData.count == 2)
 
     await transport.simulateOK()
@@ -71,6 +70,7 @@ struct ChannelSendSerializationTests {
     }
     try await waitForFrameCount(2, transport: transport)
     let selection = Task { try await session.setFloodScope(Self.selectedScope) }
+    try await waitForSerializerWaiters(1, session: session)
     let rejectedCode: UInt8 = 42
     await transport.simulateError(code: rejectedCode)
     let error = await #expect(throws: MeshCoreError.self) {
@@ -102,7 +102,7 @@ struct ChannelSendSerializationTests {
         floodScope: .scope(Self.firstScope)
       )
     }
-    try await Task.sleep(for: Self.contentionDelay)
+    try await waitForSerializerWaiters(1, session: session)
     send.cancel()
     await transport.simulateOK()
     try await selection.value
@@ -138,17 +138,15 @@ struct ChannelSendSerializationTests {
     await #expect(throws: CancellationError.self) {
       try await send.value
     }
-    let following = Task {
-      try await session.setFloodScope(Self.selectedScope)
-      try await session.sendAdvertisement(flood: true)
-    }
-    try await Task.sleep(for: Self.contentionDelay)
+    let following = Task { try await session.setFloodScope(Self.selectedScope) }
+    try await waitForSerializerWaiters(1, session: session)
     #expect(await transport.sentData.count == outstandingCount)
 
     await transport.simulateOK()
     try await waitForFrameCount(outstandingCount + 1, transport: transport)
     #expect(await transport.sentData[outstandingCount] == PacketBuilder.setFloodScope(Self.selectedScope.scopeKey()))
-    try await Task.sleep(for: Self.contentionDelay)
+    let advertisement = Task { try await session.sendAdvertisement(flood: true) }
+    try await waitForSerializerWaiters(1, session: session)
     #expect(await transport.sentData.count == outstandingCount + 1,
             "The scope change must still wait for its own ACK")
 
@@ -157,6 +155,7 @@ struct ChannelSendSerializationTests {
     #expect(await transport.sentData.last?.first == CommandCode.sendAdvertisement.rawValue)
     await transport.simulateOK()
     try await following.value
+    try await advertisement.value
     let messageCount = await transport.sentData.filter { $0.first == CommandCode.sendChannelMessage.rawValue }.count
     #expect(messageCount == (afterScopeACK ? 1 : 0))
     await session.stop()
@@ -165,6 +164,12 @@ struct ChannelSendSerializationTests {
   private func waitForFrameCount(_ count: Int, transport: MockTransport) async throws {
     try await waitUntil("Expected at least \(count) frames") {
       await transport.sentData.count >= count
+    }
+  }
+
+  private func waitForSerializerWaiters(_ count: Int, session: MeshCoreSession) async throws {
+    try await waitUntil("Expected \(count) waiting commands") {
+      await session.requestResponseSerializer.waiterCountForTest == count
     }
   }
 

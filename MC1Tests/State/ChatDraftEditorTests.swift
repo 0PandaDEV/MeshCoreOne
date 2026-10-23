@@ -56,22 +56,41 @@ struct ChatDraftEditorTests {
   func `debounce persists the latest edit and a cancelled save does not overwrite it`() async throws {
     let defaults = makeDefaults()
     let id = dmID()
-    let editor = ChatDraftEditor(conversationID: id, store: DraftStore(defaults: defaults))
+    let clock = TestClock()
+    let editor = ChatDraftEditor(conversationID: id, store: DraftStore(defaults: defaults), clock: clock)
+    defer { editor.retire() }
 
     editor.setText("first")
-    try await Task.sleep(for: .milliseconds(100))
+    try await waitUntil("first save should park") { clock.sleeperCount == 1 }
+    let firstSave = try #require(editor.saveTaskForTesting)
+    defer { firstSave.cancel() }
+    clock.advance(by: .milliseconds(100))
     editor.setText("second")
+    try #require(firstSave.isCancelled)
+    await firstSave.value
+    try await waitUntil("replacement save should park") { clock.sleeperCount == 1 }
 
-    try await waitUntil(timeout: .seconds(2), "latest edit should persist") {
+    clock.advance(by: .milliseconds(400))
+    try #require(clock.sleeperCount == 1)
+    #expect(persistedDraft(in: defaults, for: id) == nil)
+    clock.advance(by: .milliseconds(99))
+    try #require(clock.sleeperCount == 1)
+    #expect(persistedDraft(in: defaults, for: id) == nil)
+    clock.advance(by: .milliseconds(1))
+    try #require(clock.sleeperCount == 0)
+    try await waitUntil("latest edit should persist after its quiet period") {
       persistedDraft(in: defaults, for: id) == "second"
     }
-    try await Task.sleep(for: .milliseconds(600))
-    #expect(persistedDraft(in: defaults, for: id) == "second")
 
     editor.setText("third")
+    try await waitUntil("third save should park") { clock.sleeperCount == 1 }
+    let pendingSave = try #require(editor.saveTaskForTesting)
+    defer { pendingSave.cancel() }
     editor.flush()
-    #expect(persistedDraft(in: defaults, for: id) == "third")
-    try await Task.sleep(for: .milliseconds(600))
+    try #require(pendingSave.isCancelled)
+    try #require(clock.sleeperCount == 0)
+    await pendingSave.value
+    clock.advance(by: .seconds(1))
     #expect(persistedDraft(in: defaults, for: id) == "third")
   }
 
@@ -103,11 +122,19 @@ struct ChatDraftEditorTests {
   func `a retired editor ignores edits and flushes`() async throws {
     let defaults = makeDefaults()
     let id = dmID()
-    let editor = ChatDraftEditor(conversationID: id, store: DraftStore(defaults: defaults))
+    let clock = TestClock()
+    let editor = ChatDraftEditor(conversationID: id, store: DraftStore(defaults: defaults), clock: clock)
+    defer { editor.retire() }
 
     editor.setText("live")
+    try await waitUntil("save should park before retirement") { clock.sleeperCount == 1 }
+    let pendingSave = try #require(editor.saveTaskForTesting)
+    defer { pendingSave.cancel() }
     editor.retire()
-    try await Task.sleep(for: .milliseconds(600))
+    try #require(pendingSave.isCancelled)
+    try #require(clock.sleeperCount == 0)
+    await pendingSave.value
+    clock.advance(by: .seconds(1))
     #expect(persistedDraft(in: defaults, for: id) == nil)
 
     editor.setText("stale")
@@ -121,14 +148,22 @@ struct ChatDraftEditorTests {
     let defaults = makeDefaults()
     let id = dmID()
     DraftStore(defaults: defaults).setDraft("saved", for: id)
-    let editor = ChatDraftEditor(conversationID: id, store: DraftStore(defaults: defaults))
+    let clock = TestClock()
+    let editor = ChatDraftEditor(conversationID: id, store: DraftStore(defaults: defaults), clock: clock)
+    defer { editor.retire() }
 
     editor.setText("pending")
+    try await waitUntil("save should park before reset") { clock.sleeperCount == 1 }
+    let pendingSave = try #require(editor.saveTaskForTesting)
+    defer { pendingSave.cancel() }
     editor.reset()
+    try #require(pendingSave.isCancelled)
+    try #require(clock.sleeperCount == 0)
+    await pendingSave.value
     #expect(editor.text.isEmpty)
     #expect(persistedDraft(in: defaults, for: id) == nil)
 
-    try await Task.sleep(for: .milliseconds(600))
+    clock.advance(by: .seconds(1))
     #expect(persistedDraft(in: defaults, for: id) == nil)
 
     editor.setText("after")
@@ -163,8 +198,11 @@ struct ChatDraftEditorTests {
     directEditor.setText("dm")
     directEditor.flush()
 
+    let pendingSave = try #require(affectedEditor.saveTaskForTesting)
+    defer { pendingSave.cancel() }
     appState.resetChannelDrafts(slotsByRadio: [radioA: [1]])
-    try await Task.sleep(for: .milliseconds(600))
+    try #require(pendingSave.isCancelled)
+    await pendingSave.value
 
     #expect(affectedEditor === appState.chatDraftEditor(for: affected))
     #expect(affectedEditor.text.isEmpty)
@@ -185,18 +223,21 @@ struct ChatDraftEditorTests {
   func `shutdown flushes dirty text and retirement rejects later writes`() async throws {
     let defaults = makeDefaults()
     let appState = AppState(defaults: defaults)
+    defer { appState.shutdown() }
     let id = dmID()
     let editor = appState.chatDraftEditor(for: id)
     editor.setText("dirty")
+    let pendingSave = try #require(editor.saveTaskForTesting)
+    defer { pendingSave.cancel() }
 
     appState.shutdown()
+    try #require(pendingSave.isCancelled)
+    await pendingSave.value
 
     #expect(persistedDraft(in: defaults, for: id) == "dirty")
     editor.setText("after")
     editor.flush()
     #expect(editor.text == "dirty")
-    #expect(persistedDraft(in: defaults, for: id) == "dirty")
-    try await Task.sleep(for: .milliseconds(600))
     #expect(persistedDraft(in: defaults, for: id) == "dirty")
   }
 

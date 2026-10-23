@@ -149,7 +149,8 @@ schemes:
       language: en
       region: US
       targets:
-        - MC1Tests
+        - name: MC1Tests
+          parallelizable: false
     profile:
       config: Release
     analyze:

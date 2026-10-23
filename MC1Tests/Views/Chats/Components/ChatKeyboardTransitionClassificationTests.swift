@@ -1,10 +1,12 @@
+import Foundation
 @testable import MC1
 import SwiftUI
+import Testing
 import UIKit
-import XCTest
 
+@Suite("Chat keyboard transition classification", .serialized)
 @MainActor
-final class ChatKeyboardTransitionClassificationTests: XCTestCase {
+struct ChatKeyboardTransitionClassificationTests {
   private enum Metrics {
     static let chromeHeight: CGFloat = 44
     static let timeout: TimeInterval = 15
@@ -65,26 +67,23 @@ final class ChatKeyboardTransitionClassificationTests: XCTestCase {
     func notifyWhenInteractionChanges(_ handler: @escaping (any UIViewControllerTransitionCoordinatorContext) -> Void) {}
   }
 
-  func testInteractiveSheetIsNotClassifiedAsNavigationPop() async throws {
-    try await assertPopClassification(style: .pageSheet, interactive: true, expected: false)
-  }
-
-  func testInteractiveNavigationTransitionKeepsPopProtection() async throws {
-    try await assertPopClassification(style: .none, interactive: true, expected: true)
-  }
-
-  func testNoninteractiveNavigationDoesNotFreezeKeyboard() async throws {
-    try await assertPopClassification(style: .none, interactive: false, expected: false)
-  }
-
-  private func assertPopClassification(style: UIModalPresentationStyle, interactive: Bool, expected: Bool) async throws {
-    var readyWindow: UIWindow?
+  @Test(arguments: [
+    (style: UIModalPresentationStyle.pageSheet, interactive: true, expected: false),
+    (style: .none, interactive: true, expected: true),
+    (style: .none, interactive: false, expected: false)
+  ])
+  func `keyboard protection applies only to interactive navigation transitions`(
+    scenario: (style: UIModalPresentationStyle, interactive: Bool, expected: Bool)
+  ) async throws {
+    var readyScene: UIWindowScene?
     _ = await waitUntil {
-      readyWindow = ChatKeyboardLift.keyWindow()
-      return readyWindow != nil
+      readyScene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+      return readyScene != nil
     }
-    let window = try XCTUnwrap(readyWindow)
-    let originalController = window.rootViewController
+    let scene = try #require(readyScene)
+    let originalWindow = scene.keyWindow
+    let window = UIWindow(windowScene: scene)
+    window.frame = scene.coordinateSpace.bounds
     let hosting = UIHostingController(rootView:
       Color.clear.chatBottomChrome(canvas: .clear) {
         Color.clear.frame(height: Metrics.chromeHeight)
@@ -97,23 +96,22 @@ final class ChatKeyboardTransitionClassificationTests: XCTestCase {
     window.makeKeyAndVisible()
     defer {
       navigation.simulatedCoordinator = nil
-      window.rootViewController = originalController
-      window.makeKeyAndVisible()
+      window.isHidden = true
+      window.rootViewController = nil
+      window.windowScene = nil
+      originalWindow?.makeKeyAndVisible()
     }
     let mounted = await waitUntil { self.findObserver(in: window) != nil }
-    XCTAssertTrue(mounted)
-    let observer = try XCTUnwrap(findObserver(in: window))
+    #expect(mounted)
+    let observer = try #require(findObserver(in: window))
     var responder: UIResponder? = observer
     while let current = responder, !(current is UIViewController) {
       responder = current.next
     }
-    XCTAssertTrue((responder as? UIViewController)?.navigationController === navigation)
-    XCTAssertFalse(observer.isInteractivePopActive(), "A resting navigation stack must not freeze keyboard motion")
-    navigation.simulatedCoordinator = Coordinator(style: style, interactive: interactive, container: navigation.view)
-    XCTAssertEqual(
-      observer.isInteractivePopActive(), expected,
-      "A modal transition must not engage navigation keyboard protection"
-    )
+    #expect((responder as? UIViewController)?.navigationController === navigation)
+    #expect(!(observer.isInteractivePopActive()), "A resting navigation stack must not freeze keyboard motion")
+    navigation.simulatedCoordinator = Coordinator(style: scenario.style, interactive: scenario.interactive, container: navigation.view)
+    #expect(observer.isInteractivePopActive() == scenario.expected, "A modal transition must not engage navigation keyboard protection")
   }
 
   private func findObserver(in view: UIView) -> ChatKeyboardLayoutObserver? {

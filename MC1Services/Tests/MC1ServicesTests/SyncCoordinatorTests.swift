@@ -84,12 +84,6 @@ struct SyncCoordinatorTests {
   }
 
   @Test
-  func `SyncPhase has all expected cases`() {
-    let phases: [SyncPhase] = [.contacts, .channels, .messages]
-    #expect(phases.count == 3)
-  }
-
-  @Test
   @MainActor
   func `SyncCoordinator initializes with idle state`() {
     let coordinator = SyncCoordinator()

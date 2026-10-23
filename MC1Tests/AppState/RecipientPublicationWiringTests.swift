@@ -8,6 +8,12 @@ import Testing
 @Suite("Shortcut recipient wiring", .serialized, .timeLimit(.minutes(1)))
 @MainActor
 struct RecipientPublicationWiringTests {
+  private let preferences = IsolatedUserDefaults()
+
+  private var defaults: UserDefaults {
+    preferences.defaults
+  }
+
   @MainActor
   final class PublishCounter {
     var count = 0
@@ -220,8 +226,16 @@ struct RecipientPublicationWiringTests {
     await callback(true)
     let task = try #require(run.appState.staleNodeCleanupTask)
     try await waitForCommands(1, transport: run.transport)
-    let second = Task { await callback(true) }
-    await Task.yield()
+    var joinedCleanup = false
+    var secondCompleted = false
+    run.appState.beforeShortcutRecipientCleanupAwaitForTesting = { joinedCleanup = true }
+    let second = Task {
+      await callback(true)
+      secondCompleted = true
+    }
+    defer { second.cancel() }
+    try await waitUntil("second sync callback should join the pending cleanup") { joinedCleanup }
+    #expect(!secondCompleted)
     #expect(run.counter.count == 0)
 
     await run.transport.simulateOK()
@@ -329,7 +343,7 @@ struct RecipientPublicationWiringTests {
     let attached = attachIdleServices(appState: appState, store: run.store)
     let deviceID = try #require(manager.connectedDevice?.id)
     let originalCallback = try #require(manager.onDeviceSynced)
-    UserDefaults.standard.set(7, forKey: AppStorageKey.autoDeleteStaleNodesDays.rawValue)
+    defaults.set(7, forKey: AppStorageKey.autoDeleteStaleNodesDays.rawValue)
     manager.setTestState(
       connectionState: .connected,
       services: attached.services,
@@ -392,11 +406,9 @@ extension RecipientPublicationWiringTests {
     let appState: AppState
     let store: PersistenceStore
     let counter: PublishCounter
-    let restore: () -> Void
 
     @MainActor
     func finish() {
-      restore()
       appState.shutdown()
     }
   }
@@ -408,11 +420,9 @@ extension RecipientPublicationWiringTests {
     let services: ServiceContainer
     let session: MeshCoreSession
     let counter: PublishCounter
-    let restore: () -> Void
 
     @MainActor
     func finish() {
-      restore()
       appState.shutdown()
       let services = services
       let session = session
@@ -431,7 +441,7 @@ extension RecipientPublicationWiringTests {
   private func makeAppState() throws -> AppState {
     let config = ModelConfiguration(isStoredInMemoryOnly: true)
     let container = try ModelContainer(for: PersistenceStore.schema, configurations: [config])
-    return AppState(modelContainer: container, isPlaceholder: true)
+    return AppState(modelContainer: container, isPlaceholder: true, defaults: defaults)
   }
 
   private func installCounter(on appState: AppState) -> PublishCounter {
@@ -440,33 +450,18 @@ extension RecipientPublicationWiringTests {
     return counter
   }
 
-  private func snapshotCleanupDefaults() -> () -> Void {
-    let defaults = UserDefaults.standard
-    let thresholdKey = AppStorageKey.autoDeleteStaleNodesDays.rawValue
-    let cooldownKey = AppStorageKey.lastStaleCleanupDate.rawValue
-    let threshold = defaults.object(forKey: thresholdKey)
-    let cooldown = defaults.object(forKey: cooldownKey)
-    return {
-      defaults.set(threshold, forKey: thresholdKey)
-      defaults.set(cooldown, forKey: cooldownKey)
-    }
-  }
-
   private func prepareRadio() async throws -> RadioRun {
-    let restore = snapshotCleanupDefaults()
-    UserDefaults.standard.set(0, forKey: AppStorageKey.autoDeleteStaleNodesDays.rawValue)
+    defaults.set(0, forKey: AppStorageKey.autoDeleteStaleNodesDays.rawValue)
     let appState = try makeAppState()
     let store = appState.connectionManager.persistenceStore
     try await installDevice(store: store, appState: appState)
     let counter = installCounter(on: appState)
-    return RadioRun(appState: appState, store: store, counter: counter, restore: restore)
+    return RadioRun(appState: appState, store: store, counter: counter)
   }
 
   private func prepareCleanup(
     channels: [(index: UInt8, name: String, secret: Data)]
   ) async throws -> CleanupRun {
-    let restore = snapshotCleanupDefaults()
-    let defaults = UserDefaults.standard
     defaults.set(7, forKey: AppStorageKey.autoDeleteStaleNodesDays.rawValue)
     defaults.removeObject(forKey: AppStorageKey.lastStaleCleanupDate.rawValue)
     let appState = try makeAppState()
@@ -501,8 +496,7 @@ extension RecipientPublicationWiringTests {
       transport: transport,
       services: services,
       session: session,
-      counter: counter,
-      restore: restore
+      counter: counter
     )
   }
 

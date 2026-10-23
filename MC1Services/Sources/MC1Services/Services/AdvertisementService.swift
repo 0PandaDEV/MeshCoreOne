@@ -57,6 +57,9 @@ public actor AdvertisementService {
   /// In-flight `flushPendingDeletedKeys`. Callers wait through
   /// `.contactDeletedCleanup`, not only `deleteContacts`.
   private var deletionFlushTask: Task<Void, Never>?
+  #if DEBUG
+    var testDeletionFlushWaiters = 0
+  #endif
   var currentRadioID: UUID?
 
   /// When true, advert delta sync is deferred (full or manual contact sync).
@@ -247,6 +250,10 @@ public actor AdvertisementService {
 
   func flushPendingDeletedKeys() async {
     if let deletionFlushTask {
+      #if DEBUG
+        testDeletionFlushWaiters += 1
+        defer { testDeletionFlushWaiters -= 1 }
+      #endif
       await deletionFlushTask.value
       return
     }
