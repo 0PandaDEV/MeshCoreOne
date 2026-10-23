@@ -6732,17 +6732,59 @@ public enum L10n {
       public static let fullReleaseNotes = L10n.tr("WhatsNew", "whatsNew.fullReleaseNotes", fallback: "See all new changes")
       /// Title of the What's New sheet shown once after an app update
       public static let title = L10n.tr("WhatsNew", "whatsNew.title", fallback: "What's New")
+      public enum AdvancedMapFilters {
+        /// What's New v1.6 - Advanced map filters, description
+        public static let description = L10n.tr("WhatsNew", "whatsNew.advancedMapFilters.description", fallback: "Filter the map by last heard time and hop count. You can pick a preset or set a custom range, and remove a filter from its chip.")
+        /// What's New v1.6 - Advanced map filters, title
+        public static let title = L10n.tr("WhatsNew", "whatsNew.advancedMapFilters.title", fallback: "Advanced map filters")
+      }
+      public enum BluetoothAndWiFi {
+        /// What's New v1.6 - Bluetooth and Wi-Fi, description
+        public static let description = L10n.tr("WhatsNew", "whatsNew.bluetoothAndWiFi.description", fallback: "If a radio is on firmware 1.18 or later and paired over both Bluetooth and Wi-Fi, you can switch between them in Connect Device and in Settings > Connection.")
+        /// What's New v1.6 - Bluetooth and Wi-Fi, title
+        public static let title = L10n.tr("WhatsNew", "whatsNew.bluetoothAndWiFi.title", fallback: "Bluetooth and Wi-Fi")
+      }
       public enum FasterChatLoading {
         /// What's New v1.5 - Faster chat loading, description
         public static let description = L10n.tr("WhatsNew", "whatsNew.fasterChatLoading.description", fallback: "Opening a chat is up to 90%% faster.")
         /// What's New v1.5 - Faster chat loading, title
         public static let title = L10n.tr("WhatsNew", "whatsNew.fasterChatLoading.title", fallback: "Faster chat loading")
       }
+      public enum IPadTabBar {
+        /// What's New v1.6 - iPad tab bar, description
+        public static let description = L10n.tr("WhatsNew", "whatsNew.iPadTabBar.description", fallback: "iPad is moving the tab icons from the left to the top. This helps us better support all devices including the iPhone Duo.")
+        /// What's New v1.6 - iPad tab bar, title
+        public static let title = L10n.tr("WhatsNew", "whatsNew.iPadTabBar.title", fallback: "iPad tab bar")
+      }
+      public enum IPhoneDuo {
+        /// What's New v1.6 - iPhone Duo, description
+        public static let description = L10n.tr("WhatsNew", "whatsNew.iPhoneDuo.description", fallback: "MC1 is ready for iPhone Duo with resizable layouts.")
+        /// What's New v1.6 - iPhone Duo, title
+        public static let title = L10n.tr("WhatsNew", "whatsNew.iPhoneDuo.title", fallback: "iPhone Duo")
+      }
+      public enum MoreChanges {
+        /// What's New v1.6 - More changes, description
+        public static let description = L10n.tr("WhatsNew", "whatsNew.moreChanges.description", fallback: "Tap \"See all new changes\" below to view the full list of bug fixes and other features.")
+        /// What's New v1.6 - More changes, title
+        public static let title = L10n.tr("WhatsNew", "whatsNew.moreChanges.title", fallback: "More changes")
+      }
       public enum PathDetails {
         /// What's New v1.5 - Path Details feature, description
         public static let description = L10n.tr("WhatsNew", "whatsNew.pathDetails.description", fallback: "Path Map has moved into Path Details, which lists every extra incoming path. And Repeat Details on sent messages lists every repeat path your radio heard.")
         /// What's New v1.5 - Path Details feature, title
         public static let title = L10n.tr("WhatsNew", "whatsNew.pathDetails.title", fallback: "Path Details")
+      }
+      public enum PinnedChats {
+        /// What's New v1.6 - Pinned chats, description
+        public static let description = L10n.tr("WhatsNew", "whatsNew.pinnedChats.description", fallback: "Pinned chats are now separate from favorites. Pinned chats appear in a Pinned section, and contacts you had already favorited are pinned the first time you open the app.")
+        /// What's New v1.6 - Pinned chats, title
+        public static let title = L10n.tr("WhatsNew", "whatsNew.pinnedChats.title", fallback: "Pinned chats")
+      }
+      public enum ReadAndUnread {
+        /// What's New v1.6 - Read and unread, description
+        public static let description = L10n.tr("WhatsNew", "whatsNew.readAndUnread.description", fallback: "Mark a conversation as read or unread by long pressing on the chat.")
+        /// What's New v1.6 - Read and unread, title
+        public static let title = L10n.tr("WhatsNew", "whatsNew.readAndUnread.title", fallback: "Read and unread")
       }
       public enum WhoReacted {
         /// What's New v1.5 - Tap a reaction to see who added it, description
