@@ -2,7 +2,7 @@ import MapKit
 import MC1Services
 import SwiftUI
 
-/// Canvas wrapping the map content with floating controls.
+/// Canvas wrapping the map content with an offline badge and floating controls.
 struct MapCanvasView: View {
   @Bindable var viewModel: MapViewModel
   @Binding var mapStyleSelection: MapStyleSelection
@@ -44,6 +44,17 @@ struct MapCanvasView: View {
         onPersistCamera: onPersistCamera
       )
       .ignoresSafeArea()
+
+      // Active filter chips
+      VStack(alignment: .trailing, spacing: 8) {
+        MapActiveFiltersBar(
+          host: filter.host,
+          state: filter.state,
+          onEdit: { filter.onShowAdvancedFilters?() }
+        )
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+      .padding(.top)
 
       // Floating controls
       VStack {

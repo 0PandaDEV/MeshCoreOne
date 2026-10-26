@@ -5,7 +5,6 @@ import SwiftUI
 
 /// Map content displaying MC1MapView with contact/discovered points and popover callouts
 struct MapContentView: View {
-  @Environment(\.colorScheme) private var colorScheme
   @Bindable var viewModel: MapViewModel
   let mapStyleSelection: MapStyleSelection
   let showLabels: Bool
@@ -22,15 +21,7 @@ struct MapContentView: View {
   let onAddDiscovered: (DiscoveredNodeDTO) -> Void
   let onPersistCamera: (MKCoordinateRegion) -> Void
 
-  @AppStorage(AppStorageKey.mapColorSchemePreference.rawValue)
-  private var mapColorSchemeRaw = AppStorageKey.defaultMapColorSchemePreference
-
   @State private var selectedDroppedPin: DroppedPinSelection?
-
-  private var mapIsDark: Bool {
-    let preference = AppColorSchemePreference(rawValue: mapColorSchemeRaw) ?? .system
-    return resolvedMapIsDark(preference: preference, colorScheme: colorScheme)
-  }
 
   /// The point currently showing a popover, so its own label pill is
   /// suppressed instead of duplicating the name shown in the popover.
@@ -47,7 +38,6 @@ struct MapContentView: View {
       points: viewModel.mapPoints,
       lines: [],
       mapStyle: mapStyleSelection,
-      isDarkMode: mapIsDark,
       showLabels: showLabels,
       clusteringEnabled: clusteringEnabled,
       showsUserLocation: true,

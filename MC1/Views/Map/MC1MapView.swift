@@ -9,11 +9,17 @@ import SwiftUI
 /// current `MapPoint`/`MapLine` domain model instead of feature-specific
 /// annotation types, so one wrapper serves every map screen.
 struct MC1MapView: UIViewRepresentable {
+  @Environment(\.mapColorSchemePreference) private var mapColorSchemePreference
+  @Environment(\.colorScheme) private var colorScheme
+
   // Data
   let points: [MapPoint]
   let lines: [MapLine]
   let mapStyle: MapStyleSelection
-  let isDarkMode: Bool
+
+  private var basemapIsDark: Bool {
+    resolvedMapIsDark(preference: mapColorSchemePreference, colorScheme: colorScheme)
+  }
 
   // Configuration
   let showLabels: Bool
@@ -37,9 +43,8 @@ struct MC1MapView: UIViewRepresentable {
   /// When set, the Apple legal label sits this far above the bottom edge so overlay chrome does not cover it.
   var legalOrnamentBottomMargin: CGFloat?
 
-  // Programmatic selection: the id of the point to select, plus a version
-  // counter bumped to (re)fire it. Routed through `onPointTap`, so a
-  // programmatic selection presents the callout exactly like a user tap.
+  // A point ID and version reproject programmatic selection after camera changes.
+  // Retained callers can update the anchor without changing logical selection.
   var selectionRequestID: UUID?
   var selectionRequestVersion: Int = 0
 
@@ -48,8 +53,13 @@ struct MC1MapView: UIViewRepresentable {
   /// reads twice (once above the pin, once in the callout right next to it).
   var selectedPointID: UUID?
 
+  var viewportSnapshotProvider: (() -> MapViewportSnapshot?)?
+  var onViewportReady: (() -> Void)?
+  var onViewportCapture: ((MapViewportSnapshot) -> Void)?
+
   // Output callbacks
   let onPointTap: ((MapPoint, CGPoint) -> Void)?
+  var onSelectionProjection: ((MapPoint, CGPoint) -> Void)?
   let onMapTap: ((CLLocationCoordinate2D) -> Void)?
   var onMapLongPress: ((CLLocationCoordinate2D) -> Void)?
   let onCameraRegionChange: ((MKCoordinateRegion) -> Void)?
@@ -94,13 +104,15 @@ struct MC1MapView: UIViewRepresentable {
     longPress.delegate = context.coordinator
     mapView.addGestureRecognizer(longPress)
 
-    context.coordinator.isStyleLoaded = { isStyleLoaded.wrappedValue = true }
-    context.coordinator.isStyleLoaded?()
+    context.coordinator.onStyleReady = { isStyleLoaded.wrappedValue = true }
+    context.coordinator.onStyleReady?()
 
     return mapView
   }
 
   static func dismantleUIView(_ mapView: MKMapView, coordinator: Coordinator) {
+    coordinator.captureViewport()
+    coordinator.isDismantled = true
     coordinator.pendingRegionTask?.cancel()
     mapView.delegate = nil
   }
@@ -111,11 +123,16 @@ struct MC1MapView: UIViewRepresentable {
     defer { coordinator.isUpdatingFromSwiftUI = false }
 
     coordinator.onPointTap = onPointTap
+    coordinator.onSelectionProjection = onSelectionProjection
     coordinator.onMapTap = onMapTap
     coordinator.onMapLongPress = onMapLongPress
     coordinator.onCameraRegionChange = onCameraRegionChange
+    coordinator.viewportSnapshotProvider = viewportSnapshotProvider
+    coordinator.onViewportReady = onViewportReady
+    coordinator.onViewportCapture = onViewportCapture
+    coordinator.currentNorthLocked = isNorthLocked
     coordinator.setIsCenteredOnUser = { isCenteredOnUser.wrappedValue = $0 }
-    coordinator.isDarkMode = isDarkMode
+    coordinator.isDarkMode = basemapIsDark
     coordinator.showLabels = showLabels
     coordinator.setClusteringEnabled(clusteringEnabled, in: mapView)
     mapView.layoutMargins.bottom = legalOrnamentBottomMargin ?? 0
@@ -123,7 +140,7 @@ struct MC1MapView: UIViewRepresentable {
     coordinator.currentPoints = points
 
     mapView.mapType = mapStyle.mapType
-    mapView.overrideUserInterfaceStyle = isDarkMode ? .dark : .light
+    mapView.overrideUserInterfaceStyle = basemapIsDark ? .dark : .light
 
     if mapView.showsUserLocation != showsUserLocation {
       mapView.showsUserLocation = showsUserLocation
@@ -141,12 +158,17 @@ struct MC1MapView: UIViewRepresentable {
     coordinator.updatePointAnnotations(points, in: mapView)
     coordinator.updateLineOverlays(lines, in: mapView)
     coordinator.refreshVisiblePinViews(in: mapView)
+    coordinator.restoreViewportIfNeeded()
     updateCameraRegion(in: mapView, coordinator: coordinator)
 
     if coordinator.lastAppliedSelectionVersion != selectionRequestVersion {
       coordinator.lastAppliedSelectionVersion = selectionRequestVersion
       if let id = selectionRequestID, let point = points.first(where: { $0.id == id }) {
-        DispatchQueue.main.async { coordinator.selectPoint(point, in: mapView) }
+        DispatchQueue.main.async {
+          guard !coordinator.isDismantled,
+                coordinator.lastAppliedSelectionVersion == selectionRequestVersion else { return }
+          coordinator.selectPoint(point, in: mapView, isProgrammatic: true)
+        }
       }
     }
   }
@@ -157,7 +179,7 @@ struct MC1MapView: UIViewRepresentable {
 
   // MARK: - Camera
 
-  private func updateCameraRegion(in mapView: MKMapView, coordinator: Coordinator) {
+  func updateCameraRegion(in mapView: MKMapView, coordinator: Coordinator) {
     guard let region = cameraRegion, cameraRegionVersion != coordinator.lastAppliedRegionVersion else { return }
     guard CLLocationCoordinate2DIsValid(region.center),
           region.span.latitudeDelta.isFinite, region.span.longitudeDelta.isFinite,
@@ -166,7 +188,8 @@ struct MC1MapView: UIViewRepresentable {
       return
     }
 
-    let animated = coordinator.lastAppliedRegionVersion >= 0
+    let canAnimate = viewportSnapshotProvider == nil || coordinator.hasAppliedCameraCommandInRenderer
+    let animated = coordinator.lastAppliedRegionVersion >= 0 && canAnimate
     coordinator.lastAppliedRegionVersion = cameraRegionVersion
     let adjusted = regionAccountingForBottomSheet(region)
     coordinator.hasPendingProgrammaticRegion = true
@@ -180,6 +203,7 @@ struct MC1MapView: UIViewRepresentable {
         animated: animated
       )
     }
+    coordinator.didApplyCameraCommand()
   }
 
   private static func mapRect(for region: MKCoordinateRegion) -> MKMapRect {
@@ -224,11 +248,15 @@ struct MC1MapView: UIViewRepresentable {
 
     // Callbacks
     var onPointTap: ((MapPoint, CGPoint) -> Void)?
+    var onSelectionProjection: ((MapPoint, CGPoint) -> Void)?
     var onMapTap: ((CLLocationCoordinate2D) -> Void)?
     var onMapLongPress: ((CLLocationCoordinate2D) -> Void)?
     var onCameraRegionChange: ((MKCoordinateRegion) -> Void)?
+    var viewportSnapshotProvider: (() -> MapViewportSnapshot?)?
+    var onViewportReady: (() -> Void)?
+    var onViewportCapture: ((MapViewportSnapshot) -> Void)?
     var setIsCenteredOnUser: ((Bool) -> Void)?
-    var isStyleLoaded: (() -> Void)?
+    var onStyleReady: (() -> Void)?
 
     // Configuration mirrored from the representable each update
     var isDarkMode = false
@@ -239,6 +267,10 @@ struct MC1MapView: UIViewRepresentable {
 
     // State
     var isUpdatingFromSwiftUI = false
+    var isDismantled = false
+    var hasInitializedViewport = false
+    var hasAppliedCameraCommandInRenderer = false
+    var currentNorthLocked = false
     var lastAppliedRegion: MKCoordinateRegion?
     var lastAppliedRegionVersion = -1
     var lastAppliedSelectionVersion = 0
@@ -325,15 +357,51 @@ struct MC1MapView: UIViewRepresentable {
       }
     }
 
+    // MARK: - Viewport retention
+
+    /// Reapplies the retained camera once, before any camera command, so a
+    /// remounted map resumes where its predecessor stopped.
+    func restoreViewportIfNeeded() {
+      guard !isDismantled, !hasInitializedViewport,
+            let viewport = viewportSnapshotProvider?() else { return }
+      let current = MapViewportSnapshot(mapView: mapView)
+      if !viewport.isApproximatelyEqual(to: current) {
+        hasPendingProgrammaticRegion = true
+      }
+      viewport.apply(to: mapView, northLocked: currentNorthLocked)
+      lastAppliedRegionVersion = viewport.appliedCameraCommandVersion
+      hasInitializedViewport = true
+      captureViewport()
+    }
+
+    func didApplyCameraCommand() {
+      guard viewportSnapshotProvider != nil else { return }
+      hasAppliedCameraCommandInRenderer = true
+      hasInitializedViewport = true
+      captureViewport()
+    }
+
+    func captureViewport() {
+      guard !isDismantled, hasInitializedViewport else { return }
+      onViewportReady?()
+      onViewportCapture?(MapViewportSnapshot(
+        mapView: mapView, appliedCameraCommandVersion: lastAppliedRegionVersion
+      ))
+    }
+
     // MARK: - Selection
 
-    func selectPoint(_ point: MapPoint, in mapView: MKMapView) {
+    func selectPoint(_ point: MapPoint, in mapView: MKMapView, isProgrammatic: Bool = false) {
       guard let annotation = mapView.annotations
         .compactMap({ $0 as? MapPointAnnotation })
         .first(where: { $0.point.id == point.id }),
         let view = mapView.view(for: annotation) else { return }
       let anchorPoint = view.convert(CGPoint(x: view.bounds.midX, y: 0), to: mapView)
-      onPointTap?(point, anchorPoint)
+      if isProgrammatic, let onSelectionProjection {
+        onSelectionProjection(point, anchorPoint)
+      } else {
+        onPointTap?(point, anchorPoint)
+      }
     }
 
     // MARK: - Gestures
@@ -424,6 +492,7 @@ struct MC1MapView: UIViewRepresentable {
         hasPendingProgrammaticRegion = false
         hasReceivedInitialRegion = true
         lastAppliedRegion = mapView.region
+        captureViewport()
         return
       }
 
@@ -435,6 +504,8 @@ struct MC1MapView: UIViewRepresentable {
       }
 
       lastAppliedRegion = mapView.region
+      if viewportSnapshotProvider != nil { hasInitializedViewport = true }
+      captureViewport()
 
       pendingRegionTask?.cancel()
       pendingRegionTask = Task { @MainActor in
