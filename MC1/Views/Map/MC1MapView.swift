@@ -9,6 +9,7 @@ import SwiftUI
 /// current `MapPoint`/`MapLine` domain model instead of feature-specific
 /// annotation types, so one wrapper serves every map screen.
 struct MC1MapView: UIViewRepresentable {
+  @Environment(\.appState) private var appState
   @Environment(\.mapColorSchemePreference) private var mapColorSchemePreference
   @Environment(\.colorScheme) private var colorScheme
 
@@ -132,10 +133,18 @@ struct MC1MapView: UIViewRepresentable {
     coordinator.onViewportCapture = onViewportCapture
     coordinator.currentNorthLocked = isNorthLocked
     coordinator.setIsCenteredOnUser = { isCenteredOnUser.wrappedValue = $0 }
+    coordinator.onUserLocationUpdate = showsUserLocation
+      ? { [locationService = appState.locationService] in locationService.recordMapUserLocation($0) }
+      : nil
     coordinator.isDarkMode = basemapIsDark
     coordinator.showLabels = showLabels
     coordinator.setClusteringEnabled(clusteringEnabled, in: mapView)
-    mapView.layoutMargins.bottom = legalOrnamentBottomMargin ?? 0
+    // MapKit centers programmatic regions inside the layout margins, so only
+    // override the bottom margin when asked; zeroing it would sit every
+    // centered target below the middle of the screen.
+    if let legalOrnamentBottomMargin {
+      mapView.layoutMargins.bottom = legalOrnamentBottomMargin
+    }
     coordinator.selectedPointID = selectedPointID
     coordinator.currentPoints = points
 
@@ -256,6 +265,7 @@ struct MC1MapView: UIViewRepresentable {
     var onViewportReady: (() -> Void)?
     var onViewportCapture: ((MapViewportSnapshot) -> Void)?
     var setIsCenteredOnUser: ((Bool) -> Void)?
+    var onUserLocationUpdate: ((CLLocation) -> Void)?
     var onStyleReady: (() -> Void)?
 
     // Configuration mirrored from the representable each update
@@ -478,6 +488,11 @@ struct MC1MapView: UIViewRepresentable {
       if let cluster = annotation as? MKClusterAnnotation {
         mapView.showAnnotations(cluster.memberAnnotations, animated: true)
       }
+    }
+
+    func mapView(_ mapView: MKMapView, didUpdate userLocation: MKUserLocation) {
+      guard let location = userLocation.location else { return }
+      onUserLocationUpdate?(location)
     }
 
     func mapView(_ mapView: MKMapView, regionWillChangeAnimated animated: Bool) {

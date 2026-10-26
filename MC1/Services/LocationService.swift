@@ -53,6 +53,15 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
   /// Current device location (nil if unavailable or not yet determined)
   private(set) var currentLocation: CLLocation?
 
+  /// Accuracy the manager keeps between requests.
+  private static let baselineAccuracy = kCLLocationAccuracyHundredMeters
+
+  /// True while a request deliberately asks for a coarser-than-baseline fix (the
+  /// privacy-fuzzed advert location). That fix must reach the caller but not
+  /// `currentLocation`, which the map's center-on-me button and distance sorting
+  /// treat as the user's real position.
+  private var isCoarseRequest = false
+
   /// Whether a location request is in progress
   private(set) var isRequestingLocation = false
 
@@ -78,7 +87,7 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
     authorizationStatus = locationManager.authorizationStatus
     super.init()
     locationManager.delegate = self
-    locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+    locationManager.desiredAccuracy = Self.baselineAccuracy
   }
 
   // MARK: - Public Methods
@@ -143,6 +152,7 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
 
     return try await withCheckedThrowingContinuation { continuation in
       requestContinuation = continuation
+      isCoarseRequest = desiredAccuracy > Self.baselineAccuracy
       locationManager.desiredAccuracy = desiredAccuracy
       locationManager.requestLocation()
 
@@ -157,12 +167,26 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
 
         requestContinuation = nil
         isRequestingLocation = false
+        restoreBaselineAccuracy()
         continuation.resume(throwing: LocationServiceError.locationTimeout)
       }
     }
   }
 
+  /// Adopts the fix MapKit shows as the blue dot. It is more precise and steadier
+  /// than the one-shot hundred-meter requests, so centering on `currentLocation`
+  /// lands on the dot instead of jittering by hundreds of meters.
+  func recordMapUserLocation(_ location: CLLocation) {
+    guard location.horizontalAccuracy >= 0, CLLocationCoordinate2DIsValid(location.coordinate) else { return }
+    currentLocation = location
+  }
+
   // MARK: - Private Methods
+
+  private func restoreBaselineAccuracy() {
+    isCoarseRequest = false
+    locationManager.desiredAccuracy = Self.baselineAccuracy
+  }
 
   private func waitForAuthorizationDecision(timeout: Duration) async throws -> CLAuthorizationStatus {
     guard authorizationStatus == .notDetermined else { return authorizationStatus }
@@ -218,7 +242,10 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
   nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
     guard let location = locations.last else { return }
     Task { @MainActor in
-      self.currentLocation = location
+      if !self.isCoarseRequest {
+        self.currentLocation = location
+      }
+      self.restoreBaselineAccuracy()
       self.isRequestingLocation = false
       self.logger.info("Location updated: \(location.coordinate.latitude), \(location.coordinate.longitude)")
 
@@ -235,6 +262,7 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
   nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
     Task { @MainActor in
       self.isRequestingLocation = false
+      self.restoreBaselineAccuracy()
       self.logger.error("Location request failed: \(error.localizedDescription)")
 
       self.locationTimeoutTask?.cancel()
